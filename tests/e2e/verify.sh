@@ -108,6 +108,38 @@ done
 out=$(zsh_login 'git config --get init.defaultBranch') || out=''
 if [[ $out == main ]]; then pass 'git init.defaultBranch is main'; else fail "git init.defaultBranch is '$out'"; fi
 
+step 'coding agents'
+# Codex sources ~/.zshrc in a non-interactive login shell; Claude Code sets
+# CLAUDECODE. Both must get a plain zsh, without the interactive options.
+# shellcheck disable=SC2016 # The inner shell expands these.
+out=$("$login_shell" -lc '. ~/.zshrc; f=$(mktemp); echo x >"$f"; echo y >"$f"; cat "$f"; rm -f "$f"; echo a#b' </dev/null 2>&1) || out="$out (exit $?)"
+if [[ $out == $'y\na#b' ]]; then
+  pass 'a non-interactive zsh that sources ~/.zshrc overwrites files and does not glob #'
+else
+  fail "a non-interactive zsh that sources ~/.zshrc: '$out'"
+fi
+out=$(CLAUDECODE=1 "$login_shell" -lic 'setopt; whence -w ls; command -v node' </dev/null 2>&1) || out=''
+if ! grep -qE '^(noclobber|extendedglob|correct)$' <<<"$out" && grep -q '^ls: command$' <<<"$out" &&
+  grep -q '/mise/installs/node/' <<<"$out"; then
+  pass 'CLAUDECODE=1 zsh -lic is plain and has mise'
+else
+  printf '%s\n' "$out"
+  fail 'CLAUDECODE=1 zsh -lic'
+fi
+for tool in timeout nproc tac shuf numfmt yq tree; do
+  if zsh_login "command -v $tool" >/dev/null; then pass "$tool is on PATH"; else fail "$tool is not on PATH"; fi
+done
+out=$(zsh_login 'timeout 1 sleep 5; echo $?') || out=''
+if [[ $out == 124 ]]; then pass 'timeout stops a command'; else fail "timeout 1 sleep 5 exits with '$out'"; fi
+ignore_repo=$(mktemp -d)
+git init -q "$ignore_repo"
+if git -C "$ignore_repo" check-ignore -q --no-index sub/.claude/settings.local.json; then
+  pass 'the global Git ignore file has the agent files'
+else
+  fail 'the global Git ignore file does not ignore .claude/settings.local.json'
+fi
+rm -rf "$ignore_repo"
+
 step 'mise'
 for spec in 'node:v24.' 'python:Python 3.14.'; do
   tool=${spec%%:*} want=${spec#*:}
