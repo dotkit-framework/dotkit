@@ -63,7 +63,7 @@
       # The base for nix-darwin. The user flake passes `user` (nix/user.nix of
       # the dotfiles repository) in specialArgs. See templates/default.
       darwinModule =
-        { user, ... }:
+        { lib, user, ... }:
         {
           imports = [
             home-manager.darwinModules.home-manager
@@ -79,6 +79,11 @@
               dotkitInputs = inputs;
             };
             sharedModules = [ ./nix/home.nix ];
+            # Home Manager does not replace a file that it does not manage, for
+            # example a ~/.zshrc from before dotkit. It renames such a file to
+            # <name>.before-dotkit and links its own. When that name exists
+            # too, the apply stops: move one of the two files.
+            backupFileExtension = lib.mkDefault "before-dotkit";
           };
         };
 

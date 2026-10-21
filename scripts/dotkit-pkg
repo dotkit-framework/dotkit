@@ -1,7 +1,7 @@
 #!/bin/bash
 # `dotkit add`, `dotkit remove`, `dotkit info`, and `dotkit list`: put a global tool in the
 # correct place, so everyone who uses dotkit installs it the same way.
-# n runs this script with DOTFILES set. It must work with the macOS Bash 3.2.
+# dotkit runs this script with DOTFILES set. It must work with the macOS Bash 3.2.
 # The file names below are in the dotfiles repository. The dotkit base has
 # lists with the same names; add and remove do not change them.
 #
@@ -543,7 +543,7 @@ apply_nix() {
     for f in packages.txt brews.txt casks.txt; do cp "$backup/$f" "$repo/nix/$f"; done
     rm -rf "$backup"
   }
-  trap 'restore; printf "\nn: stopped. The Nix files are restored.\n" >&2; exit 130' INT TERM
+  trap 'restore; printf "\ndotkit: stopped. The Nix files are restored.\n" >&2; exit 130' INT TERM
   if ! "$@"; then
     restore
     trap - INT TERM

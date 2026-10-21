@@ -1,0 +1,121 @@
+# check: evaluates and builds the example Mac, and lints the scripts and the
+# Nix files. e2e: a real setup on a fresh macOS runner, then tests/e2e/verify.sh.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      # Upstream Nix from the official installer.
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ github.token }}
+
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+
+      - name: Build the example Mac
+        run: nix build .#checks.aarch64-darwin.example --no-link --print-build-logs
+
+      # The linters come from the Nixpkgs in flake.lock.
+      - name: shellcheck
+        run: |
+          nix shell --inputs-from . nixpkgs#shellcheck -c shellcheck -x \
+            dotkit scripts/setup scripts/dotkit-pkg scripts/nix.sh \
+            templates/default/dotkit tests/e2e/verify.sh
+
+      - name: nixfmt
+        run: git ls-files -z '*.nix' | xargs -0 nix shell --inputs-from . nixpkgs#nixfmt -c nixfmt --check
+
+      - name: statix
+        run: nix shell --inputs-from . nixpkgs#statix -c statix check .
+
+      - name: deadnix
+        run: nix shell --inputs-from . nixpkgs#deadnix -c deadnix --fail .
+
+      - name: actionlint
+        run: nix shell --inputs-from . nixpkgs#actionlint -c actionlint
+
+  e2e:
+    # setup supports macOS 14 and newer. The runners have 15 and 26.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      # Build with this commit instead of the dotkit release that the new
+      # dotfiles repository would lock (github:podkovyrin/dotkit).
+      DOTKIT_DIR: ${{ github.workspace }}
+      # GitHub downloads of Nix and mise, without the anonymous rate limit.
+      NIX_CONFIG: access-tokens = github.com=${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Nix reads DOTKIT_DIR as a Git repository and refuses a shallow one.
+          fetch-depth: 0
+
+      # The runner image has Homebrew and some dotfiles. Setup must cope.
+      - name: Show the runner before setup
+        run: |
+          ls -la ~ ~/.config || true
+          brew list --formula --versions | wc -l
+          brew list --cask --versions
+
+      # The runner image adds pwsh to /etc/shells. nix-darwin does not replace
+      # a changed file that it does not know, and asks to move it aside. On a
+      # Mac with its own /etc/shells, a teammate does the same.
+      - name: Move the changed /etc/shells aside
+        run: sudo mv /etc/shells /etc/shells.before-nix-darwin
+
+      # A used Mac often has its own ~/.zprofile and ~/.zshrc, for example with
+      # the lines from the Homebrew installer. Home Manager must rename them.
+      - name: Add the dotfiles of a used Mac
+        run: |
+          # shellcheck disable=SC2016 # The line for the file, not to expand.
+          echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >~/.zprofile
+          echo 'export OLD_ZSHRC=1' >~/.zshrc
+
+      # The way a teammate sets up a new Mac, without a repository URL, so it
+      # creates ~/.dotfiles from the template. --yes: there is no terminal.
+      - name: Setup
+        run: scripts/setup --yes
+
+      # The first switch cannot set the login shell, the second one does (see
+      # nix/darwin.nix). It also shows that a second apply works.
+      - name: Apply again
+        run: /run/current-system/sw/bin/zsh -lc 'dotkit apply'
+
+      - name: Verify
+        run: tests/e2e/verify.sh
+
+      - name: Check the renamed dotfiles
+        run: |
+          grep -q 'brew shellenv' ~/.zprofile.before-dotkit
+          grep -q OLD_ZSHRC ~/.zshrc.before-dotkit
+
+      - name: Show /etc after a failure
+        if: failure()
+        run: |
+          cd /etc
+          shasum -a 256 shells bashrc zshrc zprofile zshenv nix/nix.conf ./*.backup-before-nix || true
+          for f in shells bashrc zshrc zprofile zshenv; do
+            printf '\n== /etc/%s\n' "$f"; cat "$f" || true
+            [[ ! -e $f.backup-before-nix ]] || diff "$f.backup-before-nix" "$f" || true
+          done

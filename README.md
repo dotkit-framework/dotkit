@@ -30,7 +30,10 @@ Setup installs the Xcode Command Line Tools, Nix, and Homebrew, writes your
 Git name and email to `~/.gitconfig.user`, and applies the configuration.
 `<repository-url>` is your dotfiles repository. Without it, setup creates
 `~/.dotfiles` from `templates/default`. Commit that repository and push it to
-your own remote.
+your own remote. A file that is in the way of a dotkit link, for example an
+old `~/.zshrc`, is renamed to `<name>.before-dotkit`. When nix-darwin stops
+at "Unexpected files in /etc", check those files, rename them as its message
+says, and run setup again. `setup --help` lists the options.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
@@ -132,3 +135,13 @@ nix build .#checks.aarch64-darwin.example           # builds the example Mac
 
 To release a change, commit it and push it. Each dotfiles repository gets
 it with `dotkit upgrade dotkit`.
+
+## CI
+
+`.github/workflows/ci.yml` runs on each push and pull request, on macOS
+arm64 runners. The `check` job runs the two commands above, shellcheck,
+nixfmt, statix, and deadnix. The `e2e` job runs `scripts/setup --yes` on a
+fresh macOS 15 and macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
+`~/.dotfiles` from the template and builds it with that commit. It applies
+again, then `tests/e2e/verify.sh` checks the result: the login shell, the
+`dotkit` command, zsh, the links, mise, and `dotkit add` and `remove`.

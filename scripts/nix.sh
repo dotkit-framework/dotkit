@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Nix commands for the flake of the dotfiles repository. dotkit and
 # scripts/dotkit-pkg source this file after they set `repo`. It must work with
 # the macOS Bash 3.2.

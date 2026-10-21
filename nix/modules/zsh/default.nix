@@ -86,7 +86,12 @@ let
 
     # The tools come before the plugins that wrap zle widgets.
     ${optionalString tools.fzf.enable ''
-      source ${out}/gen/fzf.zsh
+      # The fzf key bindings and completion need zle. Without a terminal, for
+      # example in zsh -ic, zle cannot start, and fzf.zsh prints "can't change
+      # option: zle". setopt zle fails then.
+      if setopt zle 2>/dev/null; then
+        source ${out}/gen/fzf.zsh
+      fi
       source ${out}/lib/fzf.zsh
     ''}
     ${optionalString tools.zoxide.enable "source ${out}/gen/zoxide.zsh"}

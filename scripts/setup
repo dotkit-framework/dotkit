@@ -2,30 +2,41 @@
 set -euo pipefail
 
 usage() {
+  # shellcheck disable=SC2016 # The usage shows a command to copy.
   printf '%s\n' \
     'Set up this Apple Silicon Mac with dotkit: install the missing prerequisites' \
     '(Xcode Command Line Tools, Nix, Homebrew), get the dotfiles repository, then' \
     'build and apply the configuration.' \
     '' \
-    'Usage: bash -c "$(curl -fsSL https://raw.githubusercontent.com/podkovyrin/dotkit/main/scripts/setup)" setup [<repository-url>]' \
-    '       ~/.dotkit/scripts/setup [<repository-url>]' \
+    'Usage: bash -c "$(curl -fsSL https://raw.githubusercontent.com/podkovyrin/dotkit/main/scripts/setup)" setup [-y] [<repository-url>]' \
+    '       ~/.dotkit/scripts/setup [-y] [<repository-url>]' \
     '' \
     'The dotfiles repository is ~/.dotfiles (DOTFILES overrides it). When it does' \
     'not exist, setup clones <repository-url>, or without one creates it from the' \
     'dotkit template.' \
     '' \
     'Run as your normal user, without sudo. Installers and activation request access.' \
-    'After setup, use dotkit apply. It works from any directory.'
+    'After setup, use dotkit apply. It works from any directory.' \
+    '' \
+    'Options:' \
+    '  -y, --yes   Install the missing prerequisites without questions, also without' \
+    '              a terminal, for example in CI. sudo must work without a password.' \
+    '              Without a terminal, setup does not ask for your Git name and email.' \
+    '  -h, --help  Show this help.'
 }
 
-url=''
-case "$#:${1:-}" in
-  0:) ;;
-  1:-h|1:--help) usage; exit 0 ;;
-  1:-*) printf 'Unknown option: %s. Use --help.\n' "$1" >&2; exit 2 ;;
-  1:*) url=$1 ;;
-  *) printf 'Unknown arguments: %s. Use --help.\n' "$*" >&2; exit 2 ;;
-esac
+url='' yes=''
+for arg in "$@"; do
+  case $arg in
+    -h|--help) usage; exit 0 ;;
+    -y|--yes) yes=1 ;;
+    -*) printf 'Unknown option: %s. Use --help.\n' "$arg" >&2; exit 2 ;;
+    *)
+      [[ -z $url ]] || { printf 'Unknown arguments: %s. Use --help.\n' "$*" >&2; exit 2; }
+      url=$arg
+      ;;
+  esac
+done
 
 fail() {
   printf '%s\n' "$@" >&2
@@ -45,7 +56,8 @@ override=()
 [[ -z ${DOTKIT_DIR:-} ]] || override=(--override-input dotkit "git+file://$(cd -- "$DOTKIT_DIR" && pwd -P)" --no-write-lock-file --option warn-dirty false)
 
 may_install() {
-  [[ -t 0 && -t 2 ]] || fail "Installing $1 requires an interactive terminal. Run the setup there."
+  [[ -n $yes || ( -t 0 && -t 2 ) ]] ||
+    fail "Installing $1 requires an interactive terminal. Run the setup there, or use --yes."
 }
 
 ensure_clt() {
@@ -78,7 +90,8 @@ ensure_nix() {
   # installed Nix with that one, and a downgrade is not supported.
   local url='https://releases.nixos.org/nix/nix-2.35.2/install'
   local sha256='9adda97297d9e8ab360df95c729eabff4f4f93d6db091953c3a68f29e3fb130c'
-  local installer="$build/bootstrap/nix-install.sh"
+  # Not in $repo: ensure_dotfiles runs later and needs $repo not to exist yet.
+  local installer="$HOME/Library/Caches/dotkit/nix-install.sh"
   mkdir -p "${installer%/*}"
   if [[ $(/usr/bin/shasum -a 256 "$installer" 2>/dev/null) != "$sha256 "* ]]; then
     printf 'Downloading the pinned Nix installer.\n' >&2
@@ -91,7 +104,9 @@ ensure_nix() {
     mv -f "$installer.partial" "$installer"
   fi
   printf 'Installing official multi-user Nix. Follow its administrator prompts.\n' >&2
-  (unset CI NONINTERACTIVE NIX_INSTALLER_YES; /bin/sh "$installer" --daemon --no-channel-add)
+  local args=(--daemon --no-channel-add)
+  [[ -z $yes ]] || args+=(--yes)
+  (unset CI NONINTERACTIVE NIX_INSTALLER_YES; /bin/sh "$installer" "${args[@]}")
   find_nix >/dev/null ||
     fail 'The installer finished, but Nix was not found. Inspect its output before retrying.'
 }
@@ -110,7 +125,11 @@ ensure_brew() {
     'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh')
   developer=$(/usr/bin/xcode-select -p)
   printf 'Installing Homebrew at /opt/homebrew. Follow its administrator prompts.\n' >&2
-  (unset CI NONINTERACTIVE NIX_INSTALLER_YES; /bin/bash -c "$installer") || status=$?
+  (
+    unset CI NONINTERACTIVE NIX_INSTALLER_YES
+    [[ -z $yes ]] || export NONINTERACTIVE=1
+    /bin/bash -c "$installer"
+  ) || status=$?
   # Homebrew can install CLT and select it even when full Xcode is active.
   if [[ $(/usr/bin/xcode-select -p) != "$developer" ]]; then
     printf 'Restoring the selected Apple developer directory: %s\n' "$developer" >&2
@@ -180,10 +199,12 @@ dotkit=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
 ensure_git_user
 ensure_nix
 nix=$(find_nix)
-export PATH="$(dirname -- "$nix"):$PATH"
+PATH="$(dirname -- "$nix"):$PATH"
+export PATH
 nix=("$nix" --extra-experimental-features 'nix-command flakes')
 ensure_dotfiles
 
+# shellcheck disable=SC2016 # A Nix expression.
 declared=$("${nix[@]}" eval --raw --file "$repo/nix/user.nix" \
   --apply 'user: "${user.name}\n${user.home}\n${user.dotfiles}"')
 { read -r user_name; read -r user_home; read -r user_dotfiles; } <<<"$declared"
