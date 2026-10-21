@@ -80,9 +80,13 @@ Most base files read a file of yours after them, so your settings win:
 | Base file | Your file |
 |---|---|
 | `~/.zshenv`, `~/.zprofile`, `~/.zshrc` | `~/.zshenv.local`, `~/.zprofile.local`, `~/.zshrc.local` |
+| `~/.bash_profile` | `~/.bash_profile.local` |
 | `~/.config/git/config` | `~/.gitconfig` |
 | `~/.config/ghostty/config` | `~/.config/ghostty/config.local` |
 | `~/.config/mise/conf.d/dotkit.toml` | `~/.config/mise/config.toml` (a tool there replaces the base version) |
+
+`~/.bash_profile` gives `bash -l`, for example a script with `#!/bin/bash -l`,
+the same PATH and mise as zsh. An interactive bash then reads `~/.bashrc`.
 
 Link your file in `nix/home.nix`:
 
@@ -162,4 +166,4 @@ nixfmt, statix, and deadnix. The `e2e` job runs `scripts/setup --yes` on a
 fresh macOS 15 and macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
 `~/.dotfiles` from the template and builds it with that commit. It applies
 again, then `tests/e2e/verify.sh` checks the result: the login shell, the
-`dotkit` command, zsh, the links, mise, and `dotkit add` and `remove`.
+`dotkit` command, zsh, `bash -l`, the links, mise, and `dotkit add` and `remove`.

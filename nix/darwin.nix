@@ -111,19 +111,6 @@ in
       promptInit = "";
     };
 
-    # nix-darwin replaces a file in /etc only when it knows its content, and
-    # keeps it as <name>.before-nix-darwin. The Nix installer of scripts/setup
-    # (2.35) puts its lines at the start of /etc/bashrc and /etc/zshrc.
-    # nix-darwin does not know the results yet, so without these hashes the
-    # first activation stops.
-    environment.etc = {
-      bashrc.knownSha256Hashes = [ "8b5e3466922d1ae34bc145e21c7e53e7329a7a7b58b148b436bd954d5e651ac3" ];
-      zshrc.knownSha256Hashes = [
-        "af60f7af4a5b4c1b0efe950e3e3f3ee8b136834ecb46fd7dba76f4b66adbc3e1" # macOS 15
-        "cf0f7b7775b4c058d6085d9e7e57d58c307ca43730f8e4d921a9ef4e530e7e16" # macOS 26
-      ];
-    };
-
     # The login shell is the Nix zsh, the version that nix/modules/zsh compiles
     # its files with. environment.shells adds it to /etc/shells. nix-darwin sets
     # users.users.<name>.shell only for knownUsers, which must not include the

@@ -186,6 +186,32 @@ ensure_dotfiles() {
   printf 'Created %s. Commit it, and push it to your own remote.\n' "$repo" >&2
 }
 
+# The Nix installer puts its lines at the start of /etc/zshrc and /etc/bashrc
+# and keeps the original as <name>.backup-before-nix. nix-darwin replaces a
+# file in /etc only when it knows its content, so the first activation would
+# stop. When the file is the original plus these lines, move it to
+# <name>.before-nix-darwin, the backup that nix-darwin makes itself (its
+# uninstaller restores it). Otherwise leave it, and nix-darwin explains.
+move_nix_installer_etc() {
+  local name file
+  for name in zshrc bashrc; do
+    file=/etc/$name
+    [[ -f $file && ! -L $file && -f $file.backup-before-nix && ! -e $file.before-nix-darwin ]] || continue
+    # The file without the lines from "# Nix" to "# End Nix" and one blank line
+    # on each side.
+    /usr/bin/awk '
+      state == 0 && $0 == "# Nix" { blank = 0; state = 1; next }
+      state == 1 { if ($0 == "# End Nix") state = 2; next }
+      state == 2 { state = 3; if ($0 == "") next }
+      state == 0 && $0 == "" { if (blank) print ""; blank = 1; next }
+      { if (blank) print ""; blank = 0; print }
+      END { if (blank) print "" }
+    ' "$file" | /usr/bin/cmp -s - "$file.backup-before-nix" || continue
+    printf 'Moving %s, the macOS file with the lines of the Nix installer, to %s.\n' "$file" "$file.before-nix-darwin" >&2
+    sudo /bin/mv "$file" "$file.before-nix-darwin"
+  done
+}
+
 ensure_clt
 
 # Run through curl, not from a file: clone dotkit, then run its copy of this script.
@@ -221,6 +247,7 @@ printf 'Activating the configuration. Administrator access is required.\n' >&2
 # Use nix-env and darwin-rebuild from the built system, so a first run needs no
 # installed copy. darwin-rebuild switch would evaluate the flake again as root.
 system=$(readlink "$build/system")
+move_nix_installer_etc
 sudo -H /usr/bin/env NIX_REMOTE=daemon "$system/sw/bin/nix-env" -p /nix/var/nix/profiles/system --set "$system"
 sudo "$system/sw/bin/darwin-rebuild" activate
 # Global mise tools: the dotkit base and config/mise.toml of the dotfiles repository.

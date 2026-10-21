@@ -21,6 +21,8 @@ step() { printf '\n== %s\n' "$*"; }
 # Runs $1 in a new login shell, as a new terminal does. Without a terminal,
 # so zle is off.
 zsh_login() { "$login_shell" -lic "$1" </dev/null; }
+# Runs $1 in a bash login shell with a clean environment, as ssh host bash -l does.
+bash_clean() { env -i HOME="$HOME" USER="$user" PATH=/usr/bin:/bin /bin/bash -lc "$1" </dev/null; }
 
 step 'activation'
 if [[ -e /run/current-system && $(readlink /run/current-system) == "$(readlink "$repo/.build/system")" ]]; then
@@ -28,6 +30,13 @@ if [[ -e /run/current-system && $(readlink /run/current-system) == "$(readlink "
 else
   fail "/run/current-system is not $repo/.build/system"
 fi
+for name in zshrc bashrc; do
+  if [[ $(readlink "/etc/$name") == "/etc/static/$name" ]]; then
+    pass "/etc/$name is the file of nix-darwin"
+  else
+    fail "/etc/$name is not a link to /etc/static/$name"
+  fi
+done
 
 step 'login shell'
 shell=$(dscl . -read "/Users/$user" UserShell | sed 's/^UserShell: //')
@@ -96,7 +105,7 @@ out=$(zsh_login 'abbr expand dk') || out=''
 if [[ $out == dotkit ]]; then pass 'dk expands to dotkit'; else fail "dk expands to '$out'"; fi
 
 step 'links'
-for target in .zshenv .zprofile .zshrc .zshrc.local .config/git/config .config/ghostty/config \
+for target in .zshenv .zprofile .zshrc .zshrc.local .bash_profile .config/git/config .config/ghostty/config \
   .config/mise/conf.d/dotkit.toml .config/mise/config.toml .config/starship.toml \
   .config/herdr/config.toml .local/share/dotkit; do
   if [[ -L $HOME/$target && -e $HOME/$target ]]; then
@@ -152,15 +161,50 @@ fi
 project=$(mktemp -d)
 printf '#!/bin/sh\necho project\n' >"$project/jq"
 chmod +x "$project/jq"
-for inner in '-lc' '-lic'; do
-  out=$(zsh_login "export PATH=$project:\$PATH; $login_shell $inner jq </dev/null" 2>/dev/null) || out=''
+for inner in "$login_shell -lc" "$login_shell -lic" '/bin/bash -lc'; do
+  out=$(zsh_login "export PATH=$project:\$PATH; $inner jq </dev/null" 2>/dev/null) || out=''
   if [[ $out == project ]]; then
-    pass "a nested zsh $inner keeps the project jq first"
+    pass "a nested $inner keeps the project jq first"
   else
-    fail "a nested zsh $inner runs '$out' for jq, not the project jq"
+    fail "a nested $inner runs '$out' for jq, not the project jq"
   fi
 done
+out=$(bash_clean "export PATH=$project:\$PATH; /bin/bash -lc jq </dev/null" 2>/dev/null) || out=''
+if [[ $out == project ]]; then
+  pass 'a bash -lc in a bash -lc keeps the project jq first'
+else
+  fail "a bash -lc in a bash -lc runs '$out' for jq, not the project jq"
+fi
 rm -rf "$project"
+
+step 'bash -l'
+# /etc/profile and /etc/bashrc rebuild PATH without the mise directories.
+# ~/.bash_profile puts the tools first, as in zsh.
+errors=$(mktemp)
+bash_clean 'exit' 2>"$errors" >/dev/null || fail 'bash -lc exit failed'
+if [[ -s $errors ]]; then
+  cat "$errors"
+  fail 'a bash login shell printed errors'
+else
+  pass 'a bash login shell starts without errors'
+fi
+rm -f "$errors"
+mise_installs=$HOME/.local/share/mise/installs/
+for spec in "git:/etc/profiles/per-user/$user/bin/git" "node:$mise_installs" "python3:$mise_installs"; do
+  tool=${spec%%:*} want=${spec#*:}
+  for from in 'a dotkit shell' 'a clean environment'; do
+    if [[ $from == 'a dotkit shell' ]]; then
+      out=$(cd "$HOME" && zsh_login "/bin/bash -lc 'command -v $tool' </dev/null" 2>/dev/null) || out=''
+    else
+      out=$(cd "$HOME" && bash_clean "command -v $tool" 2>/dev/null) || out=''
+    fi
+    if [[ $out == "$want"* ]]; then
+      pass "bash -lc from $from finds $tool at $out"
+    else
+      fail "bash -lc from $from finds $tool at '$out', expected $want..."
+    fi
+  done
+done
 
 step 'mise'
 for spec in 'node:v24.' 'python:Python 3.14.'; do

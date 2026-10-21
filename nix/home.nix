@@ -23,8 +23,9 @@ in
   options.dotkit.toolPath = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     description = ''
-      Global tool directories, in priority order. config/zsh/zprofile puts them
-      before the inherited PATH, and nix/darwin.nix gives them to GUI apps.
+      Global tool directories, in priority order. config/zsh/zprofile and
+      config/bash/bash_profile put them before the inherited PATH, and
+      nix/darwin.nix gives them to GUI apps.
       Entries without a priority go after ~/.local/bin and before Homebrew.
     '';
   };
@@ -124,6 +125,8 @@ in
           ".zshenv" = "config/zsh/zshenv";
           ".zprofile" = "config/zsh/zprofile";
           ".zshrc" = "config/zsh/zshrc";
+          # For `bash -l`, for example scripts with #!/bin/bash -l.
+          ".bash_profile" = "config/bash/bash_profile";
 
           # Git reads this file first and ~/.gitconfig after it, so ~/.gitconfig wins.
           ".config/git/config" = "config/gitconfig";

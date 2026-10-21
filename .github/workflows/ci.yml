@@ -37,7 +37,7 @@ jobs:
           nix shell --inputs-from . nixpkgs#shellcheck -c shellcheck -x \
             dotkit scripts/setup scripts/dotkit-pkg scripts/nix.sh \
             scripts/herdr/git-status.sh scripts/herdr/process-name.sh \
-            scripts/herdr/process-name.bash \
+            scripts/herdr/process-name.bash config/bash/bash_profile \
             templates/default/dotkit tests/e2e/verify.sh
 
       # shellcheck does not read zsh. zsh -n parses a file without running it.
@@ -95,6 +95,8 @@ jobs:
           # tests/e2e/verify.sh checks that setup uninstalled none of them.
           brew list --formula -1 >"$RUNNER_TEMP/brew-formulae-before"
           brew list --cask -1 >"$RUNNER_TEMP/brew-casks-before"
+          # The runner has a ~/.bash_profile. Home Manager must rename it.
+          cp ~/.bash_profile "$RUNNER_TEMP/bash_profile-before"
 
       # The runner image adds pwsh to /etc/shells. nix-darwin does not replace
       # a changed file that it does not know, and asks to move it aside. On a
@@ -109,6 +111,8 @@ jobs:
           # shellcheck disable=SC2016 # The line for the file, not to expand.
           echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >~/.zprofile
           echo 'export OLD_ZSHRC=1' >~/.zshrc
+          # dotkit does not link ~/.bashrc. An interactive bash -l reads it.
+          echo 'export OLD_BASHRC=1' >>~/.bashrc
 
       # The way a teammate sets up a new Mac, without a repository URL, so it
       # creates ~/.dotfiles from the template. --yes: there is no terminal.
@@ -125,10 +129,16 @@ jobs:
         env:
           BREW_BEFORE: ${{ runner.temp }}
 
-      - name: Check the renamed dotfiles
+      # Setup moves the /etc files that the Nix installer changed to the
+      # backup names of nix-darwin.
+      - name: Check the renamed files
         run: |
           grep -q 'brew shellenv' ~/.zprofile.before-dotkit
           grep -q OLD_ZSHRC ~/.zshrc.before-dotkit
+          cmp "$RUNNER_TEMP/bash_profile-before" ~/.bash_profile.before-dotkit
+          # shellcheck disable=SC2016 # For the inner shell.
+          /bin/bash -lic 'echo "OLD_BASHRC=${OLD_BASHRC-}"' </dev/null | grep -qx OLD_BASHRC=1
+          ls -l /etc/zshrc.before-nix-darwin /etc/bashrc.before-nix-darwin
 
       - name: Show /etc after a failure
         if: failure()

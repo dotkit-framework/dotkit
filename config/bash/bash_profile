@@ -1,0 +1,80 @@
+# shellcheck shell=bash
+# dotkit base for bash login shells: `bash -l`, scripts with #!/bin/bash -l,
+# `ssh host bash -l`. It does what config/zsh/zprofile does for zsh. Your own
+# lines go in ~/.bash_profile.local, which this file sources before it puts
+# the global tool directories first in PATH. An interactive shell then reads
+# ~/.bashrc. It must work with the macOS Bash 3.2.
+
+# The Home Manager variables, among them DOTKIT_TOOL_PATH. config/zsh/zshenv
+# loads them for zsh. A shell that a dotkit shell started has them already.
+if [[ -r /etc/profiles/per-user/$USER/etc/profile.d/hm-session-vars.sh ]]; then
+  # shellcheck source=/dev/null
+  . "/etc/profiles/per-user/$USER/etc/profile.d/hm-session-vars.sh"
+fi
+
+# A login shell that a dotkit shell started keeps the directories that were
+# before the global tool directories in PATH, as in config/zsh/zprofile.
+# /etc/profile ran path_helper before this file, and it moved the directories
+# of /etc/paths and /etc/paths.d to the front, so skip those.
+_dotkit_first=
+if [[ -n ${__DOTKIT_PROFILE_DONE-} ]]; then
+  _dotkit_profile_first() {
+    local system=: file dir
+    local -a dirs
+    for file in /etc/paths /etc/paths.d/*; do
+      [[ -f $file ]] || continue
+      while IFS= read -r dir || [[ -n $dir ]]; do system+=$dir:; done <"$file"
+    done
+    IFS=: read -r -a dirs <<<"$PATH"
+    for dir in ${dirs[@]+"${dirs[@]}"}; do
+      [[ -n $dir && $system != *":$dir:"* ]] || continue
+      [[ ":${DOTKIT_TOOL_PATH-}:" != *":$dir:"* ]] || break
+      _dotkit_first+=$dir:
+    done
+  }
+  _dotkit_profile_first
+  unset -f _dotkit_profile_first
+fi
+
+if [[ -x /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+
+if [[ -r ~/.bash_profile.local ]]; then
+  # shellcheck source=/dev/null
+  . ~/.bash_profile.local
+fi
+
+# Nix owns the global CLIs. mise owns the runtimes and overrides them inside a
+# project. Without repeats, empty entries, and the mise shims: `mise activate`
+# supplies the tools.
+_dotkit_profile_path() {
+  local new=: dir
+  local -a dirs
+  IFS=: read -r -a dirs <<<"$_dotkit_first${DOTKIT_TOOL_PATH-}:$PATH"
+  for dir in ${dirs[@]+"${dirs[@]}"}; do
+    [[ -n $dir && $dir != "$HOME/.local/share/mise/shims" && $new != *":$dir:"* ]] || continue
+    new+=$dir:
+  done
+  new=${new#:}
+  PATH=${new%:}
+}
+_dotkit_profile_path
+unset -f _dotkit_profile_path
+unset _dotkit_first
+export PATH
+export __DOTKIT_PROFILE_DONE=1
+
+# dotkit has no ~/.bashrc, so activate mise in interactive shells too. When a
+# parent shell activated mise (MISE_SHELL), its tools are in PATH already;
+# activating again would put the global versions before the tools of the
+# project.
+if [[ -z ${MISE_SHELL-} ]] && command -v mise >/dev/null; then
+  eval "$(mise activate bash)"
+fi
+
+# bash reads only this file of a login shell, so read ~/.bashrc, as usual.
+if [[ $- == *i* && -r ~/.bashrc ]]; then
+  # shellcheck source=/dev/null
+  . ~/.bashrc
+fi
