@@ -1,6 +1,20 @@
 # dotkit base. Your own lines go in ~/.zshrc.local, which this file sources at
 # the end.
 
+# Coding agents source this file once, then apply its options, functions, and
+# aliases to every command they run: Codex in a non-interactive shell, Claude
+# Code (CLAUDECODE), Gemini CLI (GEMINI_CLI), and Cursor (CURSOR_AGENT) with a
+# variable. Interactive settings such as NO_CLOBBER, EXTENDED_GLOB, and the
+# ls function break their commands, so they get a plain zsh: only mise, and
+# not ~/.zshrc.local. Put what scripts and agents need in ~/.zshenv.local.
+if [[ ! -o interactive ]] || (( ${+CLAUDECODE} || ${+GEMINI_CLI} || ${+CURSOR_AGENT} )); then
+  # A login shell activated mise in config/zsh/zprofile.
+  if [[ -z ${MISE_SHELL-} ]] && (( $+commands[mise] )); then
+    eval "$(mise activate zsh)"
+  fi
+  return 0
+fi
+
 # The zsh setup from nix/modules/zsh: options, completion, key bindings,
 # plugins, and the tool hooks. nix/shell.nix of the dotfiles repository has
 # the keymap and the abbreviations.
@@ -47,8 +61,9 @@ ls() { command -v eza &> /dev/null && eza "$@" || command ls -G "$@"; }
 alias diff='diff --color=auto'
 alias grep='grep --color=auto'
 
-# VSCode workaround
-if [[ "$TERM_PROGRAM" == "vscode" ]]; then
+# Shell integration for the VS Code terminal. Cursor sets the same TERM_PROGRAM
+# and can lack the code command.
+if [[ $TERM_PROGRAM == vscode ]] && (( $+commands[code] )); then
   . "$(code --locate-shell-integration-path zsh)"
 fi
 

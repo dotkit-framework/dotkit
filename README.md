@@ -11,14 +11,23 @@ upgrade is one command and a rollback is one command.
 |---|---|
 | Nix | nix-darwin, Home Manager, weekly garbage collection |
 | Shell | zsh from Nix with completion, suggestions, syntax colors, history search; fzf, zoxide, Starship, mise, direnv. `ls` is eza; `diff` and `grep` have colors; `dk` expands to `dotkit`, which has zsh completion |
-| Tools | `nix/packages.txt`: bat, eza, fd, ripgrep, jq, hyperfine, tealdeer, git, git-lfs, git-secret, gh, gnupg, the Zulu 17 JDK, and more |
+| Tools | `nix/packages.txt`: bat, eza, fd, ripgrep, jq, yq, tree, hyperfine, tealdeer, git, git-lfs, git-secret, gh, gnupg, the Zulu 17 JDK, and more; `timeout`, `nproc`, `tac`, `shuf`, and `numfmt` from GNU coreutils |
 | Runtimes | Node.js 24, Python 3.14, Ruby 3.4, and uv from mise (`config/mise.toml`), as defaults outside projects |
 | Apps | Ghostty (`nix/casks.txt`), the JetBrains Mono Nerd Font, herdr (`config/mise.toml`) |
-| Config | Git, Ghostty, herdr with its Git status plugin, Starship, mise, npm, pnpm, uv, bun, RubyGems, EditorConfig |
+| Config | Git, Ghostty, herdr with its Git status plugin, Starship, mise, npm, pnpm, uv, bun, RubyGems, EditorConfig. New npm, pnpm, bun, PyPI (uv and pip), gem (Bundler), and mise releases wait 7 days |
 | macOS | Touch ID for sudo, also in terminal multiplexers |
 
 The base links its files from `config/` into the home directory. See the
 links in `nix/home.nix`.
+
+### Coding agents
+
+Codex, Claude Code, Gemini CLI, and Cursor load `~/.zshrc` once and apply
+it to each command they run. For them, and for other non-interactive shells,
+`config/zsh/zshrc` stops after `mise activate`: no zsh options, no `ls`
+function, no aliases, and no `~/.zshrc.local`. Put the variables that
+scripts and agents need in `~/.zshenv.local`. The global Git ignore file
+already lists the local files of these agents, so they do not edit it.
 
 ## New Mac
 

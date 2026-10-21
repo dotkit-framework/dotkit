@@ -50,12 +50,29 @@ in
             (pkgs.writeTextDir "share/zsh/site-functions/_dotkit" (builtins.readFile ./completions/_dotkit))
           ];
         })
+
+        # The GNU coreutils that macOS does not have. Scripts and coding agents
+        # use timeout often. Only these: the others would hide the BSD tools
+        # (sed, stat, date, ...) that Xcode and CocoaPods scripts expect.
+        (pkgs.runCommand "coreutils-missing-on-macos" { } ''
+          mkdir -p $out/bin
+          for tool in timeout nproc tac shuf numfmt; do
+            ln -s ${pkgs.coreutils}/bin/$tool $out/bin/$tool
+          done
+        '')
       ];
 
       sessionVariables = {
         # A Nix dev shell or a project mise.toml with java replaces it in the project.
         JAVA_HOME = pkgs.zulu17.home;
         DOTKIT_TOOL_PATH = lib.concatStringsSep ":" cfg.toolPath;
+
+        # New releases wait 7 days, as in config/npmrc, pnpm.yaml, uv.toml,
+        # bunfig.toml, and mise.toml. pip 26.1 or newer reads the duration.
+        PIP_UPLOADED_PRIOR_TO = "P7D";
+        # Bundler 4.0.13 or newer, in days. It wins over `cooldown:` in a
+        # Gemfile; for a private source, use `bundle install --cooldown 0`.
+        BUNDLE_COOLDOWN = "7";
       };
     };
 

@@ -19,6 +19,9 @@
 	sort = -committerdate
 [tag]
 	sort = version:refname
+[merge]
+	# Conflicts also show the common ancestor.
+	conflictStyle = zdiff3
 [rerere]
 	enabled = true
 	autoupdate = true

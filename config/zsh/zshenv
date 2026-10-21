@@ -1,8 +1,9 @@
 # dotkit base. Your own lines go in ~/.zshenv.local, which this file sources
 # at the end.
 
-export LC_ALL="en_US.UTF-8"
-export LANG="en_US.UTF-8"
+# A locale that the caller sets wins, for example LC_ALL=C.UTF-8 from Codex.
+[[ -n ${LANG-} ]] || export LANG=en_US.UTF-8
+[[ -n ${LC_ALL-} ]] || export LC_ALL=en_US.UTF-8
 
 # Load Nix-managed variables. The file does not change PATH, because
 # nix/home.nix sets no home.sessionPath.

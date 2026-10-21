@@ -5,3 +5,17 @@
 ._*
 .Spotlight-V100
 .Trashes
+
+# Local files of coding agents and tools, which teams do not commit. Claude
+# Code adds the first pattern to this file when a repository does not ignore
+# it, and this file is read-only. Do not ignore .claude/, .cursor/, or
+# AGENTS.md here: teams commit them.
+**/.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
+.aider*
+# nix-direnv keeps its cache here.
+.direnv/
+mise.local.toml
+mise.*.local.toml
+.mise.local.toml

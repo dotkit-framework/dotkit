@@ -1,6 +1,8 @@
 # The dotkit base: Nixpkgs attribute names for home.packages, one per line.
 # The dotfiles repository adds its own list (`dotkit add` edits that one).
 
+# nix/home.nix adds the GNU coreutils that macOS lacks, for example timeout.
+
 # Runtimes and fast-moving CLIs come from mise (config/mise.toml here and in
 # the dotfiles repository). Projects pin their own versions.
 mise
@@ -15,6 +17,8 @@ eza
 fd
 ripgrep
 jq
+yq-go # yq, for YAML, as jq is for JSON.
+tree
 fzf
 zoxide
 starship
