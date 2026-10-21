@@ -2,6 +2,7 @@
 [[ -z ${_HERDR_PROCESS_NAMES_LOADED:-} ]] || return 0
 # Keep an existing DEBUG trap unchanged.
 [[ -z $(trap -p DEBUG) ]] || return 0
+# shellcheck source-path=SCRIPTDIR source=process-name.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/process-name.sh"
 declare -F _herdr_process_begin >/dev/null || return 0
 _HERDR_PROCESS_NAMES_LOADED=1
@@ -29,6 +30,8 @@ _herdr_process_bash_prompt() {
 if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == 'declare -a '* ]]; then
     PROMPT_COMMAND+=(_herdr_process_bash_prompt)
 else
+    # A string here: the branch above handles the array form of Bash 5.1.
+    # shellcheck disable=SC2128,SC2178
     PROMPT_COMMAND=${PROMPT_COMMAND:+"$PROMPT_COMMAND; "}_herdr_process_bash_prompt
 fi
 trap '_herdr_process_bash_debug "$BASH_COMMAND"' DEBUG

@@ -95,10 +95,12 @@ switch() {
 brewfile() { nix_flake eval --raw "$flake#darwinConfigurations.mac.config.homebrew.brewfile"; }
 mise_install() { mise_home install; }
 
-# Show what `brew bundle cleanup` removes for the built Brewfile.
+# Show what `brew bundle cleanup` removes for the built Brewfile, when
+# activation uninstalls (homebrew.onActivation.cleanup is not "none").
 preview_brew_cleanup() {
   local brewfile="$repo/.build/Brewfile" output status=0
   [[ -x /opt/homebrew/bin/brew ]] || return 0
+  [[ $(nix_flake eval --raw "$flake#darwinConfigurations.mac.config.homebrew.onActivation.cleanup") != none ]] || return 0
   # Use the candidate Brewfile, not the active HOMEBREW_BUNDLE_FILE.
   brewfile >"$brewfile"
   # Without redirected input, Homebrew can prompt and then do the cleanup.

@@ -140,6 +140,28 @@ else
 fi
 rm -rf "$ignore_repo"
 
+step 'PATH'
+out=$(zsh_login 'command -v git') || out=''
+if [[ $out == "/etc/profiles/per-user/$user/bin/git" ]]; then
+  pass "a login shell finds the git of Nix: $out"
+else
+  fail "a login shell finds git at '$out'"
+fi
+# A login shell started from a dotkit shell keeps the directories that were
+# first in PATH, as for an agent in a direnv or nix develop project.
+project=$(mktemp -d)
+printf '#!/bin/sh\necho project\n' >"$project/jq"
+chmod +x "$project/jq"
+for inner in '-lc' '-lic'; do
+  out=$(zsh_login "export PATH=$project:\$PATH; $login_shell $inner jq </dev/null" 2>/dev/null) || out=''
+  if [[ $out == project ]]; then
+    pass "a nested zsh $inner keeps the project jq first"
+  else
+    fail "a nested zsh $inner runs '$out' for jq, not the project jq"
+  fi
+done
+rm -rf "$project"
+
 step 'mise'
 for spec in 'node:v24.' 'python:Python 3.14.'; do
   tool=${spec%%:*} want=${spec#*:}
@@ -163,6 +185,33 @@ if zsh_login 'dotkit remove -y nix:hello' && ! grep -qx hello "$repo/nix/package
   pass 'dotkit remove -y nix:hello'
 else
   fail 'dotkit remove -y nix:hello'
+fi
+
+step 'Homebrew'
+# Setup and the applies uninstall nothing that was on the Mac before.
+if [[ -n ${BREW_BEFORE-} ]]; then
+  for kind in formula cask; do
+    if [[ $kind == formula ]]; then file=$BREW_BEFORE/brew-formulae-before; else file=$BREW_BEFORE/brew-casks-before; fi
+    missing=$(comm -23 <(sort "$file") <(brew list "--$kind" -1 | sort))
+    if [[ -z $missing ]]; then
+      pass "every $kind from before setup is still installed ($(wc -l <"$file" | tr -d ' '))"
+    else
+      fail "setup uninstalled these ${kind}s: $(tr '\n' ' ' <<<"$missing")"
+    fi
+  done
+fi
+# dotkit remove uninstalls the formula that it removes.
+if zsh_login 'dotkit add -y brew:hello' && grep -qx hello "$repo/nix/brews.txt" &&
+  brew list --formula hello >/dev/null 2>&1; then
+  pass 'dotkit add -y brew:hello'
+else
+  fail 'dotkit add -y brew:hello'
+fi
+if zsh_login 'dotkit remove -y brew:hello' && ! grep -qx hello "$repo/nix/brews.txt" &&
+  ! brew list --formula hello >/dev/null 2>&1; then
+  pass 'dotkit remove -y brew:hello uninstalls it'
+else
+  fail 'dotkit remove -y brew:hello'
 fi
 
 printf '\n'

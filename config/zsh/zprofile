@@ -1,6 +1,24 @@
 # dotkit base. Your own lines go in ~/.zprofile.local, which this file sources
 # before it puts the global tool directories first in PATH.
 
+# A login shell that a dotkit shell started, directly or through other
+# programs, keeps the directories that were before the global tool
+# directories in PATH: the tools of a project from direnv, nix develop, or
+# mise. For example, a coding agent that starts in a project runs each command
+# in a new login shell. A first login shell (a new terminal, ssh) has no
+# __DOTKIT_PROFILE_DONE and does not keep them.
+typeset -ga _dotkit_first
+if [[ -n ${__DOTKIT_PROFILE_DONE-} ]]; then
+  () {
+    local dir
+    local -a tool_dirs=( ${(s.:.)DOTKIT_TOOL_PATH} )
+    for dir in $path; do
+      (( ${tool_dirs[(Ie)$dir]} )) && break
+      _dotkit_first+=( $dir )
+    done
+  }
+fi
+
 if [[ -x /opt/homebrew/bin/brew ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
@@ -15,9 +33,13 @@ path=( ${path:#$HOME/.local/share/mise/shims} )
 # Nix owns the global CLIs. mise owns the runtimes and overrides them inside a project.
 # DOTKIT_TOOL_PATH comes from dotkit.toolPath through hm-session-vars.sh.
 typeset -U path PATH
-path=( ${(s.:.)DOTKIT_TOOL_PATH} $path )
+path=( $_dotkit_first ${(s.:.)DOTKIT_TOOL_PATH} $path )
+unset _dotkit_first
+export __DOTKIT_PROFILE_DONE=1
 
-# Non-interactive login shells do not read .zshrc.
-if [[ ! -o interactive ]] && (( $+commands[mise] )); then
+# Non-interactive login shells do not read .zshrc. When a parent shell
+# activated mise (MISE_SHELL), its tools are in PATH already; activating again
+# would put the global versions before the tools of the project.
+if [[ ! -o interactive && -z ${MISE_SHELL-} ]] && (( $+commands[mise] )); then
   eval "$(mise activate zsh)"
 fi

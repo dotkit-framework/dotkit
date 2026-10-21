@@ -165,9 +165,13 @@ in
       enable = true;
       global.brewfile = true;
 
-      # Activation installs and removes, but does not upgrade. Run `dotkit upgrade brew` to upgrade.
+      # Activation installs, but does not upgrade: run `dotkit upgrade brew`.
+      # It does not uninstall either, so the formulae and apps that were on
+      # the Mac before dotkit stay. `dotkit remove` uninstalls what it
+      # removes. With cleanup = "uninstall", activation uninstalls everything
+      # that the lists do not have.
       onActivation = {
-        cleanup = "uninstall";
+        cleanup = lib.mkDefault "none";
         autoUpdate = false;
         upgrade = false;
         extraEnv.HOMEBREW_NO_INSTALL_CLEANUP = "1";

@@ -26,7 +26,10 @@ Codex, Claude Code, Gemini CLI, and Cursor load `~/.zshrc` once and apply
 it to each command they run. For them, and for other non-interactive shells,
 `config/zsh/zshrc` stops after `mise activate`: no zsh options, no `ls`
 function, no aliases, and no `~/.zshrc.local`. Put the variables that
-scripts and agents need in `~/.zshenv.local`. The global Git ignore file
+scripts and agents need in `~/.zshenv.local`. A login shell that starts from
+another dotkit shell keeps the directories that are first in PATH, so an
+agent that runs in a direnv or `nix develop` project uses the tools of the
+project, not the global ones. The global Git ignore file
 already lists the local files of these agents, so they do not edit it.
 
 ## New Mac
@@ -43,6 +46,12 @@ your own remote. A file that is in the way of a dotkit link, for example an
 old `~/.zshrc`, is renamed to `<name>.before-dotkit`. When nix-darwin stops
 at "Unexpected files in /etc", check those files, rename them as its message
 says, and run setup again. `setup --help` lists the options.
+
+Homebrew formulae and apps that are on the Mac before setup stay installed.
+dotkit installs what the lists have, and `dotkit remove` uninstalls what it
+removes. To make the lists the complete set, so that an apply uninstalls
+everything else, set `homebrew.onActivation.cleanup = "uninstall";` in
+`nix/darwin.nix`. `dotkit apply -n` then shows what it would uninstall.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the

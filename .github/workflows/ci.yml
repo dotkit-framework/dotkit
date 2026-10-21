@@ -36,7 +36,22 @@ jobs:
         run: |
           nix shell --inputs-from . nixpkgs#shellcheck -c shellcheck -x \
             dotkit scripts/setup scripts/dotkit-pkg scripts/nix.sh \
+            scripts/herdr/git-status.sh scripts/herdr/process-name.sh \
+            scripts/herdr/process-name.bash \
             templates/default/dotkit tests/e2e/verify.sh
+
+      # shellcheck does not read zsh. zsh -n parses a file without running it.
+      # scripts/herdr/process-name.sh is sourced by zsh too.
+      - name: zsh -n
+        run: |
+          for f in config/zsh/zshenv config/zsh/zprofile config/zsh/zshrc \
+            nix/modules/zsh/lib/*.zsh nix/completions/_dotkit \
+            scripts/herdr/process-name.zsh scripts/herdr/process-name.sh; do
+            nix shell --inputs-from . nixpkgs#zsh -c zsh -n "$f" || exit 1
+          done
+
+      - name: python
+        run: nix shell --inputs-from . nixpkgs#python3 -c python3 -m py_compile scripts/herdr/git-status.py
 
       - name: nixfmt
         run: git ls-files -z '*.nix' | xargs -0 nix shell --inputs-from . nixpkgs#nixfmt -c nixfmt --check
@@ -77,6 +92,9 @@ jobs:
           ls -la ~ ~/.config || true
           brew list --formula --versions | wc -l
           brew list --cask --versions
+          # tests/e2e/verify.sh checks that setup uninstalled none of them.
+          brew list --formula -1 >"$RUNNER_TEMP/brew-formulae-before"
+          brew list --cask -1 >"$RUNNER_TEMP/brew-casks-before"
 
       # The runner image adds pwsh to /etc/shells. nix-darwin does not replace
       # a changed file that it does not know, and asks to move it aside. On a
@@ -104,6 +122,8 @@ jobs:
 
       - name: Verify
         run: tests/e2e/verify.sh
+        env:
+          BREW_BEFORE: ${{ runner.temp }}
 
       - name: Check the renamed dotfiles
         run: |

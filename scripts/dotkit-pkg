@@ -636,6 +636,14 @@ cmd_add() {
   done
 }
 
+# Uninstalls Homebrew $1 (formula or cask) $2 when it is installed.
+brew_uninstall() {
+  have brew || return 0
+  HOMEBREW_NO_AUTO_UPDATE=1 brew list "--$1" "$2" >/dev/null 2>&1 || return 0
+  HOMEBREW_NO_AUTO_UPDATE=1 brew uninstall "--$1" "$2" ||
+    warn "could not uninstall the $1 $2. Run: brew uninstall --$1 $2"
+}
+
 cmd_remove() {
   local tool line file entry failed='' nix_edits=() mise_keys=() planned=0
   for tool in "$@"; do
@@ -695,6 +703,15 @@ cmd_remove() {
       done
     }
     apply_nix edit_nix_remove
+    # Activation does not uninstall Homebrew packages (homebrew.onActivation.cleanup
+    # in nix/darwin.nix), so uninstall the removed ones here. With cleanup =
+    # "uninstall", activation did it already.
+    for entry in "${nix_edits[@]}"; do
+      case $entry in
+      formula:*) brew_uninstall formula "${entry#formula:}" ;;
+      cask:*) brew_uninstall cask "${entry#cask:}" ;;
+      esac
+    done
   fi
   for entry in ${mise_keys[@]+"${mise_keys[@]}"}; do
     mise_home unuse -g "${entry#mise:}" || die "mise could not remove ${entry#mise:}. The tools before it in the list are removed."

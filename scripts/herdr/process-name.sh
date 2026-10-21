@@ -1,4 +1,7 @@
-# Shared helpers for the Zsh and Bash command hooks.
+# Shared helpers for the Zsh and Bash command hooks. Both shells source this
+# file, so it uses only syntax that both read the same way. CI checks it as
+# Bash with shellcheck, and with zsh -n.
+# shellcheck shell=bash
 [[ -n ${HERDR_PANE_ID:-} ]] || return 0
 command -v jq >/dev/null 2>&1 || return 0
 _herdr_process_bin=${HERDR_BIN_PATH:-herdr}
