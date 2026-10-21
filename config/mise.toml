@@ -1,0 +1,20 @@
+# dotkit base, linked to ~/.config/mise/conf.d/dotkit.toml. Your global tools
+# are in config/mise.toml of the dotfiles repository (~/.config/mise/config.toml),
+# which `dotkit add` and `mise use -g` edit. A tool there replaces the same tool
+# here, for example node = "22".
+[tools]
+# Global default runtimes. Projects override them.
+node = "24"
+python = "3.14"
+ruby = "3.4"
+
+uv = { version = "latest", minimum_release_age = "1d" }
+
+# config/herdr.toml and scripts/herdr configure it.
+"github:herdrdev/herdr" = { version = "latest", minimum_release_age = "1d" }
+
+[settings]
+# New releases wait 7 days. A tool can set its own minimum_release_age.
+minimum_release_age = "7d"
+# Read rust-toolchain.toml, so Rust projects need no extra mise config.
+idiomatic_version_file_enable_tools = ["rust"]

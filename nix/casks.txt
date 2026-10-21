@@ -1,0 +1,4 @@
+# The dotkit base: Homebrew casks, one per line. The dotfiles repository adds
+# its own list.
+
+ghostty

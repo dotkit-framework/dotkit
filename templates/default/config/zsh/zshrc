@@ -1,0 +1,2 @@
+# Your zsh lines, linked to ~/.zshrc.local. The dotkit zshrc sources this file
+# at the end, after the plugins and the base aliases. No rebuild needed.

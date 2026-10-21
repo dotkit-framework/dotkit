@@ -1,0 +1,2 @@
+# Nixpkgs attribute names for home.packages, one per line, after the dotkit
+# base list. `dotkit add` appends new tools at the end.

@@ -1,0 +1,7 @@
+# dotkit base: files that no repository wants. Git reads this file when
+# core.excludesFile is not set. To use your own list instead, replace this
+# link: dotkit.links.".config/git/ignore" in the dotfiles repository.
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes

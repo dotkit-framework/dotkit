@@ -1,0 +1,105 @@
+#compdef dotkit
+# zsh completion for the dotkit command. nix/home.nix installs it with the
+# command. Tool names and flake inputs come from `dotkit __complete`, which
+# reads the lists and the lock files, and does not run nix.
+
+_dotkit() {
+  local curcontext=$curcontext state line ret=1
+  local -a commands=(
+    'apply:apply the config: Nix, Homebrew, and mise'
+    'upgrade:get new releases, show one plan, and apply it'
+    'add:select the source for a tool, add it, and apply'
+    'remove:remove a tool from the config that declares it, and apply'
+    'info:show where a tool is declared, its command, and its sources'
+    'list:show the declared tools'
+    'history:show the package changes of the last apply'
+    'rollback:go back to the previous Nix generation'
+    'clean:delete old Nix generations, downloads, and mise versions'
+  )
+  local -a dry_run=('(-n --dry-run)'{-n,--dry-run}'[show the plan, change nothing]')
+  local -a yes=('(-y --yes)'{-y,--yes}'[do not ask for confirmation]')
+  local -a help=('(- *)'{-h,--help}'[show the help]')
+
+  _arguments -C $help \
+    '1:command:->command' \
+    '*::argument:->argument' && ret=0
+
+  case $state in
+    command)
+      _describe -t commands 'dotkit command' commands && ret=0
+      ;;
+    argument)
+      curcontext=${curcontext%:*:*}:dotkit-$words[1]:
+      case $words[1] in
+        apply)
+          _arguments $dry_run $help && ret=0 ;;
+        upgrade)
+          _arguments $dry_run $yes $help '*:source:_dotkit_sources' && ret=0 ;;
+        add)
+          _arguments $dry_run $yes $help \
+            '(-f --force)'{-f,--force}'[add the tool even when a global tool supplies its command]' \
+            '*:tool:_dotkit_prefixes' && ret=0 ;;
+        remove)
+          _arguments $dry_run $yes $help '*:tool:_dotkit_user_tools' && ret=0 ;;
+        info)
+          _arguments $help '*:tool:_dotkit_all_tools' && ret=0 ;;
+        list)
+          _arguments $help '*:source:(nix brew mise)' && ret=0 ;;
+        clean)
+          _arguments $dry_run $yes $help '1:age:(7d 14d 30d 90d)' && ret=0 ;;
+        history|rollback)
+          _arguments $help && ret=0 ;;
+      esac
+      ;;
+  esac
+  return ret
+}
+
+# The sources and the flake inputs, for `dotkit upgrade`.
+_dotkit_sources() {
+  local -a sources=(
+    'nix:all flake inputs'
+    'brew:the declared formulae and casks'
+    'mise:the global mise tools'
+  )
+  local -a inputs=( ${(f)"$(_call_program inputs dotkit __complete inputs 2>/dev/null)"} )
+  local expl
+  _describe -t sources 'source' sources
+  (( $#inputs )) && _wanted inputs expl 'flake input' compadd -a inputs
+}
+
+# The prefixes that select a source, for `dotkit add`. The tool name after
+# the prefix is free text.
+_dotkit_prefixes() {
+  [[ $PREFIX == *:* ]] && return 1
+  local -a prefixes=(
+    'nix\::Nixpkgs'
+    'brew\::a Homebrew formula, else a cask'
+    'cask\::a Homebrew cask'
+    'mise\::the mise registry'
+    'npm\::an npm package'
+    'pipx\::a PyPI package'
+    'cargo\::a Rust crate'
+    'go\::a Go module'
+    'github\::a GitHub release (OWNER/REPO)'
+    'aqua\::the aqua registry (OWNER/REPO)'
+  )
+  # The value includes the colon (\:), and no space follows it.
+  _describe -t prefixes 'source prefix' prefixes -S ''
+}
+
+# The tools of the lists of the dotfiles repository, which `dotkit remove` can
+# change, and all declared tools, with the base lists, for `dotkit info`.
+# _arguments passes its own options to an action, so each list has its own
+# function.
+_dotkit_user_tools() { _dotkit_tools user; }
+_dotkit_all_tools() { _dotkit_tools all; }
+
+_dotkit_tools() {
+  local -a tools=( ${(f)"$(_call_program tools dotkit __complete tools-$1 2>/dev/null)"} )
+  local expl
+  # compadd, not _describe: mise names such as npm:pkg contain colons.
+  _wanted tools expl 'declared tool' compadd -a tools
+}
+
+_dotkit "$@"

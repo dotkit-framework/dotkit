@@ -1,0 +1,54 @@
+# dotkit base: Git defaults for everyone. Git reads ~/.gitconfig after this
+# file, so settings there win. Personal settings (signing, the editor, the
+# pager, the merge tool) belong in ~/.gitconfig.
+
+# Your name and email, for this Mac. scripts/setup of dotkit writes it.
+[include]
+	path = ~/.gitconfig.user
+[init]
+	defaultBranch = main
+[core]
+	fsmonitor = true
+	untrackedCache = true
+[diff]
+	algorithm = histogram
+	colorMoved = plain
+	renames = true
+[branch]
+	autosetupmerge = true
+	sort = -committerdate
+[tag]
+	sort = version:refname
+[rerere]
+	enabled = true
+	autoupdate = true
+[fetch]
+	prune = true
+	pruneTags = true
+	all = true
+[pull]
+	ff = only
+	rebase = true
+[push]
+	followTags = true
+	autoSetupRemote = true
+[alias]
+	unstage = reset HEAD
+	uncommit = reset --soft HEAD^
+	mop = !git clean -df && git reset --hard
+	nuke = !git submodule deinit -f --all && git clean -ffdx && git reset --hard && git submodule sync --recursive && git submodule update --init --recursive --force && git submodule foreach --recursive 'git reset --hard && git clean -ffdx'
+	bclean = "!f() { git branch --merged | grep  -v '\\*\\|master\\|develop\\|main\\|dev' | xargs -n 1 git branch -d; }; f"
+	subs = submodule update --init --recursive
+	changelog = "!f() { git log $1..HEAD --pretty=\"format:%s%n%b\" | grep changelog: | /usr/bin/sed -e \"s/^.*changelog\\://\" | awk \"{\\$1=\\$1};1\"; }; f"
+	chores = !git fetch --prune && git remote prune origin && git reflog expire --expire=now --all && git gc --prune=now --aggressive && git fsck --full && git submodule foreach \"git fetch --prune && git remote prune origin && git reflog expire --expire=now --all && git gc --prune=now --aggressive && git fsck --full\"
+[help]
+	autocorrect = prompt
+[color]
+	ui = true
+# Git LFS. The filter calls git-lfs from PATH, so the setting survives
+# garbage collection of old Nix store paths.
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true

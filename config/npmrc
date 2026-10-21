@@ -1,0 +1,9 @@
+# dotkit base. npm has one user config file. To add registry tokens, copy
+# this file to the dotfiles repository and replace the link:
+# dotkit.links.".npmrc" = "config/npmrc".
+
+# Delay newly published packages for 7 days.
+min-release-age=7
+
+# Global packages stay outside the read-only Nix store. ~/.local/bin is on PATH.
+prefix=${HOME}/.local

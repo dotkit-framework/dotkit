@@ -1,0 +1,6 @@
+# dotkit builds into .build/.
+/.build/
+/result
+/result-*
+/nix/result
+/nix/result-*

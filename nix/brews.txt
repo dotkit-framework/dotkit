@@ -1,0 +1,2 @@
+# The dotkit base: Homebrew formulae, one per line. Only tools that Nix and
+# mise cannot supply well. The dotfiles repository adds its own list.

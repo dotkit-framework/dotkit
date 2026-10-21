@@ -1,0 +1,3 @@
+# A `nix build` without --out-link links its output here.
+/result
+/result-*

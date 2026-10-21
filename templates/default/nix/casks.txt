@@ -1,0 +1,1 @@
+# Homebrew casks, one per line. `dotkit add` appends new ones at the end.

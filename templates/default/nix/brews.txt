@@ -1,0 +1,2 @@
+# Homebrew formulae, one per line: only tools that Nix and mise cannot supply
+# well. `dotkit add` selects the source and appends new ones at the end.

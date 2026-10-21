@@ -1,0 +1,6 @@
+# Your global mise tools, linked to ~/.config/mise/config.toml. `dotkit add` and
+# `mise use -g` edit it. The dotkit base (~/.config/mise/conf.d/dotkit.toml)
+# has Node, Python, Ruby, uv, herdr, and the settings. A tool here replaces
+# the same tool there, for example node = "22". Projects pin their own
+# versions in a project mise.toml.
+[tools]
