@@ -45,7 +45,9 @@ Git name and email to `~/.gitconfig.user`, and applies the configuration.
 your own remote. A file that is in the way of a dotkit link, for example an
 old `~/.zshrc`, is renamed to `<name>.before-dotkit`. When nix-darwin stops
 at "Unexpected files in /etc", check those files, rename them as its message
-says, and run setup again. `setup --help` lists the options.
+says, and run setup again. Setup moves `/etc/zshrc` and `/etc/bashrc` with the
+lines of the Nix installer aside before it activates, and moves them back
+when the activation fails. `setup --help` lists the options.
 
 Homebrew formulae and apps that are on the Mac before setup stay installed.
 dotkit installs what the lists have, and `dotkit remove` uninstalls what it
@@ -167,3 +169,7 @@ fresh macOS 15 and macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup
 `~/.dotfiles` from the template and builds it with that commit. It applies
 again, then `tests/e2e/verify.sh` checks the result: the login shell, the
 `dotkit` command, zsh, `bash -l`, the links, mise, and `dotkit add` and `remove`.
+The `e2e-etc` job, on macOS 26 only, installs Nix first and keeps the changed
+`/etc/shells` of the runner, so the first activation fails. It checks that
+setup moved `/etc/zshrc` and `/etc/bashrc` back, then moves `/etc/shells`
+aside and runs setup again.

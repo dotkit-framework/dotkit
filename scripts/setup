@@ -192,6 +192,8 @@ ensure_dotfiles() {
 # stop. When the file is the original plus these lines, move it to
 # <name>.before-nix-darwin, the backup that nix-darwin makes itself (its
 # uninstaller restores it). Otherwise leave it, and nix-darwin explains.
+# moved lists the files that this run moved.
+moved=()
 move_nix_installer_etc() {
   local name file
   for name in zshrc bashrc; do
@@ -209,7 +211,21 @@ move_nix_installer_etc() {
     ' "$file" | /usr/bin/cmp -s - "$file.backup-before-nix" || continue
     printf 'Moving %s, the macOS file with the lines of the Nix installer, to %s.\n' "$file" "$file.before-nix-darwin" >&2
     sudo /bin/mv "$file" "$file.before-nix-darwin"
+    moved+=("$file")
   done
+}
+
+# When the activation fails, move back each file that this run moved and that
+# nix-darwin did not replace, so that new shells still load Nix.
+restore_nix_installer_etc() {
+  local file restored=()
+  for file in ${moved[@]+"${moved[@]}"}; do
+    [[ ! -e $file && ! -L $file && -f $file.before-nix-darwin ]] || continue
+    sudo /bin/mv "$file.before-nix-darwin" "$file"
+    restored+=("$file")
+  done
+  [[ ${#restored[@]} == 0 ]] ||
+    printf 'Moved %s back. Fix the problem above, then run setup again.\n' "${restored[*]}" >&2
 }
 
 ensure_clt
@@ -248,8 +264,15 @@ printf 'Activating the configuration. Administrator access is required.\n' >&2
 # installed copy. darwin-rebuild switch would evaluate the flake again as root.
 system=$(readlink "$build/system")
 move_nix_installer_etc
-sudo -H /usr/bin/env NIX_REMOTE=daemon "$system/sw/bin/nix-env" -p /nix/var/nix/profiles/system --set "$system"
-sudo "$system/sw/bin/darwin-rebuild" activate
+status=0
+{
+  sudo -H /usr/bin/env NIX_REMOTE=daemon "$system/sw/bin/nix-env" -p /nix/var/nix/profiles/system --set "$system" &&
+    sudo "$system/sw/bin/darwin-rebuild" activate
+} || status=$?
+if (( status != 0 )); then
+  restore_nix_installer_etc
+  exit "$status"
+fi
 # Global mise tools: the dotkit base and config/mise.toml of the dotfiles repository.
 printf 'Installing global mise tools...\n' >&2
 (cd "$HOME" && PATH="/etc/profiles/per-user/$user_name/bin:$PATH" mise install)

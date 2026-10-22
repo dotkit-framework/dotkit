@@ -38,7 +38,8 @@ jobs:
             dotkit scripts/setup scripts/dotkit-pkg scripts/nix.sh \
             scripts/herdr/git-status.sh scripts/herdr/process-name.sh \
             scripts/herdr/process-name.bash config/bash/bash_profile \
-            templates/default/dotkit tests/e2e/verify.sh
+            templates/default/dotkit tests/e2e/verify.sh \
+            tests/e2e/etc-restored.sh
 
       # shellcheck does not read zsh. zsh -n parses a file without running it.
       # scripts/herdr/process-name.sh is sourced by zsh too.
@@ -149,3 +150,61 @@ jobs:
             printf '\n== /etc/%s\n' "$f"; cat "$f" || true
             [[ ! -e $f.backup-before-nix ]] || diff "$f.backup-before-nix" "$f" || true
           done
+
+  # Setup moves /etc/zshrc and /etc/bashrc of the Nix installer aside. When
+  # the activation fails, it must move them back. Here it fails because the
+  # changed /etc/shells of the runner stays. macOS 26 only, to keep CI short.
+  e2e-etc:
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      DOTKIT_DIR: ${{ github.workspace }}
+      NIX_CONFIG: access-tokens = github.com=${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Nix is on the Mac before setup, so the /etc files from before setup
+      # have the lines of the Nix installer. The installer and its options are
+      # the ones of setup.
+      - name: Install Nix as setup does
+        run: |
+          url=$(sed -n "s/^ *local url='\(.*\)'$/\1/p" scripts/setup)
+          sha256=$(sed -n "s/^ *local sha256='\(.*\)'$/\1/p" scripts/setup)
+          curl -fsSL --output "$RUNNER_TEMP/nix-install.sh" "$url"
+          echo "$sha256  $RUNNER_TEMP/nix-install.sh" | shasum -a 256 -c
+          env -u CI -u NONINTERACTIVE -u NIX_INSTALLER_YES \
+            /bin/sh "$RUNNER_TEMP/nix-install.sh" --daemon --no-channel-add --yes
+          mkdir "$RUNNER_TEMP/etc-before"
+          cp /etc/zshrc /etc/bashrc "$RUNNER_TEMP/etc-before/"
+          grep -q '^# Nix$' /etc/zshrc
+
+      - name: Setup fails at /etc/shells
+        run: |
+          set -o pipefail
+          status=0
+          scripts/setup --yes 2>&1 | tee "$RUNNER_TEMP/setup.log" || status=$?
+          tests/e2e/etc-restored.sh "$status" "$RUNNER_TEMP/setup.log" "$RUNNER_TEMP/etc-before"
+
+      # As the message of nix-darwin says.
+      - name: Move the changed /etc/shells aside
+        run: sudo mv /etc/shells /etc/shells.before-nix-darwin
+
+      - name: Setup
+        run: scripts/setup --yes
+
+      - name: Check /etc
+        run: |
+          for name in zshrc bashrc; do
+            test "$(readlink "/etc/$name")" = "/etc/static/$name"
+            cmp "$RUNNER_TEMP/etc-before/$name" "/etc/$name.before-nix-darwin"
+          done
+          test "$(readlink /run/current-system)" = "$(readlink ~/.dotfiles/.build/system)"
+
+      - name: Show /etc after a failure
+        if: failure()
+        run: |
+          ls -l /etc/shells* /etc/zshrc* /etc/bashrc* || true
+          cat "$RUNNER_TEMP/setup.log" || true
