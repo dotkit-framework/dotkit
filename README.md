@@ -58,11 +58,13 @@ everything else, set `homebrew.onActivation.cleanup = "uninstall";` in
 
 ### A Mac that you already use
 
-When setup creates the repository, a wizard in the terminal scans the Mac,
-asks a few questions, and writes the repository. Nothing on the Mac changes
-before its last screen; `--yes` takes the defaults. The screens: where the
-repository goes, the zsh keymap, what to carry over, the config files that
-dotkit also has, other config to copy into the repository, and the plan.
+When setup creates the repository, a wizard in the terminal scans the Mac
+and asks a few questions. The wizard writes the repository only after
+confirmation. `--yes` takes the defaults. Before the wizard, setup may install
+the Command Line Tools and Nix. Setup may also write your Git identity before
+the wizard. The screens: where the repository goes, the zsh keymap, what to
+carry over, the config files that dotkit also has, other config to copy into
+the repository, and the plan.
 
 | On the Mac | In the repository, by default |
 |---|---|
@@ -73,8 +75,18 @@ dotkit also has, other config to copy into the repository, and the plan.
 | `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
 | Ghostty, Git, and mise config | Yours, read after the dotkit file |
 | Starship, npm, uv, and the other tools that read one file | Yours, instead of the dotkit file |
-| Secrets: tokens in shell files, `~/.npmrc` with a token | Lines with a token go to `local/`, which Git ignores. A config file with a token stays in place and is not linked |
+| Detected secrets: tokens in shell files, `~/.npmrc` with a token | Shell statements that would otherwise be carried over go to ignored `local/` if a secret is detected. The wizard omits other statements and masks their detected secrets in the report. A config file with a detected secret stays in place and is not linked |
 | Other `~/.config` entries, version managers | Stay in place. The report lists them, with the mise commands for the versions |
+
+Secret detection is heuristic. It can miss secrets and flag text that is not
+secret. Shell statements that would otherwise be carried over go to the
+repository's ignored `local/` directory if a secret is detected. The wizard
+omits other statements and masks their detected secrets in the report.
+This does not guarantee that the generated files contain no secrets. Review
+the generated files before you commit or publish the repository.
+
+Newly mapped global tools use mise's `"latest"`, not their installed versions.
+`MIGRATION.md` records the previous installed versions that the scan finds.
 
 `MIGRATION.md` in the repository lists what setup carried over, and the next
 step for everything else, with file and line. A link of another dotfiles
@@ -200,12 +212,12 @@ it with `dotkit upgrade dotkit`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on each push and pull request, on macOS
+`.github/workflows/ci.yml` runs on each push and pull request, on macOS 26
 arm64 runners. The `check` job runs the two commands above, the tests of
 the migration wizard (`migrate/tests`), `tests/setup.sh` (functions of
 setup in a temporary home directory), shellcheck, nixfmt, statix, and
 deadnix. The `e2e` job runs `scripts/setup --yes` on a
-fresh macOS 15 and macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
+fresh macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
 `~/.dotfiles` with the wizard and builds it with that commit. The runner is a
 used Mac: it has many Homebrew packages, and the job adds old dotfiles. It
 applies again, then `tests/e2e/verify.sh` checks the result: the login shell, the

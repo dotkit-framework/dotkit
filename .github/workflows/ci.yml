@@ -19,6 +19,9 @@ jobs:
   check:
     runs-on: macos-26
     timeout-minutes: 60
+    env:
+      # --inputs-from uses the locked inputs below; no global registry is needed.
+      NIX_CONFIG: flake-registry =
     steps:
       - uses: actions/checkout@v7
 
@@ -80,11 +83,11 @@ jobs:
         run: nix shell --inputs-from . nixpkgs#actionlint -c actionlint
 
   e2e:
-    # setup supports macOS 14 and newer. The runners have 15 and 26.
+    # setup supports macOS 14 and newer. CI covers macOS 26.
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26]
+        os: [macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     env:

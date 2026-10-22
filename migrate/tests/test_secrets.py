@@ -63,6 +63,50 @@ class SecretTests(unittest.TestCase):
                      'curl --password "$PASS" https://example.com'):
             self.assertIsNone(secrets.line_secret(line), line)
 
+    def test_all_sshpass_calls_are_checked(self):
+        reference = 'sshpass -p "$FIRST_PASS" ssh host1 true'
+        literal = 'sshpass -p hunter2hunter2 ssh host2 true'
+        for calls in ((reference, literal), (literal, reference)):
+            line = 'deploy() { ' + ' && '.join(calls) + '; }'
+            with self.subTest(line=line):
+                self.assertEqual(secrets.line_secret(line), "an sshpass password")
+        self.assertIsNone(secrets.line_secret(
+            reference + ' && sshpass -p "${SECOND_PASS}" ssh host2 true'))
+
+    def test_compact_json_credentials(self):
+        for line, name in (
+            ('{"token":"hunter2hunter2"}', "token"),
+            ('{"api-key":"hunter2hunter2"}', "api-key"),
+            ('{"auth":{"password":"hunter2hunter2"}}', "password"),
+            ('{"token":"$TOKEN","password":"hunter2hunter2"}', "password"),
+            ('{"token":"","password":"hunter2hunter2"}', "password"),
+            ("{'token':'hunter2hunter2'}", "token"),
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(secrets.line_secret(line), name)
+        for line in ('{"token":"$TOKEN"}', '{"token":""}', '{"token":"abc"}',
+                     '{"url":"https://example.com/repo","name":"my-config"}'):
+            with self.subTest(line=line):
+                self.assertIsNone(secrets.line_secret(line))
+
+    def test_compact_json_files_and_revision_neighbors(self):
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        path = h.write("config.json", '{"token":"hunter2hunter2"}\n')
+        self.assertEqual(secrets.scan_file(path), [secrets.Secret(1, "token")])
+        for field in ("commit", "rev", "sha", "hash", "revision"):
+            revision = '"' + field + '":"@HEX40@"'
+            clean = h.write("lazy-lock.json", fake.fill('{"lazy.nvim":{' + revision + '}}'))
+            self.assertEqual(secrets.scan_file(clean), [])
+            for fields in (revision + ',"token":"hunter2hunter2"',
+                           '"token":"hunter2hunter2",' + revision):
+                line = fake.fill('{' + fields + '}')
+                with self.subTest(line=line):
+                    self.assertEqual(secrets.line_secret(line), "token")
+                    path = h.write("config.json", line + "\n")
+                    self.assertEqual(secrets.scan_file(path), [secrets.Secret(1, "token")])
+                    self.assertNotIn("hunter2", repr(secrets.scan_file(path)))
+
     def test_revisions_are_not_secrets_but_neighbors_are(self):
         for field in ("commit", "rev", "sha", "hash", "revision"):
             line = fake.fill('"' + field + '": "@HEX40@"')
