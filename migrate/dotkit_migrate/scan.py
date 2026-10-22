@@ -12,11 +12,11 @@ import os
 import re
 import socket
 import stat
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
+from ._compat import tomllib
 from . import secrets
 from .proc import BREW_ENV, Runner
 

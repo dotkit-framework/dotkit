@@ -1,7 +1,7 @@
-import tomllib
 import unittest
 
 from dotkit_migrate import adopt, base
+from dotkit_migrate._compat import tomllib
 from tests import fake
 
 

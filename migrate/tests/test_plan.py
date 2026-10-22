@@ -2,10 +2,10 @@ import os
 import shutil
 import stat
 import subprocess
-import tomllib
 import unittest
 
 from dotkit_migrate import plan, secrets, write
+from dotkit_migrate._compat import tomllib
 from tests import fake
 
 TOKEN = fake.TOKENS["@GH@"]

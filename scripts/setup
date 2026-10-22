@@ -27,7 +27,7 @@ usage() {
     '                 the Git name and email come from your Git config, if it has' \
     '                 them.' \
     '  -n, --dry-run  Scan this Mac and print what the wizard would create, with the' \
-    '                 report. Changes nothing, and needs Nix on the Mac already.' \
+    '                 report. Changes nothing, and installs nothing.' \
     '  -h, --help     Show this help.'
 }
 
@@ -69,7 +69,7 @@ may_install() {
 
 ensure_clt() {
   /usr/bin/xcode-select -p >/dev/null 2>&1 && return
-  [[ -z $dry_run ]] || fail 'The dry run needs the Xcode Command Line Tools and Nix. It installs nothing.'
+  [[ -z $dry_run ]] || fail 'The dry run needs the Xcode Command Line Tools. It installs nothing.'
   may_install 'Xcode Command Line Tools'
   printf 'Requesting Xcode Command Line Tools. Complete the Apple installer dialog.\n' >&2
   /usr/bin/xcode-select --install
@@ -183,11 +183,12 @@ ensure_git_user() {
   printf 'Wrote %s.\n' "$file" >&2
 }
 
-# The migration wizard (migrate/ of dotkit), with Python from Nixpkgs. It
-# scans this Mac, asks a few questions, and writes the new repository from
-# the dotkit template, with MIGRATION.md. It changes nothing else.
+# The migration wizard (migrate/ of dotkit), with the macOS Python of the
+# Xcode Command Line Tools. It scans this Mac, asks a few questions, and writes
+# the new repository from the dotkit template, with MIGRATION.md. It changes
+# nothing else.
 migrate() {
-  "${nix[@]}" run "$dotkit#migrate" -- setup --repo "$repo" ${yes:+--yes} "$@"
+  "$dotkit/migrate/dotkit-migrate" setup --repo "$repo" ${yes:+--yes} "$@"
 }
 
 # The dotfiles repository: the existing one, a clone of $url, or a new one
@@ -331,8 +332,6 @@ dotkit=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
 if [[ -n $dry_run ]]; then
   [[ -z $url ]] || fail 'The dry run is for a new repository, without <repository-url>.'
   [[ ! -e $repo ]] || fail "$repo exists. The dry run shows a new repository: set DOTFILES to another path."
-  nix_bin=$(find_nix) || fail 'The dry run needs Nix, for the Python of the wizard. It installs nothing.'
-  nix=("$nix_bin" --extra-experimental-features 'nix-command flakes')
   migrate --dry-run
   exit
 fi

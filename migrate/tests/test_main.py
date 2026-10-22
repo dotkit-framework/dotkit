@@ -1,5 +1,7 @@
 """The command line, in a child process: the locale, the result file, and the stops."""
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess
