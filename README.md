@@ -75,12 +75,13 @@ the repository, and the plan.
 | `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
 | Ghostty, Git, and mise config | Yours, read after the dotkit file |
 | Starship, npm, uv, and the other tools that read one file | Yours, instead of the dotkit file |
-| Detected secrets: tokens in shell files, `~/.npmrc` with a token | Shell statements with a detected secret go to `local/`, which Git ignores. A config file with a detected secret stays in place and is not linked |
+| Detected secrets: tokens in shell files, `~/.npmrc` with a token | Shell statements that would otherwise be carried over go to ignored `local/` if a secret is detected. The wizard omits other statements and masks their detected secrets in the report. A config file with a detected secret stays in place and is not linked |
 | Other `~/.config` entries, version managers | Stay in place. The report lists them, with the mise commands for the versions |
 
 Secret detection is heuristic. It can miss secrets and flag text that is not
-secret. The wizard stores shell statements with detected secrets in the
-repository's ignored `local/` directory, not in the files that Git tracks.
+secret. Shell statements that would otherwise be carried over go to the
+repository's ignored `local/` directory if a secret is detected. The wizard
+omits other statements and masks their detected secrets in the report.
 This does not guarantee that the generated files contain no secrets. Review
 the generated files before you commit or publish the repository.
 
