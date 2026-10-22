@@ -178,6 +178,60 @@ class PlanTests(unittest.TestCase):
         self.assertIn("not shown: it has a secret", result.report)
         self.assertEqual(subprocess.run(["/bin/zsh", "-n", "-c", local], capture_output=True).returncode, 0)
 
+    def test_sshpass_function_stays_in_ignored_local_file(self):
+        reference = 'sshpass -p "$FIRST_PASS" ssh host1 true'
+        literal = 'sshpass -p hunter2hunter2 ssh host2 true'
+        for i, calls in enumerate(((reference, literal), (literal, reference))):
+            with self.subTest(calls=calls):
+                function = 'deploy() { ' + ' && '.join(calls) + '; }'
+                self.h.write(".zshrc", function + "\nexport EDITOR=vim\n")
+                p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
+                c = p.defaults(str(self.h.home / f"repo-{i}"))
+                result = p.build(c)
+                self.assertIn("local/zshrc.zsh", result.local)
+                self.assertEqual(result.local["local/zshrc.zsh"], "# From ~/.zshrc.\n" + function + "\n")
+                self.assertIn("export EDITOR=vim", result.files["config/zsh/zshrc"])
+                for text in result.files.values():
+                    self.assertNotIn("deploy()", text)
+                    self.assertNotIn("hunter2", text)
+                self.assertNotIn("hunter2", result.report)
+                write.write(result, fake.ROOT / "templates/default")
+                ignored = subprocess.run(
+                    ["git", "-C", str(result.repo), "check-ignore", "local/zshrc.zsh"],
+                    capture_output=True, text=True, check=True)
+                self.assertEqual(ignored.stdout.strip(), "local/zshrc.zsh")
+                self.assertIn(function, (result.repo / "local/zshrc.zsh").read_text())
+
+    def test_compact_json_credentials_cannot_be_adopted(self):
+        configs = {
+            "token": '{"token":"hunter2hunter2"}',
+            "neighbor": '{"commit":"@HEX40@","token":"hunter2hunter2"}',
+            "reverse": '{"token":"hunter2hunter2","revision":"@HEX40@"}',
+        }
+        for name, text in configs.items():
+            self.h.write(f".config/{name}/config.json", fake.fill(text) + "\n")
+        self.h.write(".config/clean/lazy-lock.json", fake.fill('{"lazy.nvim":{"commit":"@HEX40@"}}\n'))
+        p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
+        for name in configs:
+            with self.subTest(name=name):
+                self.assertNotIn(f".config/{name}", p.adoptable())
+        self.assertIn(".config/clean", p.adoptable())
+        c = p.defaults(self.repo)
+        # A forced choice must not bypass the assessment or the final guard.
+        c.adopt = {f".config/{name}" for name in configs} | {".config/clean"}
+        result = p.build(c)
+        for name in configs:
+            self.assertNotIn(f"config/{name}", result.copies)
+            self.assertNotIn(f".config/{name}", result.links)
+        self.assertIn("config/clean", result.copies)
+        self.assertNotIn("hunter2", result.report)
+        for text in result.files.values():
+            self.assertNotIn("hunter2", text)
+        write.write(result, fake.ROOT / "templates/default")
+        for name in configs:
+            self.assertFalse((result.repo / "config" / name).exists())
+        self.assertIn(fake.TOKENS["@HEX40@"], (result.repo / "config/clean/lazy-lock.json").read_text())
+
     def test_cargo_git_revision_report_survives(self):
         source = fake.fill("git+https://github.com/x/tool#@HEX40@")
         self.h.json(".cargo/.crates2.json", {"installs": {f"tool 0.1.0 ({source})": {}}})

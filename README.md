@@ -58,11 +58,13 @@ everything else, set `homebrew.onActivation.cleanup = "uninstall";` in
 
 ### A Mac that you already use
 
-When setup creates the repository, a wizard in the terminal scans the Mac,
-asks a few questions, and writes the repository. Nothing on the Mac changes
-before its last screen; `--yes` takes the defaults. The screens: where the
-repository goes, the zsh keymap, what to carry over, the config files that
-dotkit also has, other config to copy into the repository, and the plan.
+When setup creates the repository, a wizard in the terminal scans the Mac
+and asks a few questions. The wizard writes the repository only after
+confirmation. `--yes` takes the defaults. Before the wizard, setup may install
+the Command Line Tools and Nix. Setup may also write your Git identity before
+the wizard. The screens: where the repository goes, the zsh keymap, what to
+carry over, the config files that dotkit also has, other config to copy into
+the repository, and the plan.
 
 | On the Mac | In the repository, by default |
 |---|---|
@@ -73,8 +75,17 @@ dotkit also has, other config to copy into the repository, and the plan.
 | `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
 | Ghostty, Git, and mise config | Yours, read after the dotkit file |
 | Starship, npm, uv, and the other tools that read one file | Yours, instead of the dotkit file |
-| Secrets: tokens in shell files, `~/.npmrc` with a token | Lines with a token go to `local/`, which Git ignores. A config file with a token stays in place and is not linked |
+| Detected secrets: tokens in shell files, `~/.npmrc` with a token | Shell statements with a detected secret go to `local/`, which Git ignores. A config file with a detected secret stays in place and is not linked |
 | Other `~/.config` entries, version managers | Stay in place. The report lists them, with the mise commands for the versions |
+
+Secret detection is heuristic. It can miss secrets and flag text that is not
+secret. The wizard stores shell statements with detected secrets in the
+repository's ignored `local/` directory, not in the files that Git tracks.
+This does not guarantee that the generated files contain no secrets. Review
+the generated files before you commit or publish the repository.
+
+Newly mapped global tools use mise's `"latest"`, not their installed versions.
+`MIGRATION.md` records the previous installed versions that the scan finds.
 
 `MIGRATION.md` in the repository lists what setup carried over, and the next
 step for everything else, with file and line. A link of another dotfiles

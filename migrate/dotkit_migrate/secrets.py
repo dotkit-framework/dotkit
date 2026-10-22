@@ -45,11 +45,11 @@ _SECRET_NAME = re.compile(
     r"PWD$|WEBHOOK|CREDENTIAL|^_?AUTH$|_AUTH$|AUTHTOKEN|SESSION_?ID|COOKIE)"
 )
 
-# NAME=value or name = value or name: value, anywhere in a line: after
+# NAME=value or name = value or name:value, anywhere in a line: after
 # export, typeset -x, local, { or ;, inside an alias value, in a comment.
 # Names may be quoted, as in JSON config.
 _ASSIGNMENTS = re.compile(
-    r"""(?<![\w$.])(?P<name>[A-Za-z_][\w.\-]*)["']?(?P<sep>\s*=\s*|:\s+)"""
+    r"""(?<![\w$.])(?P<name>[A-Za-z_][\w.\-]*)["']?(?P<sep>\s*=\s*|:\s*)"""
     r"""(?P<value>"[^"]*"?|'[^']*'?|[^\s;&|)}'"]+)"""
 )
 
@@ -170,9 +170,9 @@ def line_secret(line: str, strict: bool = True) -> str | None:
         name = m.group("name").lstrip("-")
         if secret_name(name) and _literal(m.group("value")):
             return name
-    m = _SSHPASS.search(line)
-    if m and _literal(m.group(1)):
-        return "an sshpass password"
+    for m in _SSHPASS.finditer(line):
+        if _literal(m.group(1)):
+            return "an sshpass password"
     if strict and random_word(line):
         return "a random-looking value"
     return None
