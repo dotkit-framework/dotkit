@@ -212,12 +212,12 @@ it with `dotkit upgrade dotkit`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on each push and pull request, on macOS
+`.github/workflows/ci.yml` runs on each push and pull request, on macOS 26
 arm64 runners. The `check` job runs the two commands above, the tests of
 the migration wizard (`migrate/tests`), `tests/setup.sh` (functions of
 setup in a temporary home directory), shellcheck, nixfmt, statix, and
 deadnix. The `e2e` job runs `scripts/setup --yes` on a
-fresh macOS 15 and macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
+fresh macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
 `~/.dotfiles` with the wizard and builds it with that commit. The runner is a
 used Mac: it has many Homebrew packages, and the job adds old dotfiles. It
 applies again, then `tests/e2e/verify.sh` checks the result: the login shell, the
