@@ -48,6 +48,10 @@ usage() {
     '  remove [-n] [-y] <tool>...  Remove a tool from the config that declares it, and apply.' \
     '  info <tool>...              Where a tool is declared, its command, and its sources.' \
     '  list [nix|brew|mise]        The declared tools.' \
+    '  migrate [-n] [-y] [--all]   Find Homebrew packages and global npm and pipx tools' \
+    '                              that were installed by hand and that the lists do' \
+    '                              not have. Asks, then adds them. --all: also cargo and' \
+    '                              Go tools, which mise builds from source.' \
     '' \
     'Recovery:' \
     '  history                     The package changes of the last apply.' \
@@ -293,6 +297,24 @@ cmd_upgrade() {
   fi
 }
 
+# --- migrate
+
+# The migration wizard of setup (migrate/ in dotkit) scans this Mac and lists
+# what the lists do not have. It reads the taps and App Store apps of the
+# configuration from here.
+cmd_migrate() {
+  (($# == 0)) || usage_error "migrate takes no arguments."
+  local declared ref args=()
+  # shellcheck disable=SC2016 # A Nix expression.
+  declared=$(nix_flake eval --json "$flake#darwinConfigurations.mac.config.homebrew" \
+    --apply 'h: { taps = map (t: t.name) h.taps; masApps = h.masApps; }')
+  if [[ -e $dotkit/.git ]]; then ref="git+file://$dotkit"; else ref="path:$dotkit"; fi
+  [[ -z $dry_run ]] || args+=(--dry-run)
+  [[ -z $yes ]] || args+=(--yes)
+  [[ -z $all ]] || args+=(--all)
+  nix run "$ref#migrate" -- adopt --repo "$repo" --declared "$declared" ${args[@]+"${args[@]}"}
+}
+
 # --- recovery
 
 # Compare the active generation with the one before it.
@@ -346,7 +368,7 @@ __complete)
   exit 0
   ;;
 -h | --help | help | '') usage; exit 0 ;;
-apply | upgrade | history | rollback | clean) ;;
+apply | upgrade | history | rollback | clean | migrate) ;;
 switch) usage_error "'switch' is now 'apply'." ;;
 build | diff) usage_error "'$cmd' is now 'apply -n'." ;;
 update) usage_error "'update' is now 'upgrade nix' (or 'upgrade <input>')." ;;
@@ -358,12 +380,13 @@ gc) usage_error "'gc' is now 'clean'." ;;
 *) usage_error "unknown command: $cmd." ;;
 esac
 
-dry_run='' yes=''
+dry_run='' yes='' all=''
 args=()
 while [[ $# -gt 0 ]]; do
   case $1 in
   -n | --dry-run) dry_run=1 ;;
   -y | --yes) yes=1 ;;
+  -a | --all) all=1 ;;
   -h | --help) usage; exit 0 ;;
   --) shift; args+=("$@"); break ;;
   -*) usage_error "unknown option: $1." ;;
@@ -375,5 +398,6 @@ case $cmd in
 history | rollback) [[ -z $dry_run$yes ]] || usage_error "$cmd takes no options." ;;
 apply) [[ -z $yes ]] || usage_error "apply does not ask, so it takes no -y." ;;
 esac
+[[ -z $all || $cmd == migrate ]] || usage_error "--all is for migrate only."
 
 "cmd_$cmd" ${args[@]+"${args[@]}"}

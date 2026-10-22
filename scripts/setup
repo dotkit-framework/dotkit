@@ -8,28 +8,35 @@ usage() {
     '(Xcode Command Line Tools, Nix, Homebrew), get the dotfiles repository, then' \
     'build and apply the configuration.' \
     '' \
-    'Usage: bash -c "$(curl -fsSL https://raw.githubusercontent.com/podkovyrin/dotkit/main/scripts/setup)" setup [-y] [<repository-url>]' \
-    '       ~/.dotkit/scripts/setup [-y] [<repository-url>]' \
+    'Usage: bash -c "$(curl -fsSL https://raw.githubusercontent.com/podkovyrin/dotkit/main/scripts/setup)" setup [-y] [-n] [<repository-url>]' \
+    '       ~/.dotkit/scripts/setup [-y] [-n] [<repository-url>]' \
     '' \
     'The dotfiles repository is ~/.dotfiles (DOTFILES overrides it). When it does' \
-    'not exist, setup clones <repository-url>, or without one creates it from the' \
-    'dotkit template.' \
+    'not exist, setup clones <repository-url>. Without one, a wizard scans this Mac,' \
+    'asks a few questions, and creates the repository from the dotkit template with' \
+    'what it can carry over: Homebrew packages, global npm and pipx tools, shell' \
+    'lines, and config files. MIGRATION.md in the repository lists the rest.' \
     '' \
     'Run as your normal user, without sudo. Installers and activation request access.' \
     'After setup, use dotkit apply. It works from any directory.' \
     '' \
     'Options:' \
-    '  -y, --yes   Install the missing prerequisites without questions, also without' \
-    '              a terminal, for example in CI. sudo must work without a password.' \
-    '              Without a terminal, setup does not ask for your Git name and email.' \
-    '  -h, --help  Show this help.'
+    '  -y, --yes      Install the missing prerequisites without questions, also' \
+    '                 without a terminal, for example in CI. sudo must work without' \
+    '                 a password. The wizard takes its defaults. Without a terminal,' \
+    '                 the Git name and email come from your Git config, if it has' \
+    '                 them.' \
+    '  -n, --dry-run  Scan this Mac and print what the wizard would create, with the' \
+    '                 report. Changes nothing, and needs Nix on the Mac already.' \
+    '  -h, --help     Show this help.'
 }
 
-url='' yes=''
+url='' yes='' dry_run=''
 for arg in "$@"; do
   case $arg in
     -h|--help) usage; exit 0 ;;
     -y|--yes) yes=1 ;;
+    -n|--dry-run) dry_run=1 ;;
     -*) printf 'Unknown option: %s. Use --help.\n' "$arg" >&2; exit 2 ;;
     *)
       [[ -z $url ]] || { printf 'Unknown arguments: %s. Use --help.\n' "$*" >&2; exit 2; }
@@ -62,6 +69,7 @@ may_install() {
 
 ensure_clt() {
   /usr/bin/xcode-select -p >/dev/null 2>&1 && return
+  [[ -z $dry_run ]] || fail 'The dry run needs the Xcode Command Line Tools and Nix. It installs nothing.'
   may_install 'Xcode Command Line Tools'
   printf 'Requesting Xcode Command Line Tools. Complete the Apple installer dialog.\n' >&2
   /usr/bin/xcode-select --install
@@ -111,13 +119,22 @@ ensure_nix() {
     fail 'The installer finished, but Nix was not found. Inspect its output before retrying.'
 }
 
+# A Homebrew in another prefix, for example the Intel one in /usr/local. Setup
+# checks it before it installs anything.
+homebrew=/opt/homebrew/bin/brew intel_homebrew=/usr/local/bin/brew
+check_brew_prefix() {
+  [[ -x $homebrew ]] && return
+  local existing
+  existing=$(command -v brew) || existing=''
+  [[ -n $existing || ! -x $intel_homebrew ]] || existing=$intel_homebrew
+  [[ -z $existing ]] ||
+    fail "This configuration requires Homebrew at /opt/homebrew. Existing executable: $existing" \
+      'Resolve the Homebrew prefix manually. Setup installed nothing.'
+}
+
 ensure_brew() {
   [[ -x /opt/homebrew/bin/brew ]] && return
-  local existing
-  if existing=$(command -v brew); then
-    fail "This configuration requires Homebrew at /opt/homebrew. Existing executable: $existing" \
-      'Resolve the Homebrew prefix manually. No second installation ran.'
-  fi
+  check_brew_prefix
   may_install Homebrew
 
   local installer developer status=0
@@ -141,25 +158,40 @@ ensure_brew() {
 }
 
 ensure_git_user() {
-  local file="$HOME/.gitconfig.user" name email
+  local file="$HOME/.gitconfig.user" name email old_name old_email
   [[ -e "$file" ]] && return
+  # The identity of the Git config from before dotkit, as the default.
+  old_name=$(git config --global --includes --get user.name 2>/dev/null) || old_name=''
+  old_email=$(git config --global --includes --get user.email 2>/dev/null) || old_email=''
   if [[ ! -t 0 ]]; then
-    printf 'Skipping %s: no interactive terminal. Run the setup there to create it.\n' "$file" >&2
-    return
+    if [[ -z $old_name || -z $old_email ]]; then
+      printf 'Skipping %s: no interactive terminal. Run the setup there to create it.\n' "$file" >&2
+      return
+    fi
+    name=$old_name email=$old_email
+  else
+    printf 'Creating %s for your Git identity.\n' "$file" >&2
+    read -rp "Name [${old_name:-$(id -F)}]: " name
+    name=${name:-${old_name:-$(id -F)}}
+    read -rp "Email${old_email:+ [$old_email]}: " email
+    email=${email:-$old_email}
+    while [[ -z "${email:-}" ]]; do read -rp 'Email: ' email; done
   fi
-
-  printf 'Creating %s for your Git identity.\n' "$file" >&2
-  read -rp "Name [$(id -F)]: " name
-  name=${name:-$(id -F)}
-  while [[ -z "${email:-}" ]]; do read -rp 'Email: ' email; done
 
   git config --file "$file" user.name "$name"
   git config --file "$file" user.email "$email"
   printf 'Wrote %s.\n' "$file" >&2
 }
 
+# The migration wizard (migrate/ of dotkit), with Python from Nixpkgs. It
+# scans this Mac, asks a few questions, and writes the new repository from
+# the dotkit template, with MIGRATION.md. It changes nothing else.
+migrate() {
+  "${nix[@]}" run "$dotkit#migrate" -- setup --repo "$repo" ${yes:+--yes} "$@"
+}
+
 # The dotfiles repository: the existing one, a clone of $url, or a new one
-# from the dotkit template.
+# from the migration wizard. The wizard can choose another path.
 ensure_dotfiles() {
   if [[ -e $repo ]]; then
     [[ -f $repo/nix/flake.nix ]] || fail "$repo exists, but has no nix/flake.nix. Move it, or set DOTFILES."
@@ -170,20 +202,29 @@ ensure_dotfiles() {
     return
   fi
 
-  printf 'Creating %s from the dotkit template.\n' "$repo" >&2
-  cp -R "$dotkit/templates/default" "$repo"
-  chmod -R u+w "$repo"
-  local name home
-  name=$(id -un) home=$HOME
-  [[ $repo == "$home/"* ]] || fail "$repo is not in $home. Use a directory in your home directory."
-  printf '%s\n' \
-    'rec {' \
-    "  name = \"$name\";" \
-    "  home = \"/Users/\${name}\";" \
-    "  dotfiles = \"\${home}/${repo#"$home/"}\";" \
-    '}' >"$repo/nix/user.nix"
-  git -C "$repo" init --quiet
-  printf 'Created %s. Commit it, and push it to your own remote.\n' "$repo" >&2
+  [[ $repo == "$HOME/"* ]] || fail "$repo is not in $HOME. Use a directory in your home directory."
+  local result
+  result=$(mktemp)
+  migrate --result "$result" || { rm -f "$result"; fail 'Setup stopped. The repository was not created.'; }
+  read -r repo <"$result"
+  rm -f "$result"
+  flake="path:$repo/nix"
+  build="$repo/.build"
+  # For a run after a failure: the wizard can choose another path than ~/.dotfiles.
+  mkdir -p "${created%/*}"
+  printf '%s\n' "$repo" >"$created"
+  printf 'Read %s/MIGRATION.md, commit the repository, and push it to your own remote.\n' "$repo" >&2
+}
+
+# The repository that the wizard created in an earlier run that failed.
+created="$HOME/Library/Caches/dotkit/repository"
+find_created_repo() {
+  local earlier
+  [[ -z ${DOTFILES:-} && -z $url && ! -e $repo && -f $created ]] || return 0
+  read -r earlier <"$created" || return 0
+  [[ -f $earlier/nix/flake.nix ]] || return 0
+  repo=$earlier flake="path:$earlier/nix" build="$earlier/.build"
+  printf 'Using %s, which an earlier run of setup created. Set DOTFILES for another one.\n' "$repo" >&2
 }
 
 # The Nix installer puts its lines at the start of /etc/zshrc and /etc/bashrc
@@ -215,6 +256,34 @@ move_nix_installer_etc() {
   done
 }
 
+# Home Manager renames a file in the way of a link to <name>.before-dotkit,
+# but stops at a link that is not its own, for example one of GNU Stow, also
+# one at a directory above the file. The wizard lists those links in
+# .build/links-in-way of the repository, relative to the home directory, so a
+# run after a failure finds them too. moved_links lists the ones that this run
+# moved.
+moved_links=()
+move_links_in_way() {
+  local rel file
+  [[ -f $build/links-in-way ]] || return 0
+  while IFS= read -r rel; do
+    [[ -n $rel ]] || continue
+    file=$HOME/$rel
+    [[ -L $file && $(readlink "$file") != /nix/store/* && ! -e $file.before-dotkit && ! -L $file.before-dotkit ]] ||
+      continue
+    printf 'Moving the link %s to %s.\n' "$file" "$file.before-dotkit" >&2
+    mv "$file" "$file.before-dotkit"
+    moved_links+=("$file")
+  done <"$build/links-in-way"
+}
+
+restore_links() {
+  local file
+  for file in ${moved_links[@]+"${moved_links[@]}"}; do
+    [[ -e $file || -L $file ]] || mv "$file.before-dotkit" "$file"
+  done
+}
+
 # When the activation fails, move back each file that this run moved and that
 # nix-darwin did not replace, so that new shells still load Nix.
 restore_nix_installer_etc() {
@@ -228,6 +297,25 @@ restore_nix_installer_etc() {
     printf 'Moved %s back. Fix the problem above, then run setup again.\n' "${restored[*]}" >&2
 }
 
+# Until the activation succeeds, an exit (also Ctrl-C at a sudo prompt) moves
+# back what this run moved aside. After a failure, it shows how to run setup
+# again with the repository that the wizard created.
+default_repo=$repo activated=''
+on_exit() {
+  local status=$?
+  if [[ -z $activated ]]; then
+    restore_links
+    restore_nix_installer_etc
+  fi
+  if (( status != 0 )) && [[ $repo != "$default_repo" && -f $repo/nix/flake.nix ]]; then
+    printf 'The repository is %s. To continue, run setup again with it:\n  DOTFILES=%q %q%s\n' \
+      "$repo" "$repo" "$dotkit/scripts/setup" "${yes:+ --yes}" >&2
+  fi
+}
+
+# tests/setup.sh sources this file for its functions, without running setup.
+[[ -z ${DOTKIT_SETUP_TEST:-} ]] || return 0
+
 ensure_clt
 
 # Run through curl, not from a file: clone dotkit, then run its copy of this script.
@@ -238,12 +326,28 @@ if [[ -z "${BASH_SOURCE[0]:-}" ]]; then
 fi
 dotkit=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
 
+# The dry run: the wizard prints the repository that it would create, and
+# the report. Nothing is installed or written.
+if [[ -n $dry_run ]]; then
+  [[ -z $url ]] || fail 'The dry run is for a new repository, without <repository-url>.'
+  [[ ! -e $repo ]] || fail "$repo exists. The dry run shows a new repository: set DOTFILES to another path."
+  nix_bin=$(find_nix) || fail 'The dry run needs Nix, for the Python of the wizard. It installs nothing.'
+  nix=("$nix_bin" --extra-experimental-features 'nix-command flakes')
+  migrate --dry-run
+  exit
+fi
+
+trap on_exit EXIT
+trap 'exit 130' INT TERM HUP
+
+check_brew_prefix
+find_created_repo
 ensure_git_user
 ensure_nix
-nix=$(find_nix)
-PATH="$(dirname -- "$nix"):$PATH"
+nix_bin=$(find_nix)
+PATH="$(dirname -- "$nix_bin"):$PATH"
 export PATH
-nix=("$nix" --extra-experimental-features 'nix-command flakes')
+nix=("$nix_bin" --extra-experimental-features 'nix-command flakes')
 ensure_dotfiles
 
 # shellcheck disable=SC2016 # A Nix expression.
@@ -264,6 +368,7 @@ printf 'Activating the configuration. Administrator access is required.\n' >&2
 # installed copy. darwin-rebuild switch would evaluate the flake again as root.
 system=$(readlink "$build/system")
 move_nix_installer_etc
+move_links_in_way
 status=0
 {
   sudo -H /usr/bin/env NIX_REMOTE=daemon "$system/sw/bin/nix-env" -p /nix/var/nix/profiles/system --set "$system" &&
@@ -271,8 +376,11 @@ status=0
 } || status=$?
 if (( status != 0 )); then
   restore_nix_installer_etc
+  restore_links
   exit "$status"
 fi
+activated=1
+rm -f "$build/links-in-way"
 # Global mise tools: the dotkit base and config/mise.toml of the dotfiles repository.
 printf 'Installing global mise tools...\n' >&2
 (cd "$HOME" && PATH="/etc/profiles/per-user/$user_name/bin:$PATH" mise install)

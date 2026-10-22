@@ -1,5 +1,7 @@
-# check: evaluates and builds the example Mac, and lints the scripts and the
-# Nix files. e2e: a real setup on a fresh macOS runner, then tests/e2e/verify.sh.
+# check: evaluates and builds the example Mac, runs the tests of the
+# migration wizard, and lints the scripts and the Nix files. e2e: a real
+# setup on a fresh macOS runner, which is a used Mac with Homebrew packages
+# and dotfiles, then tests/e2e/verify.sh and tests/e2e/migrated.sh.
 name: CI
 
 on:
@@ -39,7 +41,7 @@ jobs:
             scripts/herdr/git-status.sh scripts/herdr/process-name.sh \
             scripts/herdr/process-name.bash config/bash/bash_profile \
             templates/default/dotkit tests/e2e/verify.sh \
-            tests/e2e/etc-restored.sh
+            tests/e2e/etc-restored.sh tests/e2e/migrated.sh tests/setup.sh
 
       # shellcheck does not read zsh. zsh -n parses a file without running it.
       # scripts/herdr/process-name.sh is sourced by zsh too.
@@ -53,6 +55,17 @@ jobs:
 
       - name: python
         run: nix shell --inputs-from . nixpkgs#python3 -c python3 -m py_compile scripts/herdr/git-status.py
+
+      # The scanner, the rc parser, the mapping, secret detection, and the
+      # wizard in a pseudo terminal. nix flake check runs them too; here the
+      # log shows each test, and nixfmt checks the generated Nix files.
+      # Functions of scripts/setup, in a temporary home directory.
+      - name: setup functions
+        run: tests/setup.sh
+
+      - name: migration wizard tests
+        working-directory: migrate
+        run: nix shell --inputs-from .. nixpkgs#python3 nixpkgs#nixfmt -c python3 -m unittest discover -s tests -t . -v
 
       - name: nixfmt
         run: git ls-files -z '*.nix' | xargs -0 nix shell --inputs-from . nixpkgs#nixfmt -c nixfmt --check
@@ -96,6 +109,10 @@ jobs:
           # tests/e2e/verify.sh checks that setup uninstalled none of them.
           brew list --formula -1 >"$RUNNER_TEMP/brew-formulae-before"
           brew list --cask -1 >"$RUNNER_TEMP/brew-casks-before"
+          # tests/e2e/migrated.sh checks that the new lists have them.
+          brew leaves --installed-on-request >"$RUNNER_TEMP/brew-leaves-before"
+          brew list --cask --full-name -1 >"$RUNNER_TEMP/brew-casks-full-before"
+          brew tap
           # The runner has a ~/.bash_profile. Home Manager must rename it.
           cp ~/.bash_profile "$RUNNER_TEMP/bash_profile-before"
 
@@ -107,11 +124,31 @@ jobs:
 
       # A used Mac often has its own ~/.zprofile and ~/.zshrc, for example with
       # the lines from the Homebrew installer. Home Manager must rename them.
+      # The wizard carries the export, the alias, and the secret (to an ignored
+      # file), and reports the other lines; tests/e2e/migrated.sh checks it.
       - name: Add the dotfiles of a used Mac
         run: |
           # shellcheck disable=SC2016 # The line for the file, not to expand.
           echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >~/.zprofile
-          echo 'export OLD_ZSHRC=1' >~/.zshrc
+          # shellcheck disable=SC2016
+          printf '%s\n' \
+            'export OLD_ZSHRC=1' \
+            "alias oldll='ls -l'" \
+            'eval "$(starship init zsh)"' \
+            'if [[ -n $OLD_ZSHRC ]]; then' \
+            '  export OLD_BLOCK=1' \
+            'fi' \
+            'source ~/.old-zsh-plugin.zsh' \
+            'export MIGRATION_TEST_PASSWORD=not-a-real-secret-0042' >~/.zshrc
+          # A config file of another dotfiles manager, as a link. The wizard
+          # copies it into the repository; setup moves the link aside.
+          mkdir -p ~/old-dotfiles ~/.config
+          echo 'add_newline = false' >~/old-dotfiles/starship.toml
+          ln -s ~/old-dotfiles/starship.toml ~/.config/starship.toml
+          # Global tools of npm and pipx. The wizard moves them to mise.
+          npm install --global cowsay
+          npm root --global
+          pipx install pycowsay
           # dotkit does not link ~/.bashrc. An interactive bash -l reads it.
           echo 'export OLD_BASHRC=1' >>~/.bashrc
 
@@ -129,6 +166,13 @@ jobs:
         run: tests/e2e/verify.sh
         env:
           BREW_BEFORE: ${{ runner.temp }}
+
+      - name: Verify the migration
+        run: tests/e2e/migrated.sh "$RUNNER_TEMP"
+
+      - name: Show the migration report
+        if: always()
+        run: cat ~/.dotfiles/MIGRATION.md ~/.dotfiles/nix/brews.txt ~/.dotfiles/nix/casks.txt ~/.dotfiles/config/mise.toml ~/.dotfiles/nix/home.nix || true
 
       # Setup moves the /etc files that the Nix installer changed to the
       # backup names of nix-darwin.
@@ -181,12 +225,31 @@ jobs:
           cp /etc/zshrc /etc/bashrc "$RUNNER_TEMP/etc-before/"
           grep -q '^# Nix$' /etc/zshrc
 
+      # With Nix on the Mac, the dry run prints the plan and the report, and
+      # writes nothing.
+      - name: Setup dry run
+        run: |
+          set -o pipefail
+          DOTFILES=~/.dotfiles-dry scripts/setup --dry-run | tee "$RUNNER_TEMP/dry-run.log"
+          grep -q '^--- MIGRATION.md' "$RUNNER_TEMP/dry-run.log"
+          grep -q '^# Migration from' "$RUNNER_TEMP/dry-run.log"
+          test ! -e ~/.dotfiles-dry
+          test ! -e ~/.dotfiles
+
+      # A folded GNU Stow directory: setup moves the link aside before the
+      # activation, back when it fails, and again in the next run.
       - name: Setup fails at /etc/shells
         run: |
           set -o pipefail
+          mkdir -p ~/stow/ghostty ~/.config
+          echo 'font-size = 15' >~/stow/ghostty/config
+          ln -s ~/stow/ghostty ~/.config/ghostty
           status=0
           scripts/setup --yes 2>&1 | tee "$RUNNER_TEMP/setup.log" || status=$?
           tests/e2e/etc-restored.sh "$status" "$RUNNER_TEMP/setup.log" "$RUNNER_TEMP/etc-before"
+          test "$(readlink ~/.config/ghostty)" = ~/stow/ghostty
+          test ! -e ~/.config/ghostty.before-dotkit
+          grep -qx .config/ghostty ~/.dotfiles/.build/links-in-way
 
       # As the message of nix-darwin says.
       - name: Move the changed /etc/shells aside
@@ -195,13 +258,16 @@ jobs:
       - name: Setup
         run: scripts/setup --yes
 
-      - name: Check /etc
+      - name: Check /etc and the moved link
         run: |
           for name in zshrc bashrc; do
             test "$(readlink "/etc/$name")" = "/etc/static/$name"
             cmp "$RUNNER_TEMP/etc-before/$name" "/etc/$name.before-nix-darwin"
           done
           test "$(readlink /run/current-system)" = "$(readlink ~/.dotfiles/.build/system)"
+          test "$(readlink ~/.config/ghostty.before-dotkit)" = ~/stow/ghostty
+          cmp ~/.config/ghostty/config.local ~/stow/ghostty/config
+          test ! -e ~/.dotfiles/.build/links-in-way
 
       - name: Show /etc after a failure
         if: failure()

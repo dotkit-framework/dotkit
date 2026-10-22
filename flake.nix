@@ -59,6 +59,7 @@
     }:
     let
       system = "aarch64-darwin";
+      pkgs = nixpkgs.legacyPackages.${system};
 
       # The base for nix-darwin. The user flake passes `user` (nix/user.nix of
       # the dotfiles repository) in specialArgs. See templates/default.
@@ -108,13 +109,20 @@
     {
       darwinModules.default = darwinModule;
 
+      # The migration wizard that scripts/setup runs for a new repository, and
+      # `dotkit migrate`. See migrate/.
+      packages.${system}.migrate = pkgs.callPackage ./migrate/package.nix { };
+
       templates.default = {
         path = ./templates/default;
         description = "A dotfiles repository on top of dotkit";
       };
 
-      checks.${system}.example = example.system;
+      checks.${system} = {
+        example = example.system;
+        migrate = pkgs.callPackage ./migrate/tests.nix { };
+      };
 
-      formatter.${system} = nixpkgs.legacyPackages.${system}.nixfmt;
+      formatter.${system} = pkgs.nixfmt;
     };
 }

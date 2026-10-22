@@ -8,6 +8,10 @@
     casks = [ ./casks.txt ];
   };
 
+  # Homebrew taps for formulae and casks from other repositories: "owner/repo".
+  # A formula from a tap is "owner/repo/name" in nix/brews.txt.
+  homebrew.taps = [ ];
+
   # Mac App Store apps: name = App Store ID.
   homebrew.masApps = { };
 }

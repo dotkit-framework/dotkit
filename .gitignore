@@ -1,3 +1,5 @@
 # A `nix build` without --out-link links its output here.
 /result
 /result-*
+# Python bytecode of migrate/, from running the tests.
+__pycache__/

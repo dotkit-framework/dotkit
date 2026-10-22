@@ -41,7 +41,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/podkovyrin/dotkit/main/s
 Setup installs the Xcode Command Line Tools, Nix, and Homebrew, writes your
 Git name and email to `~/.gitconfig.user`, and applies the configuration.
 `<repository-url>` is your dotfiles repository. Without it, setup creates
-`~/.dotfiles` from `templates/default`. Commit that repository and push it to
+`~/.dotfiles` from `templates/default`, with what the migration wizard can
+carry over from this Mac (see below). Commit that repository and push it to
 your own remote. A file that is in the way of a dotkit link, for example an
 old `~/.zshrc`, is renamed to `<name>.before-dotkit`. When nix-darwin stops
 at "Unexpected files in /etc", check those files, rename them as its message
@@ -55,6 +56,43 @@ removes. To make the lists the complete set, so that an apply uninstalls
 everything else, set `homebrew.onActivation.cleanup = "uninstall";` in
 `nix/darwin.nix`. `dotkit apply -n` then shows what it would uninstall.
 
+### A Mac that you already use
+
+When setup creates the repository, a wizard in the terminal scans the Mac,
+asks a few questions, and writes the repository. Nothing on the Mac changes
+before its last screen; `--yes` takes the defaults. The screens: where the
+repository goes, the zsh keymap, what to carry over, the config files that
+dotkit also has, other config to copy into the repository, and the plan.
+
+| On the Mac | In the repository, by default |
+|---|---|
+| Homebrew formulae and casks that you installed | `nix/brews.txt`, `nix/casks.txt`. They stay installed. Tools that the base has are not repeated; the report says how to remove the Homebrew copy |
+| Homebrew taps | `homebrew.taps` in `nix/darwin.nix` |
+| App Store apps, with `mas` | `homebrew.masApps` in `nix/darwin.nix` |
+| Global npm, pnpm, bun, pipx, and `uv tool` tools | `config/mise.toml`, as `npm:` and `pipx:` tools. cargo and Go tools are off: mise builds them from source |
+| `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
+| Ghostty, Git, and mise config | Yours, read after the dotkit file |
+| Starship, npm, uv, and the other tools that read one file | Yours, instead of the dotkit file |
+| Secrets: tokens in shell files, `~/.npmrc` with a token | Lines with a token go to `local/`, which Git ignores. A config file with a token stays in place and is not linked |
+| Other `~/.config` entries, version managers | Stay in place. The report lists them, with the mise commands for the versions |
+
+`MIGRATION.md` in the repository lists what setup carried over, and the next
+step for everything else, with file and line. A link of another dotfiles
+manager, for example GNU Stow, that is in the way of a dotkit link is renamed
+to `<name>.before-dotkit` too, right before the first activation, also a link
+of a directory above the file, such as `~/.config/ghostty`. When `~/.config`
+itself is a link, setup stops and says what to do. When the first activation
+fails, setup moves the links back, and the next run moves them again; when the
+wizard chose another path than `~/.dotfiles`, setup prints the command to
+continue with it. `setup --dry-run`, on a Mac with
+Nix, prints the plan and the report and changes nothing; so does
+`nix run github:podkovyrin/dotkit#migrate -- setup --dry-run`.
+
+Later, `dotkit migrate` finds Homebrew packages and global tools that were
+installed by hand and that the lists do not have, and adds them. It skips the
+Homebrew copy of a tool that the lists have from Nix or mise. cargo and Go
+tools only with `--all`, because mise builds them from source.
+
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
 dotfiles repository does the same.
@@ -67,7 +105,7 @@ dotfiles repository does the same.
 | `nix/user.nix` | your macOS account and the path of the repository |
 | `nix/packages.txt`, `nix/brews.txt`, `nix/casks.txt` | your tools, after the base lists. `dotkit add` edits them |
 | `config/mise.toml` | your runtimes and mise tools (`~/.config/mise/config.toml`) |
-| `nix/darwin.nix` | nix-darwin settings: macOS defaults, App Store apps, fonts |
+| `nix/darwin.nix` | nix-darwin settings: macOS defaults, Homebrew taps, App Store apps, fonts |
 | `nix/home.nix` | Home Manager settings: your config files (`dotkit.links`), variables |
 | `nix/shell.nix` | the zsh keymap, the terminal title, and abbreviations |
 | `config/zsh/zshrc` | your zsh lines (`~/.zshrc.local`) |
@@ -163,13 +201,18 @@ it with `dotkit upgrade dotkit`.
 ## CI
 
 `.github/workflows/ci.yml` runs on each push and pull request, on macOS
-arm64 runners. The `check` job runs the two commands above, shellcheck,
-nixfmt, statix, and deadnix. The `e2e` job runs `scripts/setup --yes` on a
+arm64 runners. The `check` job runs the two commands above, the tests of
+the migration wizard (`migrate/tests`), `tests/setup.sh` (functions of
+setup in a temporary home directory), shellcheck, nixfmt, statix, and
+deadnix. The `e2e` job runs `scripts/setup --yes` on a
 fresh macOS 15 and macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
-`~/.dotfiles` from the template and builds it with that commit. It applies
-again, then `tests/e2e/verify.sh` checks the result: the login shell, the
+`~/.dotfiles` with the wizard and builds it with that commit. The runner is a
+used Mac: it has many Homebrew packages, and the job adds old dotfiles. It
+applies again, then `tests/e2e/verify.sh` checks the result: the login shell, the
 `dotkit` command, zsh, `bash -l`, the links, mise, and `dotkit add` and `remove`.
+`tests/e2e/migrated.sh` checks the new lists, the carried shell lines, and
+`MIGRATION.md`.
 The `e2e-etc` job, on macOS 26 only, installs Nix first and keeps the changed
 `/etc/shells` of the runner, so the first activation fails. It checks that
 setup moved `/etc/zshrc` and `/etc/bashrc` back, then moves `/etc/shells`
-aside and runs setup again.
+aside and runs setup again. Before that, it runs `setup --dry-run`.
