@@ -11,12 +11,12 @@ from __future__ import annotations
 import copy
 import os
 import re
-import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
+from ._compat import tomllib
 from . import rcparse, secrets
 from .report import Report, plural
 from . import scan as scan_mod

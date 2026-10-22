@@ -304,15 +304,14 @@ cmd_upgrade() {
 # configuration from here.
 cmd_migrate() {
   (($# == 0)) || usage_error "migrate takes no arguments."
-  local declared ref args=()
+  local declared args=()
   # shellcheck disable=SC2016 # A Nix expression.
   declared=$(nix_flake eval --json "$flake#darwinConfigurations.mac.config.homebrew" \
     --apply 'h: { taps = map (t: t.name) h.taps; masApps = h.masApps; }')
-  if [[ -e $dotkit/.git ]]; then ref="git+file://$dotkit"; else ref="path:$dotkit"; fi
   [[ -z $dry_run ]] || args+=(--dry-run)
   [[ -z $yes ]] || args+=(--yes)
   [[ -z $all ]] || args+=(--all)
-  nix run "$ref#migrate" -- adopt --repo "$repo" --declared "$declared" ${args[@]+"${args[@]}"}
+  "$dotkit/migrate/dotkit-migrate" adopt --repo "$repo" --declared "$declared" ${args[@]+"${args[@]}"}
 }
 
 # --- recovery

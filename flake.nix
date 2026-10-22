@@ -52,6 +52,7 @@
 
   outputs =
     inputs@{
+      self,
       nixpkgs,
       nix-darwin,
       home-manager,
@@ -109,9 +110,14 @@
     {
       darwinModules.default = darwinModule;
 
-      # The migration wizard that scripts/setup runs for a new repository, and
-      # `dotkit migrate`. See migrate/.
-      packages.${system}.migrate = pkgs.callPackage ./migrate/package.nix { };
+      # The migration wizard of scripts/setup and `dotkit migrate`, for
+      # `nix run .#migrate`. It runs with the macOS Python of the Xcode Command
+      # Line Tools, so it needs nothing from Nixpkgs. See migrate/dotkit-migrate.
+      apps.${system}.migrate = {
+        type = "app";
+        program = "${self}/migrate/dotkit-migrate";
+        meta.description = "The migration wizard of dotkit setup";
+      };
 
       templates.default = {
         path = ./templates/default;

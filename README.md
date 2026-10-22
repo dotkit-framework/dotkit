@@ -60,11 +60,12 @@ everything else, set `homebrew.onActivation.cleanup = "uninstall";` in
 
 When setup creates the repository, a wizard in the terminal scans the Mac
 and asks a few questions. The wizard writes the repository only after
-confirmation. `--yes` takes the defaults. Before the wizard, setup may install
-the Command Line Tools and Nix. Setup may also write your Git identity before
-the wizard. The screens: where the repository goes, the zsh keymap, what to
-carry over, the config files that dotkit also has, other config to copy into
-the repository, and the plan.
+confirmation. `--yes` takes the defaults. The wizard runs with the macOS
+Python of the Command Line Tools (3.9 or newer), so it needs no download.
+Before the wizard, setup may install the Command Line Tools and Nix. Setup
+may also write your Git identity before the wizard. The screens: where the
+repository goes, the zsh keymap, what to carry over, the config files that
+dotkit also has, other config to copy into the repository, and the plan.
 
 | On the Mac | In the repository, by default |
 |---|---|
@@ -96,9 +97,9 @@ of a directory above the file, such as `~/.config/ghostty`. When `~/.config`
 itself is a link, setup stops and says what to do. When the first activation
 fails, setup moves the links back, and the next run moves them again; when the
 wizard chose another path than `~/.dotfiles`, setup prints the command to
-continue with it. `setup --dry-run`, on a Mac with
-Nix, prints the plan and the report and changes nothing; so does
-`nix run github:podkovyrin/dotkit#migrate -- setup --dry-run`.
+continue with it. `setup --dry-run` prints the plan and the report and
+changes nothing. It needs only the Command Line Tools. On a Mac with Nix,
+`nix run github:podkovyrin/dotkit#migrate -- setup --dry-run` does the same.
 
 Later, `dotkit migrate` finds Homebrew packages and global tools that were
 installed by hand and that the lists do not have, and adds them. It skips the
@@ -214,7 +215,8 @@ it with `dotkit upgrade dotkit`.
 
 `.github/workflows/ci.yml` runs on each push and pull request, on macOS 26
 arm64 runners. The `check` job runs the two commands above, the tests of
-the migration wizard (`migrate/tests`), `tests/setup.sh` (functions of
+the migration wizard (`migrate/tests`, with the macOS Python and with the
+Python of Nixpkgs), `tests/setup.sh` (functions of
 setup in a temporary home directory), shellcheck, nixfmt, statix, and
 deadnix. The `e2e` job runs `scripts/setup --yes` on a
 fresh macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates

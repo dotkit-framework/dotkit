@@ -1,0 +1,11 @@
+#!/bin/sh
+# dotkit-migrate: the migration wizard of scripts/setup, and `dotkit migrate`.
+# It runs with the macOS Python of the Xcode Command Line Tools (3.9 or newer),
+# so the wizard needs no download. Without the tools, /usr/bin/python3 only
+# opens the Apple installer, so check them first.
+# -I: ignore the PYTHON* variables and the user site-packages. -B: write no .pyc files.
+if ! /usr/bin/xcode-select -p >/dev/null 2>&1; then
+  echo 'dotkit-migrate: the Xcode Command Line Tools are missing. Install them: xcode-select --install' >&2
+  exit 1
+fi
+exec /usr/bin/python3 -I -B "$(dirname -- "$0")/run.py" "$@"

@@ -8,10 +8,11 @@ builds. tests/test_base.py checks the tables below against nix/home.nix.
 from __future__ import annotations
 
 import re
-import tomllib
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+
+from ._compat import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 
