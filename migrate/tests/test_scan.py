@@ -19,48 +19,10 @@ class ScanTests(unittest.TestCase):
         self.assertEqual((self.facts.identity.git_name, self.facts.identity.git_email),
                          ("Jane Appleseed", "jane@example.com"))
 
-    def test_version_managers_and_frameworks(self):
-        self.h.mkdir(".nvm/versions/node/v18.20.0")
-        self.h.mkdir(".nvm/versions/node/v20.11.0")
-        self.h.write(".nvm/alias/default", "20\n")
-        self.h.mkdir(".pyenv/versions/3.11.4")
-        self.h.mkdir(".pyenv/versions/3.9.18")
-        self.h.write(".pyenv/version", "3.11.4\n")
-        self.h.mkdir(".asdf/installs/nodejs/18.0.0")
-        self.h.mkdir(".asdf/installs/golang/1.22.0")
-        self.h.write(".tool-versions", "nodejs 18.0.0\ngolang 1.22.0\n")
-        self.h.mkdir(".sdkman/candidates/java/17.0.9-tem")
-        os.symlink("17.0.9-tem", self.h.home / ".sdkman/candidates/java/current")
+    def test_frameworks(self):
         self.h.mkdir(".oh-my-zsh")
         self.h.write(".p10k.zsh", "")
-        s = self.scan()
-        vms = {vm.name: (vm.versions, vm.default) for vm in s.version_managers}
-        self.assertEqual(vms["nvm"], ({"node": ["v18.20.0", "v20.11.0"]}, {"node": "20"}))
-        self.assertEqual(vms["pyenv"], ({"python": ["3.9.18", "3.11.4"]}, {"python": "3.11.4"}))
-        self.assertEqual(vms["asdf"], ({"go": ["1.22.0"], "node": ["18.0.0"]}, {"node": "18.0.0", "go": "1.22.0"}))
-        self.assertEqual(vms["sdkman"], ({"java": ["17.0.9-tem"]}, {"java": "17.0.9-tem"}))
-        self.assertEqual(s.frameworks, {"Oh My Zsh": "~/.oh-my-zsh", "Powerlevel10k": "~/.p10k.zsh"})
-        self.assertIn(".tool-versions", s.mise_extra)
-
-    def test_version_manager_defaults(self):
-        """The global version of each version manager, from its own file or link; "system" is none."""
-        self.h.mkdir(".local/share/fnm/node-versions/v20.11.0/installation")
-        os.makedirs(self.h.home / ".local/share/fnm/aliases")
-        os.symlink(str(self.h.home / ".local/share/fnm/node-versions/v20.11.0/installation"),
-                   self.h.home / ".local/share/fnm/aliases/default")
-        self.h.mkdir(".volta/tools/image/node/20.11.0")
-        self.h.json(".volta/tools/user/platform.json", {"node": {"runtime": "20.11.0", "npm": None}})
-        self.h.mkdir(".rbenv/versions/3.3.0")
-        self.h.write(".rbenv/version", "3.3.0\nignored\n")
-        self.h.mkdir(".jenv/versions/17")
-        self.h.write(".jenv/version", "system\n")
-        s = self.scan()
-        vms = {vm.name: (vm.path, vm.tool, vm.versions, vm.default) for vm in s.version_managers}
-        self.assertEqual(list(vms), ["fnm", "volta", "rbenv", "jenv"])
-        self.assertEqual(vms["fnm"], ("~/.local/share/fnm", "node", {"node": ["v20.11.0"]}, {"node": "v20.11.0"}))
-        self.assertEqual(vms["volta"], ("~/.volta", "node", {"node": ["20.11.0"]}, {"node": "20.11.0"}))
-        self.assertEqual(vms["rbenv"], ("~/.rbenv", "ruby", {"ruby": ["3.3.0"]}, {"ruby": "3.3.0"}))
-        self.assertEqual(vms["jenv"], ("~/.jenv", "java", {"java": ["17"]}, {}))
+        self.assertEqual(self.scan().frameworks, {"Oh My Zsh": "~/.oh-my-zsh", "Powerlevel10k": "~/.p10k.zsh"})
 
     def test_home_files(self):
         self.h.write(".zshrc", "source ~/.zshrc.local\n")

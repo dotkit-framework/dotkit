@@ -397,27 +397,6 @@ class PlanTests(unittest.TestCase):
                 self.assertNotIn("DEV", text, rel)
                 self.assertNotIn("GOPATH", text, rel)
 
-    def test_part_of_the_runtimes(self):
-        """The carried row names the managers of the selected tools; the to-do says what is still to do."""
-        self.h.mkdir(".pyenv/versions/3.12.2")
-        self.h.write(".pyenv/version", "3.12.2\n")
-        self.h.mkdir(".asdf/installs/ruby/3.3.0")
-        p = fake.session(self.h, used_mac(self.h))
-        runtimes = next(page for page in p.pages() if page.key == "runtimes")
-        self.assertEqual({i.id for i in runtimes.items}, {"runtime:node", "runtime:python", "runtime:ruby"})
-        c = p.defaults(self.repo)
-        c.picked["runtimes"] = {"runtime:python"}
-        result = p.build(c)
-        self.assertIn("runtime versions of pyenv -> config/mise.toml", result.summary)
-        tools = tomllib.loads(result.files["config/mise.toml"])["tools"]
-        self.assertEqual(tools["python"], "3.12.2")
-        self.assertNotIn("node", tools)
-        self.assertIn("pyenv (~/.pyenv): python 3.12.2 (default 3.12.2). config/mise.toml has these versions now.",
-                      result.report)
-        self.assertIn("nvm (~/.nvm): node v20.11.0 (default 20). With mise: `mise use -g node@20`.", result.report)
-        c.picked["runtimes"] = set()
-        self.assertFalse(any(line.startswith("runtime versions") for line in p.build(c).summary))
-
     def test_single_items(self):
         """Items are selected one by one; the rest of their page is carried."""
         p = self.build(picked={"formulae": {"brew:wget"}, "taps": {"tap:acme/tools"}, "mas": {"mas:1289583905"},

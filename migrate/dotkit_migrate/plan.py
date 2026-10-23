@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import copy
 import os
-import re
 from collections.abc import Callable
 from pathlib import Path
 
 from . import base as base_mod
-from . import catalog, rcparse, secrets
+from . import rcparse, secrets
 from . import docs as docs_mod
 from .model import Choices, Facts, Item, Page
 from .report import plural
@@ -49,26 +48,6 @@ class Planner:
         self._rc: dict[frozenset[str], dict[str, rcparse.Result]] = {}
 
     # --- What the wizard shows
-
-    def runtime_lines(self) -> dict[str, list[str]]:
-        """mise tool -> versions, default first, for the version managers mise can replace."""
-        out: dict[str, list[str]] = {}
-        for vm in self.scan.version_managers:
-            if not catalog.version_manager(vm.name).mise_replaces:
-                continue
-            for tool, versions in vm.versions.items():
-                vs = [v.lstrip("v") for v in versions if re.fullmatch(r"v?\d+(\.\d+)*", v)]
-                d = vm.default.get(tool, "").lstrip("v")
-                if d and re.fullmatch(r"\d+(\.\d+)*", d):
-                    # The default can be a prefix, as nvm's 20: it covers 20.11.0.
-                    vs = [d] + [v for v in vs if v != d and not v.startswith(d + ".")]
-                elif vs:
-                    vs = vs[::-1]
-                for v in vs:
-                    out.setdefault(tool, [])
-                    if v not in out[tool]:
-                        out[tool].append(v)
-        return out
 
     def rc_results(self, skipped: frozenset[str] = frozenset()) -> dict[str, rcparse.Result]:
         """The parsed shell files, by name. Layer files that were not read before are not parsed.
@@ -108,16 +87,6 @@ class Planner:
                 unique.setdefault(i.id, i)
             out.append(Page(key, title, dest, intro, "checklist", list(unique.values()), note))
 
-        managers: dict[str, list[str]] = {}
-        for vm in s.version_managers:
-            for tool in vm.versions:
-                managers.setdefault(tool, []).append(vm.name)
-        checklist("runtimes", "Runtime versions of version managers", "config/mise.toml",
-                  "The versions that your version managers have. The selected ones go to config/mise.toml, and "
-                  "mise installs them.",
-                  [Item(f"runtime:{t}", f"{t} {', '.join(v)}", "From " + ", ".join(managers.get(t, [])),
-                        default=False) for t, v in self.runtime_lines().items()],
-                  "off: mise installs them; the base has Node, Python, and Ruby")
         shell_items = []
         for name, r in self.rc_results().items():
             if not (r.statements or r.secrets):
@@ -228,7 +197,6 @@ class _Build:
         # Your mise config first: the tools that it has are not added again.
         if self.mise_layered():
             self.txn.mise().set_base(self.s.mise_config.read_text(encoding="utf-8", errors="replace"))
-        self.version_managers()
         self.shell()
         self.config_files()
         self.other_config()
@@ -241,53 +209,6 @@ class _Build:
         s = self.s
         return bool(s.mise_config and self.c.option("file:.config/mise/config.toml") == "layer"
                     and not secrets.has_secret(s.mise_config))
-
-    def version_managers(self) -> None:
-        s, r = self.s, self.r
-        lines = self.p.runtime_lines()
-        picked = {t for t in lines if self.picked("runtimes", f"runtime:{t}")}
-        for tool, versions in lines.items():
-            if tool in picked:
-                self.txn.mise().add_tool(tool, versions[0] if len(versions) == 1 else versions)
-        if picked:
-            r.carried("runtime versions of " + ", ".join(
-                vm.name for vm in s.version_managers
-                if vm.versions and (not catalog.version_manager(vm.name).mise_replaces or picked & set(vm.versions))),
-                "config/mise.toml")
-        items = []
-        for vm in s.version_managers:
-            parts = []
-            for tool, versions in vm.versions.items():
-                d = vm.default.get(tool)
-                parts.append(f"{tool} {', '.join(versions)}" + (f" (default {d})" if d else ""))
-            what = "; ".join(parts) or "no versions"
-            mise = ""
-            if not catalog.version_manager(vm.name).mise_replaces:
-                mise = ("dotkit has the Zulu 17 JDK (JAVA_HOME). For another JDK: `mise ls-remote java`, then "
-                        "`mise use -g java@<version>`")
-            else:
-                tools = [t for t in vm.versions if t]
-                done = [t for t in tools if t in picked]
-                rest = [t for t in tools if t not in picked]
-                mise = ", ".join(f"`mise use -g {t}@{(lines.get(t) or ['<version>'])[0]}`" for t in rest)
-                if done and not rest:
-                    mise = "config/mise.toml has these versions now"
-                elif done:
-                    names = ", ".join(done[:-1]) + " and " + done[-1] if len(done) > 1 else done[0]
-                    mise = f"config/mise.toml has the {names} versions now. With mise: " + mise
-                elif mise:
-                    mise = "With mise: " + mise
-            steps = ". ".join(x for x in (what, mise) if x)
-            items.append(f"{vm.name} ({vm.path}): {steps}. Then remove its lines from the shell files "
-                         f"(the report lists them) and `rm -rf {vm.path}`")
-        if items:
-            r.todo("Version managers",
-                   "mise replaces them; dotkit's shell does not load them. The base has Node 24, Python 3.14, "
-                   "and Ruby 3.4. A project pins its own versions with `mise use` or a .nvmrc, .python-version, "
-                   "or .ruby-version file.", items)
-        for extra in s.mise_extra:
-            r.todo("mise", "mise still reads these files. Move their tools to config/mise.toml.",
-                   [f"~/{extra}"])
 
     # --- Shell files
 

@@ -15,7 +15,7 @@ from pathlib import Path
 from . import base as base_mod
 from . import catalog
 from . import secrets
-from .context import Context, is_managed, read_text, version_key
+from .context import Context, is_managed, read_text
 
 # Shell files that the base links, and the layer files of yours that the
 # base reads after them, in the order zsh and bash read them.
@@ -51,15 +51,6 @@ _MAX_BYTES = 2_000_000
 
 
 @dataclass
-class VersionManager:
-    name: str
-    path: str
-    tool: str  # the mise tool, "" for asdf (per plugin)
-    versions: dict[str, list[str]] = field(default_factory=dict)  # tool -> versions
-    default: dict[str, str] = field(default_factory=dict)  # tool -> the global version
-
-
-@dataclass
 class ShellFile:
     name: str  # relative to the home directory
     path: Path
@@ -90,8 +81,6 @@ class OtherConfig:
 class Scan:
     home: str
     mise_config: Path | None = None
-    mise_extra: list[str] = field(default_factory=list)  # other global mise files
-    version_managers: list[VersionManager] = field(default_factory=list)
     frameworks: dict[str, str] = field(default_factory=dict)
     shell_files: list[ShellFile] = field(default_factory=list)
     other_shell_files: list[str] = field(default_factory=list)
@@ -126,38 +115,6 @@ class Scanner:
         p = self.h(".config/mise/config.toml")
         if p.is_file() and not is_managed(p):
             self.s.mise_config = p
-        for rel in (".tool-versions", ".config/mise/config.local.toml", ".mise.toml"):
-            q = self.h(rel)
-            if q.is_file() and not is_managed(q):
-                self.s.mise_extra.append(rel)
-        for q in sorted(self.h(".config/mise/conf.d").glob("*.toml")):
-            if q.name != "dotkit.toml" and not is_managed(q):
-                self.s.mise_extra.append(str(q.relative_to(self.home)))
-
-    def scan_version_managers(self) -> None:
-        for spec in catalog.VERSION_MANAGERS:
-            if not spec.detect:
-                continue
-            root = next((self.h(d) for d in spec.dirs if self.h(d).is_dir()), None)
-            if root is None:
-                continue
-            vm = VersionManager(spec.name, "~/" + str(root.relative_to(self.home)), spec.tool)
-            if not spec.tool:
-                for plugin in sorted((root / spec.versions).glob("*")):
-                    t = catalog.ASDF_TOOLS.get(plugin.name, plugin.name)
-                    vm.versions[t] = sorted((v.name for v in plugin.iterdir() if v.is_dir()), key=version_key)
-                for line in read_text(self.h(".tool-versions")).splitlines():
-                    parts = line.split("#")[0].split()
-                    if len(parts) >= 2:
-                        vm.default[catalog.ASDF_TOOLS.get(parts[0], parts[0])] = parts[1]
-            else:
-                versions = [v.name for v in (root / spec.versions).glob("*") if v.is_dir() and v.name != "current"]
-                if versions:
-                    vm.versions[spec.tool] = sorted(versions, key=version_key)
-                default = spec.default(root) if spec.default else ""
-                if default and default != "system":
-                    vm.default[spec.tool] = default
-            self.s.version_managers.append(vm)
 
     def scan_frameworks(self) -> None:
         for spec in catalog.FRAMEWORKS:
@@ -277,7 +234,7 @@ class Scanner:
     def run(self) -> Scan:
         self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_mise, self.scan_version_managers, self.scan_frameworks,
+            self.scan_mise, self.scan_frameworks,
             self.scan_shell_files, self.scan_config_files, self.scan_other_config,
         ):
             try:
