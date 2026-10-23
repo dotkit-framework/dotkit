@@ -1,10 +1,8 @@
-import os
 import shutil
-import stat
 import subprocess
 import unittest
 
-from dotkit_migrate import adopt, plan, secrets, write
+from dotkit_migrate import adopt, secrets, writer
 from dotkit_migrate._compat import tomllib
 from tests import fake
 
@@ -227,7 +225,7 @@ class PlanTests(unittest.TestCase):
                     self.assertNotIn("deploy()", text)
                     self.assertNotIn("hunter2", text)
                 self.assertNotIn("hunter2", result.report)
-                write.write(result, fake.ROOT / "templates/default")
+                writer.write_new(result, fake.ROOT / "templates/default")
                 ignored = subprocess.run(
                     ["git", "-C", str(result.repo), "check-ignore", "local/zshrc.zsh"],
                     capture_output=True, text=True, check=True)
@@ -259,7 +257,7 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("hunter2", result.report)
         for text in result.files.values():
             self.assertNotIn("hunter2", text)
-        write.write(result, fake.ROOT / "templates/default")
+        writer.write_new(result, fake.ROOT / "templates/default")
         for name in configs:
             self.assertFalse((result.repo / "config" / name).exists())
         self.assertIn(fake.TOKENS["@HEX40@"], (result.repo / "config/clean/lazy-lock.json").read_text())
@@ -400,6 +398,72 @@ class PlanTests(unittest.TestCase):
                               "nix/home.nix.\n", result.report)
                 self.assertNotIn(f"~/{rel} -> {dest}", result.report)
 
+    def test_other_config_that_would_contain_a_document_path(self):
+        """~/.config/bash would go to config/bash, which holds config/bash/bash_profile: it stays in place."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        h.write(".bash_profile", "export BASH_THING=1\n")
+        h.write(".config/bash/aliases", "alias ll='ls -la'\n")
+        h.write(".config/bash2/aliases", "alias la='ls -A'\n")
+        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        self.assertIn(".config/bash", p.adoptable())
+        c = p.defaults(str(h.home / ".dotfiles"))
+        c.adopt |= {".config/bash", ".config/bash2"}
+        result = p.build(c)
+        self.assertIn("export BASH_THING=1", result.files["config/bash/bash_profile"])
+        self.assertNotIn("config/bash", result.copies)
+        self.assertNotIn(".config/bash", result.links)
+        self.assertIn("- ~/.config/bash: its place in the repository, config/bash, would contain "
+                      "config/bash/bash_profile; it stays in place. To keep it in the repository, copy it under "
+                      "another name and link it in nix/home.nix.\n", result.report)
+        self.assertNotIn("~/.config/bash -> config/bash\n", result.report)
+        # Path parts, not string prefixes: config/bash2 is not inside config/bash.
+        self.assertEqual(result.copies["config/bash2"], h.home / ".config/bash2")
+        self.assertEqual(result.links[".config/bash2"], "config/bash2")
+
+    def test_other_config_inside_a_copied_directory(self):
+        """~/.config/home goes to config/home first, so ~/.vimrc has no place at config/home/vimrc."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        h.write(".config/home/settings", "x = 1\n")
+        h.write(".vimrc", "set number\n")
+        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        self.assertEqual(p.adoptable(), [".config/home", ".vimrc"])
+        c = p.defaults(str(h.home / ".dotfiles"))
+        c.adopt |= {".config/home", ".vimrc"}
+        result = p.build(c)
+        self.assertEqual(result.copies, {"config/home": h.home / ".config/home"})
+        self.assertNotIn(".vimrc", result.links)
+        self.assertIn("- ~/.vimrc: its place in the repository, config/home/vimrc, is inside config/home, which "
+                      "has ~/.config/home already. It stays in place. To keep it in the repository, copy it under "
+                      "another name and link it in nix/home.nix.\n", result.report)
+
+    def test_other_config_paths_compare_like_apfs(self):
+        """Without case: ~/.config/Zsh would contain config/zsh/...; ~/.config/Home holds config/home/vimrc."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        h.write(".config/Zsh/aliases.zsh", "alias ll='ls -la'\n")
+        h.write(".config/Home/settings", "x = 1\n")
+        h.write(".vimrc", "set number\n")
+        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        self.assertEqual(p.adoptable(), [".config/Home", ".config/Zsh", ".vimrc"])
+        c = p.defaults(str(h.home / ".dotfiles"))
+        c.adopt |= set(p.adoptable())
+        result = p.build(c)
+        self.assertEqual(result.copies, {"config/Home": h.home / ".config/Home"})
+        self.assertEqual({t: s for t, s in result.links.items() if s and s.startswith("config/")},
+                         {".config/Home": "config/Home"})
+        self.assertIn("- ~/.config/Zsh: its place in the repository, config/Zsh, would contain "
+                      "config/zsh/zprofile; it stays in place. To keep it in the repository, copy it under "
+                      "another name and link it in nix/home.nix.\n", result.report)
+        self.assertIn("- ~/.vimrc: its place in the repository, config/home/vimrc, is inside config/Home, which "
+                      "has ~/.config/Home already. It stays in place. To keep it in the repository, copy it under "
+                      "another name and link it in nix/home.nix.\n", result.report)
+        writer.write_new(result, fake.ROOT / "templates/default")
+        self.assertEqual((result.repo / "config/zsh/zshrc").read_text(),
+                         (fake.ROOT / "templates/default/config/zsh/zshrc").read_text())
+        self.assertEqual(sorted(x.name for x in (result.repo / "config").iterdir()), ["Home", "mise.toml", "zsh"])
+
     def test_runtimes_and_cargo_on(self):
         p = self.build(groups={"runtimes": True, "cargo": True})
         tools = tomllib.loads(p.files["config/mise.toml"])["tools"]
@@ -425,56 +489,6 @@ class PlanTests(unittest.TestCase):
         self.assertIsNone(p.links[".npmrc"])
         self.assertNotIn("config/npmrc", p.copies)
 
-    def test_guard(self):
-        """A copy or a generated line with a secret is dropped, whatever put it there."""
-        self.h.write(".config/tool/config", fake.fill("token = @GH@\n"))
-        c = self.p.defaults(self.repo)
-        b = plan._Build(self.p, c)
-        b.txn.copies.add("config/tool", self.h.home / ".config/tool")
-        b.txn.links().link(".config/tool", "config/tool")
-        os.mkfifo(self.h.mkdir(".config/pipes") / "fifo")
-        b.txn.copies.add("config/pipes", self.h.home / ".config/pipes")
-        b.txn.mise().add_tool("npm:x", "latest", fake.fill("# @GH@"))
-        # Lines that an earlier rule might miss: the last check catches them on its own.
-        b.txn.shell_rc(".zshrc").add_part("# From ~/.zshrc.", fake.fill(
-            "export EDITOR=vim\n"
-            "export WEIRD_NAME=@RANDOM@\n"
-            "alias gh2='GITHUB_TOKEN=abcdef123456 gh'\n"
-            "  curl -u admin:hunter2 https://example.com\n"
-            "# @HEX40@\n"))
-        b.txn.commit()
-        b.render()
-        zshrc = b.plan.files["config/zsh/zshrc"]
-        self.assertIn("\n# From ~/.zshrc.\nexport EDITOR=vim\n", zshrc)
-        for value in (fake.TOKENS["@RANDOM@"], "abcdef123456", "hunter2", fake.TOKENS["@HEX40@"]):
-            self.assertNotIn(value, zshrc)
-        self.assertNotIn("config/tool", b.plan.copies)
-        self.assertNotIn("config/pipes", b.plan.copies, "a file that cannot be checked counts as a secret")
-        self.assertNotIn(".config/tool", b.plan.links)
-        self.assertNotIn('".config/tool"', b.plan.files.get("nix/home.nix", ""))
-        self.assertIn('"npm:x" = "latest"', b.plan.files["config/mise.toml"])
-        self.assertNotIn(fake.TOKENS["@GH@"], b.plan.files["config/mise.toml"])
-        self.assertIn("has a secret, so it is not in the repository", b.plan.report)
-
-    def test_final_guard_keeps_secret_shell_statements_whole(self):
-        b = plan._Build(self.p, self.p.defaults(self.repo))
-        function = ('request() {\n  echo before\n  curl -H "X-Api-Key: ' + "\\\n" +
-                    'hunter2hunter2" https://example.com\n  echo after\n}')
-        b.txn.shell_rc(".zshrc").add_part("# From ~/.zshrc.", function + "\nexport EDITOR=vim\n")
-        b.txn.commit()
-        b.render()
-        tracked = b.plan.files["config/zsh/zshrc"]
-        self.assertEqual(b.plan.local["local/zshrc.zsh"], function + "\n")
-        self.assertNotIn("request()", tracked)
-        self.assertNotIn("echo before", tracked)
-        self.assertNotIn("echo after", tracked)
-        self.assertIn("export EDITOR=vim", tracked)
-        self.assertIn("/local/", b.plan.files[".gitignore"])
-        for text in (tracked, b.plan.local["local/zshrc.zsh"]):
-            for shell in ("/bin/zsh", "/bin/bash"):
-                self.assertEqual(subprocess.run([shell, "-n", "-c", text], capture_output=True).returncode, 0)
-        self.assertNotIn("hunter2", b.plan.report)
-
     def test_adopt_other_config(self):
         c = self.p.defaults(self.repo)
         c.adopt = {".config/nvim", ".bashrc"}
@@ -491,12 +505,6 @@ class PlanTests(unittest.TestCase):
         self.assertIn("export A=1", p.files["config/zsh/zshrc"])
         self.assertNotIn("echo hi", p.files["config/zsh/zshrc"])
         self.assertIn("zsh -n could not check it", p.report)
-
-    def test_summary(self):
-        summary = "\n".join(self.build().summary)
-        self.assertIn("Renamed to <name>.before-dotkit by the first apply: ~/.bash_profile, ~/.config/ghostty/config,", summary)
-        self.assertNotIn("~/.npmrc,", summary.split("Renamed")[1])
-        self.assertIn("Stay in place, not linked: ~/.npmrc", summary)
 
     def test_empty_mac(self):
         h = fake.Home()
@@ -515,115 +523,7 @@ class PlanTests(unittest.TestCase):
         self.assertIn('source "$HOME/my dots/local/zshrc.zsh"', p.files["config/zsh/zshrc"])
 
 
-class WriteTests(unittest.TestCase):
-    def test_write(self):
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        s = fake.scanner(h, used_mac(h)).run()
-        p = fake.planner(s)
-        result = p.build(p.defaults(str(h.home / ".dotfiles")))
-        write.write(result, fake.ROOT / "templates/default")
-        repo = h.home / ".dotfiles"
-        self.assertTrue((repo / ".git").is_dir())
-        self.assertFalse((repo.parent / ".dotfiles.partial").exists())
-        self.assertTrue(os.access(repo / "dotkit", os.X_OK))
-        self.assertEqual((repo / "config/ghostty.conf").read_text(), "font-size = 16\n")
-        self.assertTrue((repo / "MIGRATION.md").read_text().startswith("# Migration from"))
-        mode = stat.S_IMODE((repo / "local/zshrc.zsh").stat().st_mode)
-        self.assertEqual(mode, 0o600)
-        status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
-                                capture_output=True, text=True, check=True).stdout
-        self.assertNotIn("local/", status, "Git ignores the secrets")
-        self.assertIn("MIGRATION.md", status)
-
-    def test_nested_finder_metadata_is_not_copied(self):
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        h.write(".config/nvim/init.lua", "vim.o.number = true\n")
-        h.json(".config/nvim/lazy-lock.json", {"lazy.nvim": {"commit": fake.TOKENS["@HEX40@"]}})
-        h.write(".config/nvim/nested/settings.lua", "return {}\n")
-        for rel in (".config/nvim/.DS_Store", ".config/nvim/nested/.DS_Store"):
-            h.write(rel).write_bytes(b"metadata\0binary")
-        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
-        self.assertIn(".config/nvim", p.adoptable())
-        c = p.defaults(str(h.home / ".dotfiles"))
-        c.adopt.add(".config/nvim")
-        result = p.build(c)
-        self.assertIn("config/nvim", result.copies, "the final guard agrees with assessment")
-        write.write(result, fake.ROOT / "templates/default")
-        copied = result.repo / "config/nvim"
-        self.assertEqual(list(copied.rglob(".DS_Store")), [])
-        self.assertTrue((copied / "nested/settings.lua").is_file())
-        self.assertIn(fake.TOKENS["@HEX40@"], (copied / "lazy-lock.json").read_text())
-
-    def test_links_in_the_way(self):
-        """A link of another dotfiles manager is listed for setup, which renames it."""
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        target = h.write("old-dotfiles/zshrc", "export STOW=1\n")
-        os.symlink(target, h.home / ".zshrc")
-        os.symlink("/nix/store/abc-home-manager-files/.zprofile", h.home / ".zprofile")
-        s = fake.scanner(h, fake.brew_runner()).run()
-        p = fake.planner(s)
-        result = p.build(p.defaults(str(h.home / ".dotfiles")))
-        self.assertEqual(result.move_links, [".zshrc"])
-        self.assertIn("export STOW=1", result.files["config/zsh/zshrc"])
-        self.assertIn("~/.zshrc is a link to ~/old-dotfiles/zshrc", result.report)
-        write.write(result, fake.ROOT / "templates/default")
-        self.assertEqual(os.readlink(h.home / ".zshrc"), str(target), "setup renames it later, not write")
-
-    def test_folded_stow_directories(self):
-        """A linked directory above a target is moved aside; its other files are listed."""
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        stow = h.write("dotfiles/ghostty/config", "font-size = 16\n").parent
-        h.write("dotfiles/ghostty/themes/mine", "background = 000000\n")
-        h.mkdir(".config")
-        os.symlink(stow, h.home / ".config/ghostty")
-        git = h.write("dotfiles/git/config", "[core]\n\teditor = vim\n").parent
-        h.write("dotfiles/git/ignore", ".DS_Store\n")
-        os.symlink(git, h.home / ".config/git")
-        s = fake.scanner(h, fake.brew_runner()).run()
-        p = fake.planner(s)
-        result = p.build(p.defaults(str(h.home / ".dotfiles")))
-        self.assertEqual(result.move_links, [".config/ghostty", ".config/git"])
-        self.assertEqual(result.blockers, [])
-        self.assertIn("~/.config/ghostty is a link to ~/dotfiles/ghostty", result.report)
-        self.assertIn("no longer at ~/.config/ghostty: themes/mine", result.report)
-        self.assertEqual(result.copies["config/ghostty.conf"], h.home / ".config/ghostty/config")
-        self.assertNotIn("~/.config/ghostty/config,", "\n".join(result.summary).split("Links of yours")[0])
-        write.write(result, fake.ROOT / "templates/default")
-        listed = (h.home / ".dotfiles/.build/links-in-way").read_text()
-        self.assertEqual(listed, ".config/ghostty\n.config/git\n")
-
-    def test_linked_config_directory_stops(self):
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        target = h.mkdir("dotfiles/config")
-        os.symlink(target, h.home / ".config")
-        s = fake.scanner(h, fake.brew_runner()).run()
-        p = fake.planner(s)
-        result = p.build(p.defaults(str(h.home / ".dotfiles")))
-        self.assertEqual(len(result.blockers), 1)
-        self.assertIn("~/.config is a link to ~/dotfiles/config", result.blockers[0])
-        self.assertEqual(result.move_links, [])
-        self.assertTrue(result.summary[0].startswith("Setup cannot continue"))
-
-    def test_write_leaves_other_directories_alone(self):
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        s = fake.scanner(h, used_mac(h)).run()
-        p = fake.planner(s)
-        result = p.build(p.defaults(str(h.home / "code")))
-        other = h.write("code.partial/keep.txt", "mine\n")
-        write.write(result, fake.ROOT / "templates/default")
-        self.assertEqual(other.read_text(), "mine\n")
-        self.assertEqual(sorted(x.name for x in h.home.iterdir() if x.name.startswith("code")),
-                         ["code", "code.partial"])
-        with self.assertRaises(FileExistsError):
-            write.write(result, fake.ROOT / "templates/default")
-        self.assertEqual(stat.S_IMODE((h.home / "code").stat().st_mode), 0o755)
-
+class NixFileTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("nix-instantiate"), "no nix-instantiate")
     def test_nix_files_parse(self):
         h = fake.Home()

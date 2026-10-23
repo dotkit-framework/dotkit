@@ -22,9 +22,11 @@ view:
 from __future__ import annotations
 
 import copy
+import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional, Tuple
 
 from . import base as base_mod
@@ -176,6 +178,30 @@ def _check_comment(comment: str) -> None:
 def _check_rel(rel: str, what: str) -> None:
     if not rel or rel.startswith("/") or "\n" in rel or ".." in Path(rel).parts:
         raise ValueError(f"{what} must be a relative path without ..: {rel!r}")
+
+
+# Repository paths are compared the way APFS compares names by default:
+# without case, and without differences of Unicode normalization. The
+# original spelling stays for writing and for messages.
+
+
+def _key(part: str) -> str:
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", part).casefold())
+
+
+def _parts(rel: str) -> Tuple[str, ...]:
+    """The keys of the parts of a repository path."""
+    return tuple(_key(p) for p in PurePosixPath(rel).parts)
+
+
+def _same(a: str, b: str) -> bool:
+    return _parts(a) == _parts(b)
+
+
+def _inside(rel: str, outer: str) -> bool:
+    """rel is below outer, by path parts: config/bash/x is inside config/bash, config/bash2 is not."""
+    a, b = _parts(rel), _parts(outer)
+    return len(a) > len(b) and a[:len(b)] == b
 
 
 # --- Conflicts
@@ -686,8 +712,12 @@ class ShellNixDoc(_Doc):
         w["keymap"] = (txn.owner, value)
         return True
 
+    @property
+    def keymap(self) -> str:
+        return self.state.get("keymap", ("", "emacs"))[1]
+
     def render(self) -> Optional[str]:
-        if self.state.get("keymap", ("", "emacs"))[1] != "vi":
+        if self.keymap != "vi":
             return None
         return self.base_text.replace('# keymap = "vi";', 'keymap = "vi";')
 
@@ -700,11 +730,12 @@ class FileDoc(_Doc):
 
     def set(self, txn: Txn, text: str) -> bool:
         w = self._w(txn)
-        copies = self.docs.copies._view_state(txn)
-        if self.path in copies:
-            # Two documents claim the path.
-            owner, src = copies[self.path]
-            return self._conflict(txn, "(path)", owner, f"a copy of {src}", "a file")
+        for rel, (owner, src) in self.docs.copies._view_state(txn).items():
+            # Two documents claim the path: the copy's, a path inside the copy, or one that would contain it.
+            if _same(self.path, rel):
+                return self._conflict(txn, "(path)", owner, f"a copy of {src}", "a file")
+            if _inside(self.path, rel) or _inside(rel, self.path):
+                return self._conflict(txn, "(path)", owner, f"a copy of {src} at {rel}", "a file")
         if "text" in w:
             owner, old = w["text"]
             return False if old == text else self._conflict(txn, "(text)", owner, old, text)
@@ -728,13 +759,34 @@ class Copies(_Doc):
             raise ValueError(f"a copy comes from inside the home directory: {src}")
         w = self._w(txn)
         # A path that is taken, by an earlier copy or by a document, is not copied.
-        if rel in w or self.docs._renders(txn, rel):
+        if self.taken(txn, rel) is not None:
             return False
         w[rel] = (txn.owner, Path(src))
         return True
 
+    def taken(self, txn: Txn, rel: str) -> Optional[Tuple[str, str]]:
+        """Why a repository path cannot get a copy, or None when it is free.
+
+        ("is", rel): an earlier copy or a document has the path;
+        ("inside", outer): the path is inside the copied directory outer;
+        ("contains", inner): a copy there would contain inner, a document
+        path, an earlier copy, or local/ (the first of them by path).
+        Paths are compared by their parts, so config/bash2 is not inside
+        config/bash.
+        """
+        copies = self._view_state(txn)
+        if any(_same(rel, c) for c in copies) or self.docs._renders(txn, rel):
+            return ("is", rel)
+        outer = next((c for c in copies if _inside(rel, c)), None)
+        if outer is not None:
+            return ("inside", outer)
+        inner = sorted((p for p in (*copies, *self.docs._claimed(txn), "local") if _inside(p, rel)), key=_parts)
+        if inner:
+            return ("contains", inner[0])
+        return None
+
     def source(self, txn: Txn, rel: str) -> Optional[Path]:
-        entry = self._view_state(txn).get(rel)
+        entry = next((e for c, e in self._view_state(txn).items() if _same(rel, c)), None)
         return entry[1] if entry else None
 
     def items(self) -> Dict[str, Path]:
@@ -916,8 +968,13 @@ class CopiesView:
         self._txn, self._doc = txn, doc
 
     def add(self, rel: str, src: Path) -> bool:
-        """False when the repository path is taken: by an earlier copy, or by a file that a document writes."""
+        """False when the repository path is taken: by an earlier copy or a file that a document writes,
+        inside a copied directory, or when a copy there would contain one of them or local/."""
         return self._doc.add(self._txn, rel, src)
+
+    def taken(self, rel: str) -> Optional[Tuple[str, str]]:
+        """Why the repository path is taken, or None: see Copies.taken."""
+        return self._doc.taken(self._txn, rel)
 
     def source(self, rel: str) -> Optional[Path]:
         """What is copied to the repository path, or None."""
@@ -965,6 +1022,10 @@ class Docs:
         self._open: Optional[Txn] = None
         self.copies = Copies(self, "(copies)")
         self.report = ReportDoc(self)
+        # The files of the template are in every new repository, so their paths are taken.
+        self.template_files: List[str] = sorted(
+            Path(root, name).relative_to(template).as_posix()
+            for root, _dirs, names in os.walk(template) for name in names)
 
     def base_text(self, rel: str) -> str:
         """The text that a document starts from: the template's file in setup, the repository's in adopt."""
@@ -998,11 +1059,22 @@ class Docs:
             raise ValueError(f"{what} is for setup only")
 
     def _renders(self, txn: Txn, rel: str) -> bool:
-        """A document has the path: one of the fixed paths, or a whole file with text."""
-        if rel in _document_paths() or rel.startswith("local/"):
+        """The path is taken by a document, a template file, or local/ (the directory or a path in it)."""
+        key = _parts(rel)
+        if key[:1] == (_key("local"),):
             return True
-        doc = self._docs.get(rel)
-        return isinstance(doc, FileDoc) and "text" in doc._view_state(txn)
+        return any(_parts(p) == key for p in self._claimed(txn))
+
+    def _claimed(self, txn: Txn) -> List[str]:
+        """The taken paths other than copies: the fixed document paths, nix/user.nix, the template's
+        files, and the whole files with text."""
+        fixed = sorted(_document_paths() | {"nix/user.nix"} | set(self.template_files))
+        return fixed + [p for p, d in self._docs.items() if isinstance(d, FileDoc) and "text" in d._view_state(txn)]
+
+    def keymap(self) -> str:
+        """The zsh keymap that core set in nix/shell.nix: emacs when it set none."""
+        d = self._docs.get(_SHELL_NIX)
+        return d.keymap if isinstance(d, ShellNixDoc) else "emacs"
 
     # The documents, for the renders and the guards after the transactions.
 

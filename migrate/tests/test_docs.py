@@ -427,6 +427,113 @@ class LinksAndFilesTests(unittest.TestCase):
         t.commit()
         self.assertEqual(d2.render()[0], {})
 
+    def test_overlapping_copies(self):
+        """A path inside a copied directory, or a directory that would contain a taken path, is taken."""
+        d = setup_docs()
+        t = d.begin("other_config")
+        src = Path(HOME, ".config/x")
+        self.assertTrue(t.copies.add("config/nvim", src))
+        self.assertTrue(t.file("config/merged/gitconfig").set("[core]\n"))
+        cases = {
+            "config/nvim/lua": ("inside", "config/nvim"),
+            "config": ("contains", "config/bash/bash_profile"),
+            "config/zsh": ("contains", "config/zsh/zprofile"),
+            "config/bash": ("contains", "config/bash/bash_profile"),
+            "config/merged": ("contains", "config/merged/gitconfig"),
+            "nix": ("contains", "nix/brews.txt"),
+            "local": ("is", "local"),
+            "local/x": ("is", "local/x"),
+            ".": ("contains", ".gitignore"),
+        }
+        for rel, why in cases.items():
+            with self.subTest(rel=rel):
+                self.assertEqual(t.copies.taken(rel), why)
+                self.assertFalse(t.copies.add(rel, src))
+        self.assertEqual(d.conflicts, [], "a taken path is not a conflict")
+        for rel in ("config/nvim2", "config/bash2", "config/zsh2", "configs"):
+            with self.subTest(rel=rel):
+                self.assertIsNone(t.copies.taken(rel), "path parts, not string prefixes")
+                self.assertTrue(t.copies.add(rel, src))
+        self.assertEqual(t.copies.taken("config/zsh2/x"), ("inside", "config/zsh2"))
+        self.assertEqual(t.copies.taken("config/zsh2"), ("is", "config/zsh2"))
+        self.assertEqual(t.copies.taken("config/zshx"), None)
+        # A whole file inside a copied directory is a conflict, which strict mode raises.
+        with self.assertRaises(docs.ConflictError):
+            t.file("config/nvim/init.lua").set("x\n")
+        t.commit()
+        self.assertEqual(sorted(d.copies.items()), ["config/bash2", "config/nvim", "config/nvim2", "config/zsh2",
+                                                    "configs"])
+        lax = setup_docs(strict=False)
+        t = lax.begin("other_config")
+        t.copies.add("config/nvim", src)
+        self.assertFalse(t.file("config/nvim/init.lua").set("x\n"))
+        self.assertEqual([(c.path, c.first, c.second) for c in lax.conflicts],
+                         [("config/nvim/init.lua", "other_config", "other_config")])
+        self.assertEqual(lax.conflicts[0].kept, f"a copy of {src} at config/nvim")
+        t.commit()
+        self.assertNotIn("config/nvim/init.lua", lax.render()[0])
+
+    def test_overlap_by_earlier_copies_only(self):
+        d = setup_docs()
+        t = d.begin("other_config")
+        self.assertTrue(t.copies.add("config/foo/bar", Path(HOME, ".foo")))
+        self.assertEqual(t.copies.taken("config/foo"), ("contains", "config/foo/bar"))
+        self.assertFalse(t.copies.add("config/foo", Path(HOME, ".config/foo")))
+        self.assertEqual(d.conflicts, [])
+
+    def test_paths_compare_like_apfs(self):
+        """Without case and without Unicode normalization differences; messages keep the spelling."""
+        d = setup_docs()
+        t = d.begin("other_config")
+        nfc, nfd = "config/caf\u00e9", "config/cafe\u0301"
+        self.assertTrue(t.copies.add(nfc, Path(HOME, ".config/x")))
+        for rel in (nfd, "config/CAF\u00c9", "Config/Caf\u00e9"):
+            with self.subTest(rel=rel):
+                self.assertEqual(t.copies.taken(rel), ("is", rel))
+                self.assertEqual(t.copies.source(rel), Path(HOME, ".config/x"))
+                self.assertFalse(t.copies.add(rel, Path(HOME, ".config/y")))
+        self.assertEqual(t.copies.taken(nfd + "/init.lua"), ("inside", nfc))
+        self.assertEqual(t.copies.taken("Config/Zsh"), ("contains", "config/zsh/zprofile"))
+        self.assertEqual(t.copies.taken("LOCAL"), ("is", "LOCAL"))
+        self.assertEqual(t.copies.taken("Local/x"), ("is", "Local/x"))
+        self.assertEqual(t.copies.taken("Config/Mise.toml"), ("is", "Config/Mise.toml"))
+        with self.assertRaises(docs.ConflictError):
+            t.file("CONFIG/Caf\u00e9").set("x\n")
+
+    def test_template_files_and_user_nix_are_taken(self):
+        d = setup_docs()
+        self.assertIn("README.md", d.template_files)
+        self.assertIn("nix/flake.nix", d.template_files)
+        t = d.begin("other_config")
+        for rel in ("README.md", "readme.md", "dotkit", "nix/flake.nix", "nix/user.nix", "nix/darwin.nix"):
+            with self.subTest(rel=rel):
+                self.assertEqual(t.copies.taken(rel), ("is", rel))
+                self.assertFalse(t.copies.add(rel, Path(HOME, "x")))
+        self.assertEqual(d.conflicts, [])
+        # nix/user.nix is still a whole file that core sets.
+        self.assertTrue(t.file("nix/user.nix").set("rec { }\n"))
+
+    def test_a_whole_file_that_overlaps_a_copy(self):
+        """A whole file at, inside, or around a copy is a conflict, which strict mode raises."""
+        for rel in ("config/tool", "config/tool/x", "config"):
+            with self.subTest(rel=rel):
+                d = setup_docs()
+                t = d.begin("config_files")
+                t.copies.add("config/tool", Path(HOME, ".config/tool"))
+                with self.assertRaises(docs.ConflictError):
+                    t.file(rel).set("x\n")
+                lax = setup_docs(strict=False)
+                t = lax.begin("config_files")
+                t.copies.add("config/tool", Path(HOME, ".config/tool"))
+                self.assertFalse(t.file(rel).set("x\n"))
+                self.assertEqual([(c.path, c.key, c.first) for c in lax.conflicts], [(rel, "(path)", "config_files")])
+                t.commit()
+                self.assertNotIn(rel, lax.render()[0])
+        lax = setup_docs(strict=False)
+        t = lax.begin("config_files")
+        t.copies.add("config/tool", Path(HOME, ".config/tool"))
+        self.assertTrue(t.file("config/tool2").set("x\n"), "path parts, not string prefixes")
+
     def test_drop(self):
         """The secret guard drops a copy, its links, and a whole file at its path."""
         d = setup_docs()

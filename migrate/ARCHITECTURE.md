@@ -309,9 +309,20 @@ The rules for every view operation:
    anything under `local/`, or by a whole file (`FileDoc`) that has text.
    `Copies.add` on a taken path makes no copy and returns `False`, with no
    conflict: the migrator handles it (for example `other_config` keeps the
-   file in place and adds a to-do). A whole file set on a path where a copy
-   is, is a conflict. From step 6, a path is also taken when it is inside a
-   copied directory, or when a copied directory would contain it.
+   file in place and adds a to-do). A whole file set on a path that a copy
+   takes is a conflict. From step 6, paths overlap too: a path is taken when
+   it is inside a copy, or when it would contain a taken path. This compares
+   path parts (`config/bash2` is not inside `config/bash`), and it does not
+   look at the file system, so a file copy is treated like a directory copy.
+   Parts are compared the way APFS compares names by default: without case
+   and without Unicode normalization differences (the key of a part is
+   `NFD(casefold(NFD(part)))`), so `config/Zsh` is the template's
+   `config/zsh`. The files of the template are taken paths too.
+   `Copies.taken(rel)` returns `None`, or `(relation, path)`: `("is", rel)`
+   when a copy, a document, or a template file has the path; `("inside",
+   outer)` when it is inside the copied directory `outer`; `("contains",
+   inner)` when a copy there would contain `inner`, the first taken path in
+   path order.
 5. **`add()` returns `True` or `False` right away**, so the migrator writes
    correct report rows ("carried", "already in your mise config").
 6. **Nothing reaches the committed document before `commit()`.** That
@@ -333,7 +344,7 @@ The document types:
 | `ShellRcDoc` | `config/zsh/zshenv`, `config/zsh/zprofile`, `config/zsh/zshrc`, `config/bash/bash_profile`, and their `local/<name>.<shell>` | `add_part(header, text)`, `add_secret(text)`, `ensure()` (write the file even when empty) | main in `SHELL_LAYERS` | no |
 | `ShellNixDoc` | `nix/shell.nix` | `set_keymap(value)`, written by the Session | `emacs` or `vi` | no |
 | `FileDoc` | a whole file with one owner: `nix/user.nix`, a merged `config/gitconfig` | `set(text)` | the path is not owned by another document | no |
-| `Copies` | files and directories copied into the repository | `add(rel, src) -> bool`; `False` when `rel` is taken (rule 4) | `src` absolute and inside the home directory; `rel` relative | no |
+| `Copies` | files and directories copied into the repository | `add(rel, src) -> bool`, `False` when `rel` is taken (rule 4); `taken(rel) -> Optional[Tuple[str, str]]`, `(relation, path)` (rule 4) | `src` absolute and inside the home directory; `rel` relative | no |
 | `ReportDoc` | `MIGRATION.md`, the summary | `carried(what, where)`, `todo(section, intro, items)`, `blocker(msg)` | `section` in `report.SECTIONS` | yes (adopt output) |
 
 `MiseDoc` details:
@@ -481,9 +492,19 @@ class Plan:
 
 `writer.py`:
 
-- `render(docs) -> Plan`. If `local` is not empty, `.gitignore` gets the
-  `/local/` block (`plan.py:839-841`).
-- `guard(plan)`: the plan-time secret guard (section 6).
+- `render(docs) -> Plan` (`Plan` is in `model.py`). The keymap comes from
+  `ShellNixDoc`, which core sets through `Txn.shell_nix()`. Inside
+  `render`, in this order:
+  1. the copy guard (section 6), which drops a copy with a secret through
+     `Docs.drop`, so that its links never reach `nix/home.nix`;
+  2. the documents render;
+  3. the file guard over the rendered tracked files;
+  4. if `local` is not empty, `.gitignore` gets the `/local/` block
+     (`plan.py:839-841`).
+
+  There is no separate public guard. After `render`, `checks.py` runs, and
+  then the report and the summary are rendered and masked (`mask_lines`):
+  in `_Build.render` until step 8, then in `Session.build`.
 - `write_new(plan, template)` for setup:
   1. copy the template into a temp directory next to the repository;
   2. add the copies, the files, and `local/`;
@@ -493,6 +514,11 @@ class Plan:
   6. rename the directory to the repository path.
 
   If anything fails, the temp directory is removed (today's `write.py`).
+  The removal also works when a copy brought read-only directories (mode
+  0555): on a permission error it makes the parent directory writable
+  (0o700), and the path itself when it is a directory, and tries again
+  (`onexc` on Python 3.12 and newer, `onerror` on 3.9); if the directory
+  still remains, a note on stderr names it.
 - `apply_edits(result, repo)` for adopt:
   1. write every changed file as a sibling temp file;
   2. verify them;
@@ -549,7 +575,7 @@ Secrets are handled at five points:
    statements (rcparse's `SecretLine`) to `local/`. A config file with a
    secret gets only `keep`/`dotkit`. `other_config` does not offer an entry
    with a secret.
-3. **The plan-time guard (core, in `writer.guard`).** Today's `guard_copies`
+3. **The plan-time guard (core, inside `writer.render`).** Today's `guard_copies`
    and `guard_files` run over every tracked rendered file and every copy
    source. A shell file is split by statement, never in the middle of one.
    Other files are masked line by line. Then the rendered report and adopt's
@@ -557,10 +583,18 @@ Secrets are handled at five points:
    moves it to `writer.py`). From step 6, the summary is masked the same way. The guard changes the plan and reports what it did, so
    dry-run and the review screen show its result.
 4. **Write-time verification (core, in `writer`).** Before the rename or
-   `os.replace`, scan the staged tracked files (copies included; `local/` and
-   `.git` excluded). It changes nothing. A find aborts the write, and nothing
-   is left behind. It catches what slipped past the guard, including a file
-   that changed between the scan and the copy.
+   `os.replace`, scan the staged tracked files (copies included; `local/`,
+   `.build/`, and `.git` excluded, because Git does not track them). It uses
+   exactly the checks of the plan-time guard (`secrets.scan_text` for files,
+   `secrets.has_secret` for copied files and template files, the same
+   strictness, links inside a copied directory and `.DS_Store` skipped), so
+   it can only find what differs from what the guard saw, for example a file
+   that changed between the scan and the copy. It changes nothing. A find raises
+   `SecretInRepository` (the file and the kind of secret, never the value),
+   which aborts the write and leaves nothing behind. A directory that the
+   verification cannot read also aborts it: it fails closed. `__main__` prints
+   "dotkit setup: <message>. Nothing was written." (or "dotkit migrate: …")
+   and exits 2; `--debug` (from step 11) adds the traceback.
 5. **Failure text.** `Failure.error` and the `--debug` traceback pass through
    `secrets.line_secret` line by line. A line with a secret becomes "(this
    line has a secret; not shown)".
@@ -1075,7 +1109,7 @@ Rules for every step:
 | 3 | **Context and the CLI seam.** `context.py` with the file and path helpers of section 2; every caller and test imports them from there; `main(argv, make_context=None)`; `tests/main_child.py` uses the seam instead of patching `cli.scan.Scanner` | no change | 1 | STD; the old helper names no longer exist; no test patches `scan.Scanner` |
 | 4 | **Catalog.** `catalog.py` with `VersionManagerSpec` (incl. line-only specs and `default` readers replacing `scan.py:493-506`; `mise_replaces` replacing `plan.py:127`, `476`), `FrameworkSpec`, the pnpm and built-from-source rules; `npm_globs` for nvm, fnm, and asdf, relative to the home directory, replacing the hard-coded globs of the npm scan (`scan.py:268-277`; same patterns, order, labels, and version index; the mise glob stays in the scan, after them); `ZDOTDIR` unattributed (section 12.2); rcparse builds `_RULES` FRAMEWORK/VERSION_MANAGER, the `SKIP_VARS` entries, and `_PATH_VERSION_MANAGERS` from it; `Finding.source` | no change | 1 | STD; a corpus test checks that the generated regexes match the words and variables of the old literals (kept in the test), and nothing else |
 | 5 | **Documents and transactions.** `docs.py` with every type of section 4.4 (`ListDoc` covers brews, casks, taps, and mas); `MiseDoc` settings API; `Base.mise_settings`; `_Build` writes through one `Txn` instead of `self.brews`, `self.mise_lines`, `self.plan`; its `render()` becomes document renders | no change, except three ruled cases that no golden reaches: a copy to a taken repository path is not made and gets a to-do (the old code let the last copy win, behind both links); a mise config with a secret forced to "layer" no longer suppresses tools; a tap name with whitespace is not written and gets the to-do | 2, 4 | STD; `tests/test_docs.py` (load/add/render, conflicts, add-time checks, `replace_setting` refusals and undo, commit/rollback) |
-| 6 | **Writer and checks.** `writer.py` (render, plan-time guard, `write_new` with write-time verification) replaces `write.py`; `checks.py` (links, moved aside, blockers, summary); `mask_lines` moves to `writer.py`, which also masks the summary; a repository path inside a copied directory, or one that a copied directory would contain, counts as taken (rule 4) | no change on the goldens; two ruled cases that no golden reaches: a summary line with a secret is masked, and an overlapping directory copy is not made and gets the `other_config` to-do | 5 | STD; `write.py` is gone; a test that stages a secret past the guard aborts with no directory left; a summary line with a token is masked; `~/.config/bash` selected for adoption next to a carried `~/.bash_profile` is not copied, has no link, and gets the to-do, and a copied directory that would contain `config/zsh/zshrc` is refused the same way |
+| 6 | **Writer and checks.** `writer.py` (render, plan-time guard, `write_new` with write-time verification) replaces `write.py`; `checks.py` (links, moved aside, blockers, summary); `mask_lines` moves to `writer.py`, which also masks the summary; `SecretInRepository` ends the run with a clean error and exit 2; a repository path inside a copied directory, or one that a copied directory would contain, counts as taken (rule 4) | no change on the goldens; two ruled cases that no golden reaches: a summary line with a secret is masked, and an overlapping directory copy is not made and gets the `other_config` to-do | 5 | STD; `write.py` is gone; a test that stages a secret past the guard aborts with no directory left; a summary line with a token is masked; `~/.config/bash` selected for adoption next to a carried `~/.bash_profile` is not copied, has no link, and gets the to-do, and a copied directory that would contain `config/zsh/zshrc` is refused the same way |
 | 7 | **Pages, per-item choices, and the new UI.** `Page`/`Item`/`Choices` of section 4.3 (Homebrew as three pages; one shell item per file); the planner returns pages instead of `groups`/`file_items`/`adoptable`, and `_Build` reads `Choices.picked`/`options`; "Not carried, by your choice"; `ui/screens.py`, `ui/curses_ui.py`, `ui/plain.py` replace `wizard.py` and `prompts.py`; `ScriptedFrontend`; `wizard_child.py` writes the new `Choices` JSON; PTY tests rewritten for the new screens, plain-prompt counts taken from the planner | UI and Choices change; default-choice goldens unchanged | 6 | STD; `wizard.py` and `prompts.py` are gone; new goldens with deselected items; UI flow tests |
 | 8 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session`. The first commit replaces `Planner` with `Session` and switches `ui/`, `__main__`, and the tests to it; the code that is not yet split runs as a private last entry of the registry. Then one migrator per commit, in `MIGRATORS` order: its scan step and its `Scan` fields, its `_Build` part, its pages, and its tests (into `tests/migrators/`) move together. rcparse parsing moves into the `shell` scan. `Facts.get`, `needs` | no change (scan warnings now come in `MIGRATORS` order; only visible when several steps fail) | 7 | STD per commit; at the end `plan.py`, `scan.py`, the `Scan` dataclass, `_Build`, and the private registry entry are gone |
 | 9 | **Runtimes rules.** The union rule for both idiomatic settings (section 12.1); runtime versions in report text and page note from `Base.mise` (replaces `plan.py:181`, `490-493`); `.tool-versions` in the hint; `VersionManagerSpec.env_var` (`NVM_DIR`, `FNM_DIR`, `PYENV_ROOT`, …) is respected by detection and by the npm scan, and `npm_globs` become relative to the manager's directory; the version-manager item says "config/mise.toml has these versions now" only for tools that `MiseDoc.add_tool` accepted, and for a tool that your mise config already has it says "config/mise.toml has <tool> from your mise config already, so these versions were not added; `mise use -g <tool>@<version>` for one you need" (today `plan.py:482-483` checks only that the page is on) | changes report text and possibly `config/mise.toml` | 8 | goldens updated and reviewed; tests: pyenv with `python` in your mise config gets the second text; your config without the keys writes nothing; a single-line key gets the union and parses; a multi-line or dotted key gives the to-do; base values come from the base file |

@@ -16,13 +16,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
-from . import catalog, rcparse, secrets
+from . import catalog, checks, rcparse, secrets, writer
 from . import docs as docs_mod
 from . import report as report_mod
 from .docs import mas_label, mas_problem, nix_string, tap_name_problem, tap_problem
+from .model import Plan
 from .report import plural
 from . import scan as scan_mod
-from .context import expand, is_managed, tilde
+from .context import expand, tilde
 from .scan import Scan, ShellFile
 
 # --- The choices
@@ -216,36 +217,6 @@ class Planner:
         return _Build(self, c).run()
 
 
-@dataclass
-class Plan:
-    repo: Path
-    keymap: str
-    # Files of the new repository, relative to it, with their content. They
-    # replace the template files of the same name.
-    files: dict[str, str] = field(default_factory=dict)
-    # Files and directories to copy into the repository: repository path -> source.
-    copies: dict[str, Path] = field(default_factory=dict)
-    # Files with secrets, in local/ of the repository, which Git ignores.
-    local: dict[str, str] = field(default_factory=dict)
-    links: dict[str, str | None] = field(default_factory=dict)
-    # Links of yours (not of Home Manager) where the new configuration links a
-    # file, relative to the home directory. Home Manager does not move a link
-    # aside, so scripts/setup renames each one to <name>.before-dotkit right
-    # before the first activation. write() lists them in .build/links-in-way.
-    move_links: list[str] = field(default_factory=list)
-    # Why the plan cannot be applied, for example ~/.config is a link. The
-    # wizard shows them, and nothing is written.
-    blockers: list[str] = field(default_factory=list)
-    home: str = ""
-    summary: list[str] = field(default_factory=list)
-    report: str = ""
-
-
-# Directories that hold much more than dotkit's files. A link there is not
-# moved aside: links_in_the_way stops instead.
-SHARED_DIRS = frozenset({".config", ".local", ".local/share", "Library", "Library/Preferences"})
-
-
 def tap_line(t: scan_mod.Tap) -> str:
     """The line of a tap in nix/taps.txt: the name, and the clone URL of a tap that is not on GitHub."""
     return f"{t.name} {t.remote}" if t.custom else t.name
@@ -318,12 +289,11 @@ class _Build:
         self.base = planner.base
         self.c = c
         self.home = self.s.home
-        repo = expand(c.repo, self.home)
-        self.plan = Plan(Path(repo), c.keymap, home=self.home)
+        self.repo = Path(expand(c.repo, self.home))
         self.on = lambda key: c.groups.get(key, False)
         self.template = self.base.template
         # The planning steps write only through this transaction; render() turns the documents into the plan.
-        self.docs = docs_mod.Docs("setup", self.template, self.plan.repo, home=self.home, host=self.s.hostname)
+        self.docs = docs_mod.Docs("setup", self.template, self.repo, home=self.home, host=self.s.hostname)
         self.txn = self.docs.begin("plan")
         self.r = self.txn.report
         # Repository files that are merged from several of yours, and what they are from.
@@ -331,9 +301,6 @@ class _Build:
 
     def t(self, path: str | Path) -> str:
         return tilde(path, self.home)
-
-    def tmpl(self, rel: str) -> str:
-        return (self.template / rel).read_text(encoding="utf-8")
 
     def run(self) -> Plan:
         # Your mise config first: the tools that it has are not added again.
@@ -349,8 +316,7 @@ class _Build:
         self.secret_files()
         self.misc()
         self.txn.commit()
-        self.render()
-        return self.plan
+        return self.render()
 
     # --- Homebrew and the App Store
 
@@ -721,11 +687,20 @@ class _Build:
                     self.txn.links().link(o.rel, dest)
                     adopted.append(f"~/{o.rel} -> {dest}")
                 else:
-                    src = self.txn.copies.source(dest)
-                    has = self.t(src) if src else self.merged.get(dest, "another file")
-                    taken.append(f"~/{o.rel}: its place in the repository, {dest}, has {has} already. It stays "
-                                 "in place. To keep it in the repository, copy it under another name and link it "
-                                 "in nix/home.nix.")
+                    how, where = self.txn.copies.taken(dest)
+                    src = self.txn.copies.source(where)
+                    has = self.t(src) if src else self.merged.get(where, "another file")
+                    keep = ("To keep it in the repository, copy it under another name and link it in "
+                            "nix/home.nix.")
+                    if how == "contains":
+                        taken.append(f"~/{o.rel}: its place in the repository, {dest}, would contain {where}; "
+                                     f"it stays in place. {keep}")
+                    elif how == "inside":
+                        taken.append(f"~/{o.rel}: its place in the repository, {dest}, is inside {where}, "
+                                     f"which has {has} already. It stays in place. {keep}")
+                    else:
+                        taken.append(f"~/{o.rel}: its place in the repository, {dest}, has {has} already. It "
+                                     f"stays in place. {keep}")
             elif o.adoptable:
                 left.append(f"~/{o.rel}")
             elif o.reason not in ("empty", "a Home Manager link"):
@@ -767,10 +742,10 @@ class _Build:
 
     # --- Rendering the files
 
-    def render(self) -> None:
+    def render(self) -> Plan:
         """The plan from the documents, after the transaction of the planning steps is committed."""
-        plan, s, docs = self.plan, self.s, self.docs
-        repo_rel = tilde(plan.repo, self.home)
+        s, docs = self.s, self.docs
+        repo_rel = tilde(self.repo, self.home)
         user = (
             "# Your macOS account and this repository. dotkit's scripts/setup writes it.\n"
             "rec {\n"
@@ -781,188 +756,15 @@ class _Build:
         )
         core = docs.begin("core")
         core.file("nix/user.nix").set(user)
-        core.shell_nix().set_keymap(plan.keymap)
+        core.shell_nix().set_keymap(self.c.keymap)
         core.commit()
-        self.guard_copies()
-        plan.files, plan.local = docs.render()
-        plan.copies = docs.copies.items()
-        plan.links = docs.links()
-
-        self.guard_files()
-        if plan.local:
-            plan.files[".gitignore"] = self.tmpl(".gitignore").rstrip("\n") + \
-                "\n# Files with secrets, from the migration. See MIGRATION.md.\n/local/\n"
-
-        self.links_in_the_way()
-        plan.blockers = list(docs.report.blockers)
+        plan = writer.render(docs)
+        checks.check(docs, plan)
         report = report_mod.render(docs.report, s.hostname, repo_rel)
-        plan.report = "".join(mask_lines(report.splitlines(keepends=True)))
+        plan.report = "".join(writer.mask_lines(report.splitlines(keepends=True)))
         plan.files["MIGRATION.md"] = plan.report
-        plan.summary = self.summary(repo_rel)
-
-    # The last checks that no secret goes into a file that Git tracks. The
-    # rules above keep secrets out already. These drop a copy with a secret,
-    # and a line with a secret in a generated file, and report it.
-
-    def guard_copies(self) -> None:
-        dropped = []
-        for rel, src in self.docs.copies.items().items():
-            paths = [src] if not src.is_dir() else [p for p in src.rglob("*") if not p.is_dir()]
-            # A link inside a directory is copied as a link. Anything else that
-            # cannot be checked counts as a secret.
-            if any(secrets.has_secret(p) for p in paths if ".DS_Store" not in p.relative_to(src).parts
-                   and not (p.is_symlink() and p != src)):
-                dropped.append((rel, src))
-        t = self.docs.begin("guard")
-        for rel, src in dropped:
-            t.report.todo("Secrets", "", [f"{self.t(src)} has a secret, so it is not in the repository."])
-        t.commit()
-        for rel, _ in dropped:
-            self.docs.drop(rel)
-
-    def guard_files(self) -> None:
-        plan = self.plan
-        t = self.docs.begin("guard")
-        for rel, text in list(plan.files.items()):
-            if not secrets.scan_text(text):
-                continue
-            shell = "bash" if rel == "config/bash/bash_profile" else "zsh" if rel in {
-                "config/zsh/zshrc", "config/zsh/zprofile", "config/zsh/zshenv"} else None
-            if shell:
-                # Never cut a shell statement in half. This guard is a fallback;
-                # the parser normally routes the original statement to local/.
-                kept, local = [], []
-                for st in rcparse._statements(text):
-                    if not secrets.scan_text(st.text):
-                        kept.append(st.text)
-                    elif not st.text.lstrip().startswith("#"):
-                        local.append(st.text)
-                if local:
-                    name = f"local/{Path(rel).name}.{shell}"
-                    plan.local[name] = plan.local.get(name, "") + "\n".join(local) + "\n"
-                    source = tilde(plan.repo / name, self.home).replace("~", "$HOME", 1)
-                    if not any(f'source "{source}"' in st for st in kept):
-                        kept.append(f'if [[ -r "{source}" ]]; then\n  source "{source}"\nfi')
-                plan.files[rel] = "\n".join(kept) + "\n"
-            else:
-                rows = text.splitlines()
-                for start, end, logical in secrets.logical_lines(text):
-                    if secrets.line_secret(logical):
-                        rows[start - 1:end] = ["# (a line with a secret was here, see MIGRATION.md)"] * (end - start + 1)
-                plan.files[rel] = "\n".join(rows) + "\n"
-            t.report.todo("Secrets", "", [f"{rel}: a statement with a secret is not in Git."])
-        t.commit()
-
-    def link_targets(self) -> list[str]:
-        """The targets of the links of the new configuration, relative to the home directory."""
-        p = self.plan
-        targets = set(base_mod.BASE_TARGETS) | {k for k, v in p.links.items() if v is not None}
-        targets |= {".zshrc.local", ".config/mise/config.toml"}
-        targets -= {k for k, v in p.links.items() if v is None}
-        return sorted(targets)
-
-    def moved_aside(self) -> list[str]:
-        """The files of yours that a link of the new configuration replaces."""
-        out = []
-        moved = self.plan.move_links
-        for t in self.link_targets():
-            path = Path(self.home, t)
-            if any(t == m or t.startswith(m + "/") for m in moved):
-                continue
-            if (path.exists() or path.is_symlink()) and not is_managed(path):
-                out.append(f"~/{t}")
-        return out
-
-    def links_in_the_way(self) -> None:
-        """Links of yours at a target of the new configuration, or at a directory above one.
-
-        A directory that another dotfiles manager folded into one link (GNU
-        Stow links ~/.config/ghostty to ~/dotfiles/ghostty) would make Home
-        Manager put its links into that other repository. Setup moves such a
-        link aside, as it does with a link at the target itself. ~/.config and
-        the other shared directories hold too much else to move: setup stops.
-        """
-        items = []
-        txn = self.docs.begin("checks")
-        targets = self.link_targets()
-        for t in targets:
-            parts = Path(t).parts
-            for i in range(1, len(parts) + 1):
-                rel = "/".join(parts[:i])
-                path = Path(self.home, rel)
-                if not path.is_symlink():
-                    if not path.is_dir():
-                        break
-                    continue
-                if is_managed(path):
-                    break
-                if i < len(parts) and rel in SHARED_DIRS:
-                    msg = (f"~/{rel} is a link to {self.t(os.readlink(path))}. dotkit links files inside it, "
-                           f"which would put them into that directory. Replace the link with a directory "
-                           f"(for example: mv ~/{rel} ~/{rel}.old && mkdir ~/{rel}, then move back what you "
-                           f"need), then run setup again.")
-                    txn.report.blocker(msg)
-                    break
-                if rel in self.plan.move_links:
-                    break
-                self.plan.move_links.append(rel)
-                what = "the file it points to stays"
-                if i < len(parts):
-                    others = self._others(path, rel, targets)
-                    what = "the directory it points to stays"
-                    if others:
-                        what += ", and these files of it are no longer at ~/" + rel + ": " + ", ".join(others) + \
-                            ". Copy the ones you need into the repository"
-                items.append(f"~/{rel} is a link to {self.t(os.readlink(path))}. Setup renames the link to "
-                             f"~/{rel}.before-dotkit before the first apply; {what}.")
-                break
-        if items:
-            txn.report.todo("Config files", "", items)
-        txn.commit()
-
-    def _others(self, link: Path, rel: str, targets: list[str]) -> list[str]:
-        """The files under a linked directory that no link of the new configuration replaces."""
-        out = []
-        for root, _dirs, files in os.walk(link, followlinks=False):
-            for f in files:
-                sub = os.path.relpath(os.path.join(root, f), link)
-                if f"{rel}/{sub}" not in targets:
-                    out.append(sub)
-                if len(out) >= 10:
-                    return sorted(out) + ["…"]
-        return sorted(out)
-
-    def summary(self, repo_rel: str) -> list[str]:
-        p, s = self.plan, self.s
-        out = []
-        if p.blockers:
-            out += ["Setup cannot continue:"] + [f"  {b}" for b in p.blockers] + [""]
-        out += [f"Repository: {repo_rel} (new)", f"zsh keymap: {p.keymap}", ""]
-        out += [f"{what} -> {where}" for what, where in self.docs.report.carried_rows]
-        if p.local:
-            out.append("Lines with secrets -> " + ", ".join(sorted(p.local)) + " (Git ignores local/)")
-        nulls = [t for t, v in p.links.items() if v is None]
-        if nulls:
-            out.append("Stay in place, not linked: " + ", ".join(f"~/{t}" for t in nulls))
-        moved = self.moved_aside()
-        if moved:
-            out.append("Renamed to <name>.before-dotkit by the first apply: " + ", ".join(moved))
-        if p.move_links:
-            out.append("Links of yours, renamed to <name>.before-dotkit before the first apply: " +
-                       ", ".join(f"~/{t}" for t in p.move_links))
-        out += ["", f"MIGRATION.md: {self.docs.report.count} items to check by hand.", "",
-                "Nothing is installed or uninstalled now: Homebrew packages stay as they are.",
-                "Setup then builds and applies the configuration. Files in the way of a dotkit",
-                "link are renamed to <name>.before-dotkit. mise installs the tools of config/mise.toml."]
-        if s.git_name or s.git_email:
-            out.append(f"Git identity: {s.git_name} <{s.git_email}>, in ~/.gitconfig.user.")
-        return out
-
-
-def mask_lines(lines: list[str]) -> list[str]:
-    """Lines of text that is shown or written, with each line that has a secret replaced."""
-    return [line if not secrets.line_secret(line) else
-            "(a line with a secret was here)" + ("\n" if line.endswith("\n") else "") for line in lines]
+        plan.summary = writer.mask_lines(checks.summary(plan, docs.report, s.git_name, s.git_email))
+        return plan
 
 
 def _code(text: str) -> str:

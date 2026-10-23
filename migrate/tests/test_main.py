@@ -61,6 +61,30 @@ class MainTests(unittest.TestCase):
         self.assertIn(b"~/.config is a link", out.stderr)
         self.assertFalse((self.home / ".dotfiles").exists())
 
+    def test_a_secret_found_at_write_time_stops_cleanly(self):
+        out = run(self.root, "setup", "--yes", "--repo", str(self.home / ".dotfiles"),
+                  env={"DOTKIT_TEST_FORCE_SECRET": "config/after-the-guard"})
+        self.assertEqual(out.returncode, 2, out.stderr)
+        self.assertEqual(out.stderr.decode().splitlines()[-1],
+                         "dotkit setup: the new repository would have a secret in a file that Git tracks, or a "
+                         "file that cannot be checked: config/after-the-guard (line 1: a GitHub token). "
+                         "Nothing was written.")
+        self.assertNotIn(b"Traceback", out.stderr)
+        self.assertEqual(sorted(p.name for p in self.home.iterdir() if p.name.startswith(".dotfiles")), [])
+
+    def test_adopt_stops_cleanly_on_a_secret(self):
+        repo = self.home / ".dotfiles"
+        (repo / "nix").mkdir(parents=True)
+        (repo / "nix/brews.txt").write_text("", encoding="utf-8")
+        out = run(self.root, "adopt", "--yes", "--repo", str(repo), "--declared", "{}",
+                  env={"DOTKIT_TEST_FORCE_SECRET": "nix/brews.txt"})
+        self.assertEqual(out.returncode, 2, out.stderr)
+        self.assertEqual(out.stderr.decode().splitlines()[-1],
+                         "dotkit migrate: the new repository would have a secret in a file that Git tracks: "
+                         "nix/brews.txt (line 1: a GitHub token). Nothing was written.")
+        self.assertNotIn(b"Traceback", out.stderr)
+        self.assertEqual((repo / "nix/brews.txt").read_text(encoding="utf-8"), "")
+
     def test_adopt(self):
         repo = self.home / ".dotfiles"
         (repo / "nix").mkdir(parents=True)

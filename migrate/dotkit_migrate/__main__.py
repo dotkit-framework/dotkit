@@ -14,7 +14,7 @@ from . import adopt as adopt_mod
 from . import base as base_mod
 from . import context
 from . import plan as plan_mod
-from . import prompts, scan, wizard, write
+from . import prompts, scan, wizard, writer
 
 # make_context(home, base) -> the Context that the scan reads. Tests give a fake Mac.
 MakeContext = Callable[[Path, base_mod.Base], context.Context]
@@ -75,7 +75,11 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
         print(result.report, end="")
         info("Dry run: nothing was written.")
         return 0
-    write.write(result, b.template)
+    try:
+        writer.write_new(result, b.template)
+    except writer.SecretInRepository as e:
+        info(f"dotkit setup: {e}. Nothing was written.")
+        return 2
     if a.result:
         Path(a.result).write_text(f"{result.repo}\n", encoding="utf-8")
     info(f"Created {context.tilde(result.repo, home)}. MIGRATION.md there lists what needs your attention.")
@@ -109,7 +113,11 @@ def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
         if sys.stdin.readline().strip().lower() not in ("y", "yes"):
             info("dotkit: nothing changed.")
             return 1
-    adopt_mod.apply(m, repo)
+    try:
+        adopt_mod.apply(m, repo)
+    except writer.SecretInRepository as e:
+        info(f"dotkit migrate: {e}. Nothing was written.")
+        return 2
     info("Added. They are installed already; dotkit apply records them, and mise install gets the mise copies.")
     return 0
 
