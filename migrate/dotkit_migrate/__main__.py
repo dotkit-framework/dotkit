@@ -10,9 +10,9 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from . import adopt as adopt_mod
 from . import base as base_mod
 from . import context, registry, report, writer
+from .model import PHASE_TEXT, AdoptOptions
 from .ui import curses_ui, plain
 
 # make_context(home, base) -> the Context that the scan reads. Tests give a fake Mac.
@@ -129,6 +129,17 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
     return 0
 
 
+def not_added(f) -> str:
+    """The stderr line of `dotkit migrate` for a part that failed or was skipped: nothing of it was added."""
+    if f.phase == "scan":
+        why = f.error
+    elif f.phase == "skipped":
+        why = f"skipped, because {f.reason}"
+    else:
+        why = f"failed while {PHASE_TEXT[f.phase]}: {f.error}"
+    return f"Could not check: {f.migrator} ({why}); nothing of it was added."
+
+
 def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
     b = base_mod.Base(Path(a.base)) if a.base else base_mod.Base()
     ctx = make_context(Path(os.environ.get("HOME") or str(Path.home())), b)
@@ -136,18 +147,21 @@ def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
     declared = json.loads(a.declared) if a.declared else {}
     info("Scanning this Mac. It changes nothing.")
     session = registry.Session(ctx, strict=strict_on(a))
-    facts = session.scan()
     problems = Problems(session, debug_on(a))
-    for f in session.failures:
-        info(f"Could not check: {f.migrator} ({f.error}); nothing of it was added.")
-        problems.trace(f)
-    m = adopt_mod.missing(facts, repo, b, declared, a.all)
-    if m.empty:
+    result = session.adopt(repo, declared, AdoptOptions(all_tools=a.all))
+    conflicts = [f for f in result.failures if f.phase == "conflict"]
+    for f in result.failures:
+        if f.phase != "conflict":
+            info(not_added(f))
+            problems.trace(f)
+    for line in report.problems_lines(conflicts):
+        info(line)
+    if not result.output:
         print("The lists have everything that this Mac has.", flush=True)
         return 0
     print("Installed on this Mac, and not in the lists:")
-    print("\n".join(adopt_mod.describe(m)), flush=True)
-    if not (m.formulae or m.casks or m.taps or m.mas or m.mise):
+    print("\n".join(result.output), flush=True)
+    if not result.files:
         return 0
     if a.dry_run:
         info("No change. Run dotkit migrate without -n to add them.")
@@ -162,9 +176,12 @@ def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
             info("dotkit: nothing changed.")
             return 1
     try:
-        adopt_mod.apply(m, repo)
+        writer.apply_edits(result, repo)
     except writer.SecretInRepository as e:
         return secret_stop("migrate", e, a, str(ctx.home))
+    except writer.AdoptStopped as e:
+        info(f"dotkit migrate: {e}. Nothing was changed.")
+        return 2
     info("Added. They are installed already; dotkit apply records them, and mise install gets the mise copies.")
     return 0
 

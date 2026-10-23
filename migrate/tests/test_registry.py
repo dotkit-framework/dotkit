@@ -16,7 +16,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from dotkit_migrate import adopt, base, docs, rcparse, registry, report, secrets
+from dotkit_migrate import docs, rcparse, registry, report, secrets, writer
+from dotkit_migrate.model import AdoptOptions
 from tests import fake
 from tests.test_golden import ADOPT_DECLARED, ADOPT_REPO, PLANS, check_syntax, kitchen_sink, kitchen_sink_choices
 from tests.test_session import used_mac
@@ -242,7 +243,7 @@ class NoWriteTests(unittest.TestCase):
 # The .todo(...) calls whose intro the static check cannot read, and why.
 NOT_STATIC = {
     # ReportView.todo hands its arguments on to ReportDoc.todo: the intro is whatever its caller gave.
-    "dotkit_migrate/docs.py:992",
+    "dotkit_migrate/docs.py:1000",
     # rcparse.hint(...): test_rcparse_hints_have_no_secret checks every hint with both file names.
     "dotkit_migrate/migrators/shell.py:258",
 }
@@ -443,9 +444,9 @@ class SecretPropertyTests(unittest.TestCase):
         plan = s.build(kitchen_sink_choices(s, str(repo)))
         for rel, text in ADOPT_REPO.items():
             h.write(f".dotfiles/{rel}", text)
-        m = adopt.missing(facts, repo, base.Base(fake.ROOT), ADOPT_DECLARED, True)
-        described = adopt.describe(m)
-        adopt.apply(m, repo)
+        result = s.adopt(repo, ADOPT_DECLARED, AdoptOptions(all_tools=True))
+        described = result.output
+        writer.apply_edits(result, repo)
         edited = {str(p.relative_to(repo)): p.read_text(encoding="utf-8")
                   for p in sorted(repo.rglob("*")) if p.is_file()}
         return list(facts.warnings), plan, described, edited

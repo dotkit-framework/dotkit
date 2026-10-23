@@ -13,17 +13,17 @@ MISE = ".config/mise/config.toml"
 
 class ToolsTests(unittest.TestCase):
     def test_tools_not_in_mise_keep_their_intros(self):
-        """Default choices: npm is on, but pnpm is never carried; cargo is off."""
+        """Default choices: npm is on, but pnpm is never carried; dotkit has bat already."""
         h = fake.Home()
         self.addCleanup(h.cleanup)
         p = fake.session(h, used_mac(h))
         r = p.build(p.defaults(str(h.home / ".dotfiles"))).report
         npm = r.index("They stay where they are. To add one to config/mise.toml:\n")
-        cargo = r.index("mise builds cargo tools from source, so they are off by default. They stay where they "
-                        "are. To add one to config/mise.toml:\n")
+        has = r.index("dotkit has these tools already, so they are not added.\n")
         self.assertLess(npm, r.index("`pnpm` (nvm v20.11.0): dotkit has no global pnpm"))
-        self.assertLess(r.index("`pnpm` (nvm v20.11.0): dotkit has no global pnpm"), cargo)
-        self.assertLess(cargo, r.index("`bat` (cargo install): `mise use -g cargo:bat`"))
+        self.assertLess(r.index("`pnpm` (nvm v20.11.0): dotkit has no global pnpm"), has)
+        self.assertLess(has, r.index("`bat` (cargo install): dotkit has bat (from Nix). Old copy: `cargo uninstall bat`"))
+        self.assertNotIn("mise builds cargo tools from source", r)
         self.assertEqual(r.count("### Tools that are not in mise"), 1)
 
 
@@ -45,7 +45,7 @@ class ToolsTests(unittest.TestCase):
                {"main_package": {"package": "ruff", "package_version": "0.4.0", "package_or_url": "ruff"}})
         h.json(".local/pipx/venvs/mytool/pipx_metadata.json",
                {"main_package": {"package": "mytool", "package_or_url": "git+https://example.com/mytool.git"}})
-        h.json(".cargo/.crates2.json", {"installs": {"bat 0.24.0 (registry+https://x)": {}}})
+        h.json(".cargo/.crates2.json", {"installs": {"tokei 12.1.2 (registry+https://x)": {}}})
         for name in ("hey", "hey2"):
             p = h.home / "go/bin" / name
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -57,7 +57,7 @@ class ToolsTests(unittest.TestCase):
             h.write(MISE, mise)
         p = registry.Session(fake.context_of(h, fake.brew_runner()), strict=True)
         c = p.defaults(str(h.home / ".dotfiles"))
-        pick(c, "cargo:bat", "go:github.com/rakyll/hey", "runtime:node")
+        pick(c, "cargo:tokei", "go:github.com/rakyll/hey", "runtime:node")
         return p, c
 
     def test_a_kept_mise_config_gets_to_dos(self):
@@ -73,7 +73,7 @@ class ToolsTests(unittest.TestCase):
         self.assertIn("### mise\n\n" + config_files.KEPT_INTRO + "\n\n"
                       "- `typescript` (nvm v20.11.0): `mise use -g npm:typescript`\n"
                       "- `ruff` (pipx): `mise use -g pipx:ruff`\n"
-                      "- `bat` (cargo install): `mise use -g cargo:bat`\n"
+                      "- `tokei` (cargo install): `mise use -g cargo:tokei`\n"
                       "- mise needs cargo for these: `mise use -g rust`.\n"
                       "- `github.com/rakyll/hey` (~/go/bin/hey): `mise use -g go:github.com/rakyll/hey`\n"
                       "- mise needs go for these: `mise use -g go`.\n"
@@ -100,7 +100,10 @@ class ToolsTests(unittest.TestCase):
         self.assertNotIn("mise installs the tools of config/mise.toml.", "\n".join(result.summary))
 
     def test_no_mise_config_and_a_layered_one_go_to_the_repository(self):
-        """Without a config of yours, or with yours carried as "layer", the tools go to config/mise.toml."""
+        """Without a config of yours, or with yours carried as "layer", the tools go to config/mise.toml.
+
+        The nvm node 20 is offered and added, though the base has node = "24": that is only a default.
+        """
         for mise in (None, '[tools]\n"npm:prettier" = "latest"\n'):
             with self.subTest(mise=mise):
                 p, c = self.mac(mise)
@@ -108,10 +111,10 @@ class ToolsTests(unittest.TestCase):
                 self.assertEqual(config_files.mise_dest(p.scan(), c), "config/mise.toml")
                 result = p.build(c)
                 tools = tomllib.loads(result.files["config/mise.toml"])["tools"]
-                self.assertEqual({k: tools[k] for k in ("npm:typescript", "npm:prettier", "pipx:ruff", "cargo:bat",
+                self.assertEqual({k: tools[k] for k in ("npm:typescript", "npm:prettier", "pipx:ruff", "cargo:tokei",
                                                         "go:github.com/rakyll/hey", "node")},
                                  {"npm:typescript": "latest", "npm:prettier": "latest", "pipx:ruff": "latest",
-                                  "cargo:bat": "latest", "go:github.com/rakyll/hey": "latest",
+                                  "cargo:tokei": "latest", "go:github.com/rakyll/hey": "latest",
                                   "node": ["20", "18.20.0"]})
                 self.assertIn("1 pipx tool -> config/mise.toml", result.summary)
                 self.assertIn("runtime versions of nvm -> config/mise.toml", result.summary)

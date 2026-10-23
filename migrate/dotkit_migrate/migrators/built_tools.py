@@ -12,12 +12,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from .. import catalog
 from .._compat import tomllib
 from ..context import Context, read_json
+from ..declared import Declared
 from ..docs import Txn
-from ..model import Choices, Facts, Page
+from ..model import AdoptOptions, Choices, Facts, Page
 from . import Migrator, config_files
-from .tools import Package, env_path, page, plan_tools, tilde_path
+from .tools import Package, adopt_tools, env_path, page, plan_tools, tilde_path
 
 
 @dataclass
@@ -112,10 +114,10 @@ class BuiltTools(Migrator):
         return [
             page("cargo", "cargo install tools",
                  "Tools of cargo install. The selected ones move to mise; the old copies stay until you remove "
-                 "them.", b.cargo),
+                 "them.", b.cargo, Declared.for_setup(f.base, f)),
             page("go", "Go tools",
                  "The tools in your Go bin directory. The selected ones move to mise; the old copies stay until "
-                 "you remove them.", b.go),
+                 "you remove them.", b.go, Declared.for_setup(f.base, f)),
         ]
 
     def plan(self, f: Facts, c: Choices, txn: Txn) -> None:
@@ -130,6 +132,17 @@ class BuiltTools(Migrator):
         if plan_tools(f, c, txn, pages, "go", b.go, "# From ~/go/bin, see MIGRATION.md.",
                       "rm {path}") and not b.has_go:
             _needs(txn, kept, "mise needs go for these: `mise use -g go`.")
+
+    def adopt(self, f: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:
+        b = facts_of(f)
+        if b is None:
+            return
+        left = adopt_tools(declared, txn, "cargo", b.cargo, opts.all_tools)
+        left += adopt_tools(declared, txn, "go", b.go, opts.all_tools)
+        if left:
+            txn.report.todo("Tools that are not in mise",
+                            f"{' and '.join(catalog.BUILT_FROM_SOURCE.values())} tools, not added: mise builds them "
+                            "from source. Use --all to add them:", left)
 
 
 def _needs(txn: Txn, kept: bool, line: str) -> None:

@@ -1,11 +1,13 @@
-"""The plan of the documents, the secret guards, and the only code that writes the new repository.
+"""The plan of the documents, the secret guards, and the only code that writes to a repository.
 
 render() turns the committed documents into a Plan and runs the plan-time
 guard over it: a copy with a secret is dropped, and a line with a secret in a
 generated file is moved to local/ or masked. mask_lines() masks the report,
 the summary, and adopt's output. write_new() creates the repository, and
 before the rename it checks the staged tracked files once more: a secret
-there aborts the write, and nothing is left behind.
+there aborts the write, and nothing is left behind. apply_edits() changes
+the files of an existing repository for `dotkit migrate`: all of them or
+none.
 """
 
 from __future__ import annotations
@@ -16,12 +18,13 @@ import stat
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 from . import rcparse, secrets
 from .context import tilde
 from .docs import Docs
-from .model import Plan
+from .model import AdoptResult, Plan
 
 # --- The plan
 
@@ -259,3 +262,110 @@ def write_new(plan: Plan, template: Path) -> None:
     except BaseException:
         _remove(tmp)
         raise
+
+
+class AdoptStopped(Exception):
+    """apply_edits() stopped before anything was staged: a file changed, or a link points outside."""
+
+
+def verify_edits(staged: dict[str, Path], old: dict[str, str | None]) -> list[str]:
+    """The staged files of `dotkit migrate` that have a secret in a line that the file did not have.
+
+    The lines are compared as a multiset of their texts: a secret that was in
+    the file before is not dotkit's, and `dotkit migrate` only must not add
+    one. A staged file that cannot be read is a find. It changes nothing.
+    """
+    found = []
+    for rel, path in staged.items():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            found.append(f"{rel} (cannot be read: {e})")
+            continue
+        before = Counter(line for _, _, line in secrets.logical_lines(old.get(rel) or ""))
+        for start, _end, line in secrets.logical_lines(text):
+            if before[line] > 0:
+                before[line] -= 1
+                continue
+            what = secrets.line_secret(line)
+            if what:
+                found.append(f"{rel} (line {start}: {what})")
+                break
+    return sorted(found)
+
+
+def _targets(result: AdoptResult, repo: Path) -> dict[str, Path]:
+    """The file that each changed path stands for: a link is resolved to its target, inside the repository."""
+    root = Path(os.path.realpath(repo))
+    out = {}
+    for rel in result.files:
+        target = Path(os.path.realpath(repo / rel))
+        if target != root and root not in target.parents:
+            raise AdoptStopped(f"{rel} links to {target}, outside the repository")
+        out[rel] = target
+    return out
+
+
+def _current(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+
+
+def apply_edits(result: AdoptResult, repo: Path) -> None:
+    """Change the files of the repository to the texts of result.files: all of them, or none.
+
+    1. Check each file: it still has the text that the plan was built from
+       (result.before), and a link resolves to a file inside the repository,
+       whose target is changed so that the link stays a link. Otherwise
+       raise AdoptStopped. Then write every changed file as a temp file next
+       to its target, with the mode of the file it replaces.
+    2. Verify them: a secret in a line that the file did not have raises
+       SecretInRepository, and nothing is written.
+    3. os.replace them one by one.
+    4. If a replace fails, write back the old texts, kept in memory.
+    """
+    targets = _targets(result, repo)
+    old: dict[str, str | None] = {}
+    for rel, target in targets.items():
+        old[rel] = _current(target)
+        if old[rel] != result.before.get(rel):
+            raise AdoptStopped(f"{rel} changed since the scan; run dotkit migrate again")
+    staged: dict[str, Path] = {}
+    try:
+        for rel, text in result.files.items():
+            target = targets[rel]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.dotkit-")
+            staged[rel] = Path(tmp)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.chmod(tmp, stat.S_IMODE(os.stat(target).st_mode) if old[rel] is not None else 0o644)
+        found = verify_edits(staged, old)
+        if found:
+            raise SecretInRepository("the repository would have a secret in a file that Git tracks, or a file "
+                                     "that cannot be checked: " + ", ".join(found))
+        done: list[str] = []
+        try:
+            for rel, tmp_path in staged.items():
+                os.replace(tmp_path, targets[rel])
+                done.append(rel)
+        except BaseException:
+            for rel in reversed(done):
+                _restore(targets[rel], old[rel])
+            raise
+    finally:
+        for tmp_path in staged.values():
+            if os.path.lexists(tmp_path):
+                os.unlink(tmp_path)
+def _restore(path: Path, text: str | None) -> None:
+    """Put back the old text of a file, or remove a file that did not exist. Say so when it fails."""
+    try:
+        if text is None:
+            path.unlink()
+        else:
+            path.write_text(text, encoding="utf-8")
+    except OSError as e:
+        print(f"dotkit: could not restore {path} ({e.strerror}). Check it with git diff.", file=sys.stderr,
+              flush=True)

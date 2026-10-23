@@ -21,9 +21,10 @@ from unittest import mock
 from dotkit_migrate import __main__ as cli
 from dotkit_migrate import docs, registry, writer
 from dotkit_migrate.migrators import Migrator
+from dotkit_migrate.model import AdoptOptions
 from dotkit_migrate.ui import screens
 from tests import fake
-from tests.test_golden import check_syntax, kitchen_sink, kitchen_sink_choices
+from tests.test_golden import ADOPT_DECLARED, ADOPT_REPO, check_syntax, kitchen_sink, kitchen_sink_choices
 from tests.test_session import used_mac
 
 PHASES = ("scan", "pages", "plan")
@@ -33,11 +34,11 @@ COUNT = re.compile(r"^MIGRATION\.md: (\d+) items to check by hand\.$")
 
 
 def crashing(m, phase: str, error: Exception):
-    """A patch: m's phase raises. A plan does its real work first, so it has pending entries."""
+    """A patch: m's phase raises. A plan or an adopt does its real work first, so it has pending entries."""
     original = getattr(type(m), phase)
 
     def crash(self, *args):
-        if phase == "plan":
+        if phase in ("plan", "adopt"):
             original(self, *args)
         raise type(error)(*error.args)  # a new one each time, with a traceback of its own
 
@@ -440,6 +441,49 @@ class OutputTests(Isolated):
             plan = self.session().build(kitchen_sink_choices(self.session(), self.repo))
         self.assertEqual(len(plan.failures[0].error), 200)
         self.assertTrue(plan.failures[0].error.endswith("…"))
+
+
+# The migrators that add to a repository in `dotkit migrate`.
+ADOPTERS = ("homebrew", "appstore", "node_tools", "python_tools", "built_tools")
+
+
+class AdoptTests(Isolated):
+    """`dotkit migrate`: a migrator whose adopt raises adds nothing, and the others still add."""
+
+    def adopt(self, migrators=registry.MIGRATORS, strict: bool = False):
+        repo = self.h.home / ".dotfiles"
+        for rel, text in ADOPT_REPO.items():
+            self.h.write(f".dotfiles/{rel}", text)
+        return self.session(migrators, strict).adopt(repo, ADOPT_DECLARED, AdoptOptions(all_tools=True))
+
+    def test_every_adopter(self):
+        full = self.adopt()
+        self.assertEqual(full.failures, [])
+        for m in registry.MIGRATORS:
+            if m.key not in ADOPTERS:
+                continue
+            with self.subTest(migrator=m.key), crashing(m, "adopt", RuntimeError("boom")):
+                result = self.adopt()
+                self.assertEqual([(f.migrator, f.phase, f.error) for f in result.failures],
+                                 [(m.key, "adopt", "RuntimeError: boom")])
+                self.assertTrue(result.failures[0].where.startswith("registry.py:"), result.failures[0].where)
+                rest = self.adopt(tuple(x for x in registry.MIGRATORS if x is not m), strict=True)
+                self.assertEqual((result.files, result.output), (rest.files, rest.output))
+                self.assertNotEqual(result.output, full.output, "M adds on this Mac")
+                with self.assertRaises(RuntimeError):
+                    self.adopt(strict=True)
+
+    def test_stderr(self):
+        m = next(x for x in registry.MIGRATORS if x.key == "node_tools")
+        err = io.StringIO()
+        with crashing(m, "adopt", RuntimeError("boom")), contextlib.redirect_stderr(err), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            code = main(self, ["adopt", "--repo", str(self.h.home / ".dotfiles"), "--all", "-y"])
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertIn("Could not check: node_tools (failed while adding to the lists: RuntimeError: boom); nothing "
+                      "of it was added.\n", err.getvalue())
+        self.assertNotIn("npm:", out.getvalue())
+        self.assertIn("pipx:black", out.getvalue())
 
 
 class CoreTests(Isolated):

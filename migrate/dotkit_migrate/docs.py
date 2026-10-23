@@ -339,7 +339,7 @@ class ListDoc(_Doc):
         host = self.docs.host or "this Mac"
         if self.docs.mode == "adopt":
             text = self.base_text + ("\n" if self.base_text and not self.base_text.endswith("\n") else "")
-            return text + f"# From {host}, see MIGRATION.md.\n" + "".join(r + "\n" for r in rows)
+            return text + f"# Added by dotkit migrate on {host}.\n" + "".join(r + "\n" for r in rows)
         source = "the App Store" if self.kind == "mas" else "Homebrew"
         return (self.base_text.rstrip("\n") + "\n\n" + f"# From {source} on {host}, see MIGRATION.md.\n" +
                 "".join(r + "\n" for r in rows))
@@ -893,6 +893,10 @@ class ListView:
     def added(self) -> List[str]:
         return [line for _, _, line, _ in self._doc._view_state(self._txn).entries]
 
+    def flagged(self, entry: str) -> bool:
+        """The secret check flags the line of this entry as it would be written: do not add it."""
+        return secrets.line_secret(entry) is not None
+
 
 class MiseView:
     def __init__(self, txn: Txn, doc: MiseDoc):
@@ -915,6 +919,10 @@ class MiseView:
 
     def added(self) -> List[str]:
         return [k for _, k, _, _ in self._doc._view_state(self._txn).tools]
+
+    def flagged(self, key: str, value: object) -> bool:
+        """The secret check flags the line of this tool as it would be written: do not add it."""
+        return secrets.line_secret(f"{toml_key(key)} = {toml_value(value)}") is not None
 
 
 class LinksView:
@@ -1018,6 +1026,7 @@ class Docs:
         self.mode, self.template, self.repo = mode, template, repo
         self.home, self.host, self.strict = home, host, strict
         self.conflicts: List[Conflict] = []
+        self.read: Dict[str, Optional[str]] = {}  # the base texts, by path, as base_text() read them
         self._docs: Dict[str, _Doc] = {}
         self._open: Optional[Txn] = None
         self.copies = Copies(self, "(copies)")
@@ -1028,12 +1037,17 @@ class Docs:
             for root, _dirs, names in os.walk(template) for name in names)
 
     def base_text(self, rel: str) -> str:
-        """The text that a document starts from: the template's file in setup, the repository's in adopt."""
+        """The text that a document starts from: the template's file in setup, the repository's in adopt.
+
+        Docs.read keeps each text as it was read, None for a file that does not exist.
+        """
         root = self.template if self.mode == "setup" else self.repo
         try:
-            return (root / rel).read_text(encoding="utf-8")
+            text: Optional[str] = (root / rel).read_text(encoding="utf-8")
         except (FileNotFoundError, NotADirectoryError):
-            return ""
+            text = None
+        self.read[rel] = text
+        return text or ""
 
     def begin(self, owner: str) -> Txn:
         assert self._open is None, f"a transaction is open already: {self._open.owner}"
@@ -1129,7 +1143,8 @@ class Docs:
             text, error = d.render()
             if error is not None:
                 t = self.begin("render")
-                t.report.todo("mise", f"config/mise.toml would not parse ({error}), so it has only the template. "
+                kept = "has only the template" if self.mode == "setup" else "stays as it was"
+                t.report.todo("mise", f"config/mise.toml would not parse ({error}), so it {kept}. "
                                       "Add these tools by hand:",
                               [f"`{line}`" for line in d.tool_lines() if not line.startswith("#")])
                 t.commit()

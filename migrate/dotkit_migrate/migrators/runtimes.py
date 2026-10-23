@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 from .. import catalog
 from ..base import Base
 from ..context import Context, is_managed, read_text, shell_path, tilde, version_key
+from ..declared import Declared
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
 from . import Migrator, unique_items
@@ -154,8 +155,8 @@ class Runtimes(Migrator):
         rt, r = facts_of(f), txn.report
         if rt is None:
             return
-        # Your mise config, carried as "layer", has its own versions: they stay.
-        user = config_files.layered_mise(f, c)
+        # Your mise config has its own versions: they stay. The base's are only defaults.
+        declared = Declared.for_setup(f.base, f)
         # Kept in place, mise does not read config/mise.toml: the selected tools are to-dos.
         kept = config_files.mise_target(f, c) == "kept"
         lines = runtime_lines(rt)
@@ -166,12 +167,12 @@ class Runtimes(Migrator):
             if tool not in picked:
                 continue
             if kept:
-                if tool not in config_files.user_mise_tools(f):
+                if not declared.yours_mise_key(tool):
                     where = ", ".join(vm.name for vm in rt.managers if tool in vm.versions and
                                       catalog.version_manager(vm.name).mise_replaces)
                     also = f" (also installed: {', '.join(versions[1:])})" if len(versions) > 1 else ""
                     todo.append(f"`{tool}` ({where}): `mise use -g {tool}@{versions[0]}`{also}")
-            elif user is not None and tool in user.tools:
+            elif declared.yours_mise_key(tool):
                 yours.add(tool)
             elif txn.mise().add_tool(tool, versions[0] if len(versions) == 1 else versions):
                 added.add(tool)

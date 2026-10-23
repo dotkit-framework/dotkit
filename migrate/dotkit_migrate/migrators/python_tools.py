@@ -8,10 +8,11 @@ from typing import Dict, List, Optional
 
 from .._compat import tomllib
 from ..context import Context, read_json
+from ..declared import Declared
 from ..docs import Txn
-from ..model import Choices, Facts, Page
+from ..model import AdoptOptions, Choices, Facts, Page
 from . import Migrator
-from .tools import Package, env_path, page, plan_tools
+from .tools import Package, adopt_tools, env_path, page, plan_tools
 
 
 @dataclass
@@ -73,7 +74,7 @@ class PythonTools(Migrator):
             return []
         return [page("pipx", "pipx and uv tools",
                      "Tools of pipx and uv tool. The selected ones move to mise; the old copies stay until you "
-                     "remove them.", p.packages)]
+                     "remove them.", p.packages, Declared.for_setup(f.base, f))]
 
     def plan(self, f: Facts, c: Choices, txn: Txn) -> None:
         p = facts_of(f)
@@ -81,3 +82,8 @@ class PythonTools(Migrator):
             return
         plan_tools(f, c, txn, self.pages(f), "pipx", p.packages, "# From pipx and uv tool, see MIGRATION.md.",
                    "{remove}")
+
+    def adopt(self, f: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:
+        p = facts_of(f)
+        if p is not None:
+            adopt_tools(declared, txn, "pipx", p.packages)

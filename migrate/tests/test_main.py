@@ -80,10 +80,11 @@ class MainTests(unittest.TestCase):
                   env={"DOTKIT_TEST_FORCE_SECRET": "nix/brews.txt"})
         self.assertEqual(out.returncode, 2, out.stderr)
         self.assertEqual(out.stderr.decode().splitlines()[-1],
-                         "dotkit migrate: the new repository would have a secret in a file that Git tracks: "
-                         "nix/brews.txt (line 1: a GitHub token). Nothing was written.")
+                         "dotkit migrate: the repository would have a secret in a file that Git tracks, or a file "
+                         "that cannot be checked: nix/brews.txt (line 1: a GitHub token). Nothing was written.")
         self.assertNotIn(b"Traceback", out.stderr)
         self.assertEqual((repo / "nix/brews.txt").read_text(encoding="utf-8"), "")
+        self.assertEqual(sorted(p.name for p in (repo / "nix").iterdir()), ["brews.txt"], "no temp file stays")
 
     def test_adopt(self):
         repo = self.home / ".dotfiles"
@@ -107,7 +108,8 @@ class MainTests(unittest.TestCase):
         env = {"DOTKIT_TEST_MAS_LIST": "409183694 Keynote (14.2)\n1234 Keynote (1.0)\n"}
         out = run(self.root, "adopt", "--yes", "--all", "--repo", str(repo), "--declared", "{}", env=env)
         self.assertEqual(out.returncode, 0, out.stderr.decode(errors="replace"))
-        self.assertEqual((repo / "nix/mas.txt").read_text(encoding="utf-8"), "409183694 Keynote\n1234 Keynote (1234)\n")
+        mas = (repo / "nix/mas.txt").read_text(encoding="utf-8")
+        self.assertRegex(mas, r"\A# Added by dotkit migrate on .*\.\n409183694 Keynote\n1234 Keynote \(1234\)\n\Z")
         out = run(self.root, "adopt", "--yes", "--all", "--repo", str(repo), "--declared", "{}", env=env)
         self.assertEqual(out.returncode, 0, out.stderr.decode(errors="replace"))
         self.assertEqual(out.stdout, b"The lists have everything that this Mac has.\n")

@@ -2,8 +2,9 @@
 
 import unittest
 
-from dotkit_migrate import adopt
+from dotkit_migrate import secrets
 from dotkit_migrate.migrators import homebrew
+from dotkit_migrate.model import AdoptOptions
 from tests import fake
 
 
@@ -59,16 +60,17 @@ class HomebrewTests(unittest.TestCase):
         h = fake.Home()
         self.addCleanup(h.cleanup)
         p = fake.session(h, runner)
-        s = p.scan()
+        p.scan()
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertNotIn("nix/taps.txt", result.files)
         self.assertIn("- `corp/tap`: its URL has a secret (", result.report)
         self.assertIn("), so it is not in nix/taps.txt. Take the credential out of the URL (for example with an "
                       "SSH URL or a git credential helper), then add the tap to nix/taps.txt. Do not put the URL "
                       "with the credential into a file that Git tracks.\n", result.report)
-        m = adopt.missing(s, h.home / ".dotfiles", fake.base.Base(fake.ROOT), {})
-        out = "\n".join(adopt.describe(m))
-        self.assertIn("`corp/tap`: its URL has a secret", out)
+        adopted = p.adopt(h.home / ".dotfiles", {}, AdoptOptions())
+        self.assertEqual(adopted.files, {})
+        out = "\n".join(adopted.output)
+        self.assertIn("Homebrew taps, not added:\n  `corp/tap`: its URL has a secret", out)
         for text in (result.report, "\n".join(result.summary), out):
             self.assertNotIn(fake.TOKENS["@GH@"], text)
             self.assertNotIn("git.example.com", text)
@@ -86,8 +88,8 @@ class HomebrewTests(unittest.TestCase):
         self.assertTrue(result.files["nix/taps.txt"].endswith(", see MIGRATION.md.\nok/tap\n"))
         self.assertIn("- `a/b c`: it cannot go into nix/taps.txt: its name is not owner/repo of letters, digits, "
                       "`_`, `.`, and `-`.\n", result.report)
-        m = adopt.missing(s, h.home / ".dotfiles", fake.base.Base(fake.ROOT), {})
-        self.assertEqual(m.taps, ["ok/tap"])
+        adopted = p.adopt(h.home / ".dotfiles", {}, AdoptOptions())
+        self.assertRegex(adopted.files["nix/taps.txt"], r"\A# Added by dotkit migrate on .*\.\nok/tap\n\Z")
 
     def test_taps_that_cannot_go_into_the_list(self):
         runner = fake.brew_runner(taps=[
@@ -105,6 +107,33 @@ class HomebrewTests(unittest.TestCase):
                           f"`homebrew.taps` in nix/darwin.nix as "
                           f'`{{ name = "{name}"; clone_target = "{url}"; }}`.\n', result.report)
         self.assertIn("1 Homebrew tap -> nix/taps.txt", result.summary)
+
+
+    def test_a_tap_whose_line_is_flagged(self):
+        """`corp/token <URL>` looks like a secret: every text names the tap only, with `brew tap-info`."""
+        runner = fake.brew_runner(taps=[
+            {"name": "corp/token", "remote": "https://git.example.com/corp/homebrew-tap.git"},
+            {"name": "ok/tap", "remote": "https://github.com/ok/homebrew-tap"}])
+        p = fake.session(self.h, runner)
+        self.assertIsNotNone(secrets.line_secret("corp/token https://git.example.com/corp/homebrew-tap.git"))
+        todo = ("`corp/token`: dotkit's secret check flags its line for nix/taps.txt, so it is not added. Add it by "
+                "hand; `brew tap-info corp/token` shows its URL.")
+        left = "`corp/token` (tap): add it to nix/taps.txt by hand; `brew tap-info corp/token` shows its URL."
+        for item in (todo, left):
+            self.assertIsNone(secrets.line_secret(f"- {item}"))
+        selected = p.build(p.defaults(self.repo))
+        self.assertIn(f"- {todo}\n", selected.report)
+        self.assertTrue(selected.files["nix/taps.txt"].endswith(", see MIGRATION.md.\nok/tap\n"))
+        c = p.defaults(self.repo)
+        c.picked["taps"].discard("tap:corp/token")
+        deselected = p.build(c)
+        self.assertIn(f"- {left}\n", deselected.report)
+        for plan in (selected, deselected):
+            self.assertNotIn("(a line with a secret was here)", plan.report)
+            self.assertNotIn("git.example.com", plan.report)
+        for _ in range(2):
+            adopted = p.adopt(self.h.home / ".dotfiles", {}, AdoptOptions())
+            self.assertEqual(adopted.output[-2:], ["Homebrew taps, not added:", f"  {todo}"])
 
 
 if __name__ == "__main__":

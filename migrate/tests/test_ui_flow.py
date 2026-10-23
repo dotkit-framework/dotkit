@@ -75,8 +75,8 @@ class FlowTests(unittest.TestCase):
         self.assertTrue(ok)
         keys = [page.key for page in p.pages()]
         self.assertEqual(ui.shown, ["repo", "keymap", *keys, "review"])
-        self.assertEqual(keys, ["formulae", "casks", "taps", "mas", "npm", "pipx", "cargo", "runtimes", "shell",
-                                "files", "other"])
+        self.assertEqual(keys, ["formulae", "casks", "taps", "mas", "npm", "pipx", "runtimes", "shell", "files",
+                                "other"])
         total = len(keys) + 3
         self.assertEqual(ui.steps, [(i, total) for i in range(1, total + 1)])
 
@@ -101,7 +101,7 @@ class FlowTests(unittest.TestCase):
         ok, c, ui = self.run_flow(p, answers={
             "keymap": {"vi": True},
             "formulae": {"brew:hashicorp/tap/terraform": False},
-            "cargo": {"cargo:bat": True},
+            "runtimes": {"runtime:node": True},
             "shell": {"shell:.zshrc": False},
             "files": {"file:.config/ghostty/config": "replace"},
             "other": {"other:.config/nvim": True},
@@ -109,18 +109,18 @@ class FlowTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(c.keymap, "vi")
         self.assertEqual(c.picked["formulae"], {"brew:wget"})
-        self.assertEqual(c.picked["cargo"], {"cargo:bat"})
+        self.assertEqual(c.picked["runtimes"], {"runtime:node"})
         self.assertEqual(c.picked["shell"], {"shell:.zprofile", "shell:.bash_profile"})
         self.assertEqual(c.picked["other"], {"other:.config/nvim"})
         self.assertEqual(c.option("file:.config/ghostty/config"), "replace")
-        # Two items that were on by default are left out; cargo was off and is on now.
+        # Two items that were on by default are left out; runtimes was off and is on now.
         i = ui.review.index("Not carried, by your choice:")
         self.assertEqual(ui.review[i + 1:], ["  Homebrew formulae: 1", "  Shell lines: 1"])
         plan = p.build(c)
         self.assertEqual(ui.review[:i - 1], plan.summary)
         self.assertIn("- `hashicorp/tap/terraform` (formula): `dotkit add brew:hashicorp/tap/terraform`\n",
                       plan.report)
-        self.assertIn("1 cargo tool -> config/mise.toml", plan.summary)
+        self.assertIn("runtime versions of nvm -> config/mise.toml", plan.summary)
 
     def test_an_option_that_the_item_does_not_have(self):
         p = self.session()
@@ -175,11 +175,12 @@ class FlowTests(unittest.TestCase):
         p = self.session()
         c = p.defaults(str(self.h.home / ".dotfiles"))
         by_id = {s.id: s for s in screens.build(p, c, str(self.h.home))}
-        cargo = by_id["cargo"]
-        self.assertEqual((cargo.kind, cargo.title, cargo.dest), ("checklist", "cargo install tools",
-                                                                 "config/mise.toml"))
-        self.assertEqual(cargo.note, "off: mise builds them from source with cargo")
-        self.assertEqual(cargo.detail("cargo:bat"), "0.24.0 in cargo install")
+        runtimes = by_id["runtimes"]
+        self.assertEqual((runtimes.kind, runtimes.title, runtimes.dest),
+                         ("checklist", "Runtime versions of version managers", "config/mise.toml"))
+        self.assertEqual(runtimes.note, "off: mise installs them; the base has Node 24, Python 3.14, and Ruby 3.4")
+        self.assertEqual(runtimes.detail("runtime:node"), "From nvm")
+        self.assertNotIn("cargo", by_id, "dotkit has bat already: no cargo page")
         files = by_id["files"]
         self.assertEqual(files.kind, "choices")
         npmrc = next(r for r in files.rows if r.id == "file:.npmrc")

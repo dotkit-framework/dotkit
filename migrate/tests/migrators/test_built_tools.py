@@ -4,6 +4,7 @@ import unittest
 
 from dotkit_migrate._compat import tomllib
 from dotkit_migrate.migrators import built_tools
+from dotkit_migrate.model import AdoptOptions
 from tests import fake
 from tests.test_session import used_mac
 
@@ -56,11 +57,27 @@ class BuiltToolsTests(unittest.TestCase):
 
     def test_a_selected_cargo_tool(self):
         p = fake.session(self.h, used_mac(self.h))
+        self.h.json(".cargo/.crates2.json", {"installs": {"tokei 12.1.2 (registry+https://x)": {}}})
+        c = p.defaults(self.repo)
+        c.picked["cargo"] = {"cargo:tokei"}
+        result = p.build(c)
+        self.assertEqual(tomllib.loads(result.files["config/mise.toml"])["tools"]["cargo:tokei"], "latest")
+        self.assertIn("1 cargo tool -> config/mise.toml", result.summary)
+
+    def test_a_tool_that_dotkit_has(self):
+        """cargo:bat, while the base has bat from Nix: not offered in setup, not added in adopt, and the item."""
+        self.h.json(".cargo/.crates2.json", {"installs": {"bat 0.24.0 (registry+https://x)": {}}})
+        p = fake.session(self.h, fake.brew_runner())
+        self.assertEqual([page.key for page in p.pages()], [])
         c = p.defaults(self.repo)
         c.picked["cargo"] = {"cargo:bat"}
         result = p.build(c)
-        self.assertEqual(tomllib.loads(result.files["config/mise.toml"])["tools"]["cargo:bat"], "latest")
-        self.assertIn("1 cargo tool -> config/mise.toml", result.summary)
+        self.assertNotIn("config/mise.toml", result.files)
+        self.assertIn("### Tools that are not in mise\n\ndotkit has these tools already, so they are not added.\n\n"
+                      "- `bat` (cargo install): dotkit has bat (from Nix). Old copy: `cargo uninstall bat`\n",
+                      result.report)
+        adopted = p.adopt(self.h.home / ".dotfiles", {}, AdoptOptions(all_tools=True))
+        self.assertEqual((adopted.files, adopted.output), ({}, []))
 
 
 if __name__ == "__main__":

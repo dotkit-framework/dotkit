@@ -85,6 +85,22 @@ def render(doc, host: str, repo: str) -> str:
     return "\n".join(out).rstrip("\n") + "\n"
 
 
+def adopt_lines(added: list[tuple[str, list[str]]], doc) -> list[str]:
+    """The output of `dotkit migrate`: what was added, as (header, lines), then the to-dos of a docs.ReportDoc.
+
+    A block of the report is its intro, or the section title, and its items.
+    """
+    out = []
+    for header, lines in added:
+        if lines:
+            out += [header] + [f"  {line}" for line in lines]
+    for sec in _sorted(doc.sections):
+        for block in sec.blocks:
+            out.append(block.intro or f"{sec.title}:")
+            out += [f"  {item}" for item in block.items]
+    return out
+
+
 def problem_item(f: Failure) -> str:
     """The item of a model.Failure under "Problems during the migration" (ARCHITECTURE.md, section 7.4)."""
     by_hand = f" By hand: {f.manual}" if f.manual else ""

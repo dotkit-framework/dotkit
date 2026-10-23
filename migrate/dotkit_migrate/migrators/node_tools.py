@@ -14,10 +14,11 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from .. import catalog
 from ..context import Context, is_managed, read_json, read_text
+from ..declared import Declared
 from ..docs import Txn
-from ..model import Choices, Facts, Page
+from ..model import AdoptOptions, Choices, Facts, Page
 from . import Migrator
-from .tools import Package, env_path, page, plan_tools, tilde_path
+from .tools import Package, adopt_tools, env_path, page, plan_tools, tilde_path
 
 
 @dataclass
@@ -137,7 +138,8 @@ class NodeTools(Migrator):
         return [page("npm", "npm, pnpm, and bun tools",
                      "Global tools of npm, pnpm, and bun. The selected ones move to mise; the old copies stay "
                      "until you remove them.",
-                     [p for p in n.packages if p.name not in catalog.NPM_NOT_IN_MISE])]
+                     [p for p in n.packages if p.name not in catalog.NPM_NOT_IN_MISE],
+                     Declared.for_setup(f.base, f))]
 
     def plan(self, f: Facts, c: Choices, txn: Txn) -> None:
         n = facts_of(f)
@@ -145,3 +147,8 @@ class NodeTools(Migrator):
             return
         plan_tools(f, c, txn, self.pages(f), "npm", n.packages,
                    "# From npm, pnpm, and bun (global packages), see MIGRATION.md.", "npm uninstall -g {name}")
+
+    def adopt(self, f: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:
+        n = facts_of(f)
+        if n is not None:
+            adopt_tools(declared, txn, "npm", n.packages)

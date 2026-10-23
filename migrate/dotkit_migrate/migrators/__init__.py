@@ -1,18 +1,21 @@
 """The migrators: one source of the Mac each, from its scan to its part of the plan.
 
 registry.MIGRATORS has them in order. A migrator imports only context,
-catalog, model, docs (through the Txn it gets), rcparse, secrets, base, and
-its own helpers; it never writes a file and never runs a command outside its
-scan (ARCHITECTURE.md, section 4.1).
+catalog, model, docs (through the Txn it gets), declared, rcparse, secrets,
+base, and its own helpers; it never writes a file and never runs a command
+outside its scan (ARCHITECTURE.md, section 4.1).
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import TYPE_CHECKING, Dict, List, Tuple
 
 from ..context import Context
 from ..docs import Txn
-from ..model import Choices, Facts, Item, Page
+from ..model import AdoptOptions, Choices, Facts, Item, Page
+
+if TYPE_CHECKING:  # declared reads the facts of config_files, a migrator
+    from ..declared import Declared
 
 
 # The intros of "Not carried, by your choice": items that were on by default and that you deselected.
@@ -66,6 +69,10 @@ class Migrator:
 
     def plan(self, facts: Facts, choices: Choices, txn: Txn) -> None:
         """Add to the documents and the report through txn. Runs no command but facts.check_syntax."""
+
+    def adopt(self, facts: Facts, declared: "Declared", txn: Txn, opts: AdoptOptions) -> None:
+        """`dotkit migrate`: add to the repository's documents what it lacks, and what was not added to
+        the report through txn. Default: nothing."""
 
     def manual_steps(self, ctx: Context) -> str:
         """What a person does by hand when this migrator failed: what happens without it, and what to do.

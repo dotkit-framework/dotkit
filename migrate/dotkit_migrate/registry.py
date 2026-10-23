@@ -6,7 +6,7 @@ migrator for its pages, and builds a fresh plan for each set of choices.
 Core, not migrators: the identity scan, nix/user.nix, the keymap, the scan
 warnings, the "Login shell" to-do, the problems, the checks, and the writer.
 
-Each scan, pages, and plan of a migrator is isolated (ARCHITECTURE.md,
+Each scan, pages, plan, and adopt of a migrator is isolated (ARCHITECTURE.md,
 section 7): an exception there is a Failure, the migrator contributes
 nothing, and the rest of the run goes on. Strict mode re-raises instead.
 """
@@ -26,10 +26,11 @@ from . import checks, secrets, writer
 from . import docs as docs_mod
 from . import report as report_mod
 from .context import Context, expand, tilde
+from .declared import Declared
 from .docs import nix_string
 from .migrators import (appstore, built_tools, config_files, frameworks, homebrew, logins, node_tools, other_config,
                         python_tools, runtimes, shell)
-from .model import Choices, Facts, Failure, Identity, Page, Plan, warnings_of
+from .model import AdoptOptions, AdoptResult, Choices, Facts, Failure, Identity, Page, Plan, warnings_of
 
 MIGRATORS = (
     homebrew.Homebrew(),
@@ -78,6 +79,10 @@ class IdentityScan:
 
 
 IDENTITY = IdentityScan()
+
+# The lists that `dotkit migrate` adds to, in the order of its output, with their headers.
+ADOPT_LISTS = (("nix/brews.txt", "Homebrew formulae"), ("nix/casks.txt", "Homebrew casks"),
+               ("nix/taps.txt", "Homebrew taps"), ("nix/mas.txt", "App Store apps"))
 
 # --- Failure text: short, with the home as ~, and masked line by line (ARCHITECTURE.md, section 6)
 
@@ -311,6 +316,47 @@ class Session:
         plan.summary = writer.mask_lines(checks.summary(plan, docs.report, ident.git_name, ident.git_email,
                                                            config_files.mise_dest(view, choices)))
         return plan
+
+    def adopt(self, repo: Path, nix_declared: dict, opts: AdoptOptions) -> AdoptResult:
+        """`dotkit migrate`: what the repository lacks, added by each migrator in its own transaction.
+
+        A migrator whose adopt fails is rolled back and adds nothing; the
+        others go on. The output comes from what the documents added and
+        from the report, masked.
+        """
+        facts = self.scan()
+        ident = facts.identity
+        out = set(self._out)
+        failures = list(self.failures)
+        self._skip(out, failures)
+        view = facts.without(out)
+        declared = Declared.for_repo(facts.base, repo, nix_declared, view)
+        docs = docs_mod.Docs("adopt", facts.base.template, repo, home=ident.home, host=ident.hostname,
+                             strict=self.strict)
+        for m in self.migrators:
+            if m.key in out:
+                continue
+            txn = docs.begin(m.key)
+            try:
+                m.adopt(view, declared, txn, opts)
+                txn.commit()
+            except Exception as e:  # noqa: BLE001 - isolated: it adds nothing
+                txn.rollback()
+                self._fail(m, "adopt", e, failures)
+        failures += self._conflicts(docs)
+        files, local = docs.render()
+        assert not local, "adopt writes nothing to local/"
+        added = []
+        for rel, header in ADOPT_LISTS:
+            d = docs.get(rel)
+            added.append((f"{header} -> {rel}:", d.added() if d is not None and rel in files else []))
+        mise = docs.get("config/mise.toml")
+        where = dict(docs.report.carried_rows)
+        added.append(("Tools -> config/mise.toml:",
+                      [f"{k} (from {where[k]})" if k in where else k for k in mise.added()]
+                      if mise is not None and "config/mise.toml" in files else []))
+        output = writer.mask_lines(report_mod.adopt_lines(added, docs.report))
+        return AdoptResult(repo, files, {rel: docs.read.get(rel) for rel in files}, output, failures)
 
     def _conflicts(self, docs: docs_mod.Docs) -> List[Failure]:
         """The conflicts of the documents, as failures of the migrator whose value was refused."""

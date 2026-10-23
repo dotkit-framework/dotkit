@@ -13,8 +13,9 @@ from typing import Dict, List, Optional, Tuple
 
 from ..catalog import BREW_ENV
 from ..context import Context
+from ..declared import YOUR_MISE, Declared
 from ..docs import Txn, nix_string, tap_name_problem, tap_problem
-from ..model import Choices, Facts, Item, Page
+from ..model import AdoptOptions, Choices, Facts, Item, Page
 from ..report import plural
 from . import NOT_CARRIED, NOT_CARRIED_BREW, Migrator, left_out, unique_items
 
@@ -52,46 +53,60 @@ def tap_line_problem(t: Tap) -> Optional[str]:
     return tap_name_problem(t.name) or tap_problem(tap_line(t))
 
 
-def tap_lines(taps: List[Tap], declared: set) -> Tuple[List[str], List[str]]:
-    """The nix/taps.txt lines of the taps that are not declared, and to-dos for the ones that cannot go there."""
-    lines, todos, seen = [], [], set(declared)
+def tap_todo(t: Tap, problem: str) -> str:
+    """The to-do of a tap that cannot go into nix/taps.txt, for its tap_line_problem()."""
+    if problem.startswith("its name"):
+        return f"`{t.name}`: it cannot go into nix/taps.txt: {problem}."
+    if problem.startswith("it has a secret"):
+        return (f"`{t.name}`: its URL has a secret ({problem[len('it has a secret ('):-1]}), so it is not in "
+                "nix/taps.txt. Take the credential out of the URL (for example with an SSH URL or a git "
+                "credential helper), then add the tap to nix/taps.txt. Do not put the URL with the credential "
+                "into a file that Git tracks.")
+    return (f"`{t.name}`: its URL cannot go into nix/taps.txt ({problem}). Add it by hand to `homebrew.taps` in "
+            f"nix/darwin.nix as `{{ name = {nix_string(t.name)}; clone_target = {nix_string(t.remote)}; }}`.")
+
+
+def good_taps(taps: List[Tap]) -> List[Tap]:
+    """The taps that can go into nix/taps.txt, each name once."""
+    out: Dict[str, Tap] = {}
     for t in taps:
-        if t.name in seen:
-            continue
-        problem = tap_line_problem(t)
-        if problem is None:
-            seen.add(t.name)
-            lines.append(tap_line(t))
-        elif problem.startswith("its name"):
-            todos.append(f"`{t.name}`: it cannot go into nix/taps.txt: {problem}.")
-        elif problem.startswith("it has a secret"):
-            todos.append(f"`{t.name}`: its URL has a secret ({problem[len('it has a secret ('):-1]}), so it is not "
-                         "in nix/taps.txt. Take the credential out of the URL (for example with an SSH URL or a "
-                         "git credential helper), then add the tap to nix/taps.txt. Do not put the URL with the "
-                         "credential into a file that Git tracks.")
-        else:
-            todos.append(f"`{t.name}`: its URL cannot go into nix/taps.txt ({problem}). Add it by hand to "
-                         f"`homebrew.taps` in nix/darwin.nix as "
-                         f"`{{ name = {nix_string(t.name)}; clone_target = {nix_string(t.remote)}; }}`.")
-    return lines, todos
+        if t.name not in out and tap_line_problem(t) is None:
+            out[t.name] = t
+    return list(out.values())
 
 
-def brew_split(f: Facts, names: List[str], kind: str) -> Tuple[List[str], Dict[str, str]]:
-    """The names that the base does not have, and the ones it has, with what provides them."""
-    keep, redundant = [], {}
+def split(f: Facts, names: List[str], kind: str) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
+    """The names that nothing declares; those that the base has, with what provides them (Declared.brew);
+    those that your mise config has, with its key."""
+    declared = Declared.for_setup(f.base, f)
+    keep, base, yours = [], {}, {}
+    suffix = f" ({YOUR_MISE})"
     for n in names:
-        p = f.base.provides_brew(n, kind)
-        if p:
-            redundant[n] = p
-        else:
+        what = declared.brew(n, kind)
+        if not what:
             keep.append(n)
-    return keep, redundant
+        elif what.endswith(suffix):
+            yours[n] = what[:-len(suffix)]
+        else:
+            base[n] = what
+    return keep, base, yours
+
+
+def flagged_todo(entry: str, rel: str, how: str) -> str:
+    """The to-do of a formula or cask whose line the secret check flags: it is not added."""
+    return f"`{entry}`: dotkit's secret check flags its line in {rel}, so it is not added. Add it by hand: {how}."
+
+
+def flagged_tap(name: str) -> str:
+    """The to-do of a tap whose line the secret check flags: by its name only, as the line is what is flagged."""
+    return (f"`{name}`: dotkit's secret check flags its line for nix/taps.txt, so it is not added. Add it by hand; "
+            f"`brew tap-info {name}` shows its URL.")
 
 
 class Homebrew(Migrator):
     key = "homebrew"
     title = "Homebrew packages and taps"
-    sections = ("Homebrew copies of dotkit tools", "Not carried, by your choice", "Homebrew taps")
+    sections = ("Secrets", "Homebrew copies of dotkit tools", "Not carried, by your choice", "Homebrew taps")
 
     def manual_steps(self, ctx: Context) -> str:
         return ("None of your Homebrew formulae, casks, and taps is in nix/brews.txt, nix/casks.txt, or "
@@ -137,9 +152,9 @@ class Homebrew(Migrator):
         b = facts_of(f)
         if b is None:
             return []
-        formulae, _ = brew_split(f, b.formulae, "formula")
-        casks, _ = brew_split(f, b.casks, "cask")
-        lines, _ = tap_lines(b.taps, set())
+        formulae, _, _ = split(f, b.formulae, "formula")
+        casks, _, _ = split(f, b.casks, "cask")
+        lines = [tap_line(t) for t in good_taps(b.taps)]
         return [
             Page("formulae", "Homebrew formulae", "nix/brews.txt",
                  "The formulae that you installed with Homebrew. The selected ones go to the list; all of them "
@@ -164,10 +179,14 @@ class Homebrew(Migrator):
         left: List[str] = []
         for kind, names, key, dest in (("formula", b.formulae, "formulae", "nix/brews.txt"),
                                        ("cask", b.casks, "casks", "nix/casks.txt")):
-            keep, redundant = brew_split(f, names, kind)
+            keep, redundant, yours = split(f, names, kind)
             flag = "--cask " if kind == "cask" else ""
             prefix = "cask" if kind == "cask" else "brew"
             chosen = [n for n in keep if c.selected(key, f"{prefix}:{n}")]
+            flagged = [n for n in chosen if txn.list(dest).flagged(n)]
+            if flagged:
+                r.todo("Secrets", "", [flagged_todo(n, dest, f"`dotkit add {prefix}:{n}`") for n in flagged])
+            chosen = [n for n in chosen if n not in flagged]
             for n in chosen:
                 txn.list(dest).add(n)
             if chosen:
@@ -181,8 +200,17 @@ class Homebrew(Migrator):
                        "stays installed. Remove it when nothing else needs it; brew says when another "
                        "formula depends on it.",
                        [f"`{n}`: dotkit has {what}. `brew uninstall {flag}{n}`" for n, what in redundant.items()])
-        lines, todos = tap_lines(b.taps, set())
+            if yours:
+                r.todo("Homebrew copies of dotkit tools",
+                       "Your mise config has these tools, so they are not in your lists. The Homebrew copy stays "
+                       "installed. Remove it when nothing else needs it; brew says when another formula depends "
+                       "on it.",
+                       [f"`{n}`: your mise config has {key}. `brew uninstall {flag}{n}`" for n, key in yours.items()])
+        lines = [tap_line(t) for t in good_taps(b.taps)]
+        todos = [tap_todo(t, tap_line_problem(t)) for t in b.taps if tap_line_problem(t)]
         chosen = [line for line in lines if c.selected("taps", f"tap:{line.split()[0]}")]
+        todos += [flagged_tap(line.split()[0]) for line in chosen if txn.list("nix/taps.txt").flagged(line)]
+        chosen = [line for line in chosen if not txn.list("nix/taps.txt").flagged(line)]
         for line in chosen:
             txn.list("nix/taps.txt").add(line)
         if chosen:
@@ -194,7 +222,10 @@ class Homebrew(Migrator):
                        [f"`{t.name}`: {t.remote}" for t in custom])
         if left:
             r.todo("Not carried, by your choice", NOT_CARRIED_BREW, left)
-        taps_left = [f"`{line.split()[0]}` (tap): add `{line}` to nix/taps.txt" for line in lines
+        # A tap whose line the secret check flags is named without its line.
+        taps_left = [f"`{line.split()[0]}` (tap): add it to nix/taps.txt by hand; `brew tap-info {line.split()[0]}` "
+                     "shows its URL." if txn.list("nix/taps.txt").flagged(line) else
+                     f"`{line.split()[0]}` (tap): add `{line}` to nix/taps.txt" for line in lines
                      if line not in chosen and left_out(pages, c, f"tap:{line.split()[0]}")]
         if taps_left:
             r.todo("Not carried, by your choice", NOT_CARRIED, taps_left)
@@ -204,3 +235,29 @@ class Homebrew(Migrator):
             r.todo("Homebrew taps", "Homebrew merged these taps into its own. Remove them.",
                    [f"`{t}`: `brew untap {t}`" for t in b.old_taps])
 
+    def adopt(self, f: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:
+        b = facts_of(f)
+        if b is None or not b.brew:
+            return
+        for kind, names, dest in (("formula", b.formulae, "nix/brews.txt"), ("cask", b.casks, "nix/casks.txt")):
+            prefix = "cask" if kind == "cask" else "brew"
+            for n in names:
+                if declared.brew(n, kind):
+                    continue
+                if txn.list(dest).flagged(n):
+                    txn.report.todo("Secrets", "", [flagged_todo(n, dest, f"`dotkit add {prefix}:{n}`")])
+                else:
+                    txn.list(dest).add(n)
+        todos = []
+        for t in b.taps:
+            if declared.tap(t.name):
+                continue
+            problem = tap_line_problem(t)
+            if problem:
+                todos.append(tap_todo(t, problem))
+            elif txn.list("nix/taps.txt").flagged(tap_line(t)):
+                todos.append(flagged_tap(t.name))
+            else:
+                txn.list("nix/taps.txt").add(tap_line(t))
+        if todos:
+            txn.report.todo("Homebrew taps", "Homebrew taps, not added:", todos)

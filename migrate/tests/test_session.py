@@ -138,8 +138,8 @@ class PlanTests(unittest.TestCase):
 
     def test_defaults(self):
         pages = {page.key: page for page in self.p.pages()}
-        self.assertEqual(list(pages), ["formulae", "casks", "taps", "mas", "npm", "pipx", "cargo", "runtimes",
-                                       "shell", "files", "other"])
+        self.assertEqual(list(pages), ["formulae", "casks", "taps", "mas", "npm", "pipx", "runtimes", "shell",
+                                       "files", "other"])
         items = {k: [(i.id, i.default) for i in page.items] for k, page in pages.items()}
         self.assertEqual(items["formulae"], [("brew:wget", True), ("brew:hashicorp/tap/terraform", True)])
         self.assertEqual(items["casks"], [("cask:raycast", True)])
@@ -147,7 +147,6 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(items["mas"], [("mas:497799835", True), ("mas:1289583905", True)])
         self.assertEqual(items["npm"], [("npm:typescript", True)])
         self.assertEqual(items["pipx"], [("pipx:ruff", True)])
-        self.assertEqual(items["cargo"], [("cargo:bat", False)])
         self.assertEqual(items["runtimes"], [("runtime:node", False)])
         self.assertEqual([i.label for i in pages["runtimes"].items], ["node 20"])
         # One item per shell file, not per statement.
@@ -160,7 +159,7 @@ class PlanTests(unittest.TestCase):
         self.assertTrue(all(page.kind == "checklist" for k, page in pages.items() if k != "files"))
         self.assertEqual(pages["files"].kind, "choices")
         c = self.p.defaults(self.repo)
-        self.assertEqual(c.picked["cargo"], set())
+        self.assertNotIn("cargo", c.picked, "dotkit has bat already")
         self.assertEqual(c.picked["formulae"], {"brew:wget", "brew:hashicorp/tap/terraform"})
         files = {i.id: i.default_option for i in pages["files"].items}
         self.assertEqual(files, c.options)
@@ -216,7 +215,8 @@ class PlanTests(unittest.TestCase):
                      "`ghostty`: dotkit has ghostty (dotkit cask). `brew uninstall --cask ghostty`",
                      "`GITHUB_TOKEN` -> local/zshrc.zsh", "~/.npmrc stays in place",
                      "`npm:typescript`, was 5.4.0 in nvm v20.11.0. Old copy: `npm uninstall -g typescript`",
-                     "`pnpm` (nvm v20.11.0): dotkit has no global pnpm", "`mise use -g cargo:bat`",
+                     "`pnpm` (nvm v20.11.0): dotkit has no global pnpm",
+                     "`bat` (cargo install): dotkit has bat (from Nix). Old copy: `cargo uninstall bat`",
                      "nvm (~/.nvm)", "`mise use -g node@20`", "Oh My Zsh: `rm -rf ~/.oh-my-zsh`",
                      "~/.bashrc: It stays in place", "~/.config/nvim", "`acme/tools`: git@gitlab.com"):
             self.assertIn(text, r)
@@ -297,7 +297,8 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn(TOKEN, p.report)
         # Off by default: their own to-dos, as with the defaults.
         self.assertNotIn("bat", section)
-        self.assertIn("- `bat` (cargo install): `mise use -g cargo:bat`\n", p.report)
+        self.assertIn("- `bat` (cargo install): dotkit has bat (from Nix). Old copy: `cargo uninstall bat`\n",
+                      p.report)
         self.assertNotIn("Homebrew packages that are not in the lists", p.report)
 
     def test_single_items(self):

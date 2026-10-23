@@ -154,3 +154,25 @@ class Plan:
     failures: list[Failure] = field(default_factory=list)
     summary: list[str] = field(default_factory=list)
     report: str = ""
+
+
+@dataclass
+class AdoptOptions:
+    """The options of `dotkit migrate`."""
+
+    all_tools: bool = False  # --all: also cargo and Go tools, which mise builds from source
+
+
+@dataclass
+class AdoptResult:
+    """What `dotkit migrate` adds to an existing repository. writer.apply_edits() writes it."""
+
+    repo: Path
+    # The files that change, relative to the repository, with their new text.
+    files: dict[str, str] = field(default_factory=dict)
+    # The text of each of these files that the plan was built from; None: the file did not exist.
+    before: dict[str, str | None] = field(default_factory=dict)
+    # What was added and what was not, as shown; masked.
+    output: list[str] = field(default_factory=list)
+    # The parts that failed, were skipped, or had a conflict: nothing of them was added.
+    failures: list[Failure] = field(default_factory=list)

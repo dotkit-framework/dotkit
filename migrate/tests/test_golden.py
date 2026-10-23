@@ -13,8 +13,8 @@ The Macs:
   - used-mac-deselected and kitchen-sink-deselected: the same Macs with
     single items deselected and selected, page by page.
 Adopt runs on the kitchen-sink Mac against a small repository, once with
-the defaults and once with --all. Its golden has the describe() lines and
-the text of each file that apply() changed.
+the defaults and once with --all. Its golden has the output lines of
+Session.adopt and the text of each file that writer.apply_edits() changed.
 
 The goldens are normalized, so that they do not depend on the machine:
   - in Path values (Plan.repo, the copy sources), the home directory is ~;
@@ -49,8 +49,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from dotkit_migrate import adopt, base, registry
-from dotkit_migrate.model import Choices
+from dotkit_migrate import registry, writer
+from dotkit_migrate.model import AdoptOptions, Choices
 from tests import fake
 from tests.test_session import used_mac
 
@@ -245,7 +245,6 @@ def used_mac_deselected(p: registry.Session, repo: str) -> Choices:
     c.picked["mas"].discard("mas:497799835")
     c.picked["npm"].discard("npm:typescript")
     c.picked["shell"].discard("shell:.zshrc")
-    c.picked["cargo"].add("cargo:bat")
     c.picked["runtimes"].add("runtime:node")
     c.picked["other"].add("other:.bashrc")
     return c
@@ -390,14 +389,15 @@ class GoldenTests(unittest.TestCase):
                 repo = h.home / ".dotfiles"
                 for rel, text in ADOPT_REPO.items():
                     h.write(f".dotfiles/{rel}", text)
-                m = adopt.missing(p.scan(), repo, base.Base(fake.ROOT), ADOPT_DECLARED, all_tools)
+                result = p.adopt(repo, ADOPT_DECLARED, AdoptOptions(all_tools=all_tools))
+                self.assertEqual(result.failures, [])
                 before = self.files(repo)
-                adopt.apply(m, repo)
+                writer.apply_edits(result, repo)
                 after = self.files(repo)
                 # A deleted file is null.
                 edited = {rel: after.get(rel) for rel in before.keys() | after.keys()
                           if before.get(rel) != after.get(rel)}
-                data = {"describe": adopt.describe(m), "edited": to_json(edited, h.home)}
+                data = {"output": result.output, "edited": to_json(edited, h.home)}
                 self.check(name, Normalizer(h, [])(data))
 
     @unittest.skipIf(REGOLD, "the goldens are being written")

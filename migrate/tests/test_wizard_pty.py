@@ -105,7 +105,7 @@ class WizardPtyTests(unittest.TestCase):
         cls.pages, cls.defaults = pages()
         # The fixture must have a page of each kind for these tests to mean something.
         cls.keys = [page.key for page in cls.pages]
-        for key in ("formulae", "casks", "taps", "mas", "cargo", "shell", "files", "other"):
+        for key in ("formulae", "casks", "taps", "mas", "runtimes", "shell", "files", "other"):
             assert key in cls.keys, key
         cls.total = len(cls.pages) + 3  # the path, the keymap, the pages, the plan
 
@@ -140,7 +140,7 @@ class WizardPtyTests(unittest.TestCase):
                 "casks": ["a"],  # all selected: a selects none
                 "taps": ["a", "a"],  # none, then all
                 "mas": ["j", "k", SPACE],  # the first app off
-                "cargo": [SPACE],  # off by default: on
+                "runtimes": [SPACE],  # off by default: on
                 "shell": [DOWN, SPACE],  # ~/.zshrc off
                 "files": [SPACE, DOWN, RIGHT],  # ghostty: layer -> replace; starship: replace -> dotkit
                 "other": [SPACE],  # ~/.config/nvim
@@ -158,7 +158,7 @@ class WizardPtyTests(unittest.TestCase):
         self.assertEqual(picked["casks"], [])
         self.assertEqual(picked["taps"], self.defaults["picked"]["taps"])
         self.assertEqual(picked["mas"], ["mas:1289583905"])
-        self.assertEqual(picked["cargo"], ["cargo:bat"])
+        self.assertEqual(picked["runtimes"], ["runtime:node"])
         self.assertEqual(picked["shell"], ["shell:.bash_profile", "shell:.zprofile"])
         self.assertEqual(picked["other"], ["other:.config/nvim"])
         self.assertEqual(c["options"]["file:.config/ghostty/config"], "replace")
@@ -207,7 +207,7 @@ class WizardPtyTests(unittest.TestCase):
             "casks": "n",
             "taps": "1-2",  # both off
             "mas": "a",
-            "cargo": "1",
+            "runtimes": "1",
             "shell": "1 3",  # ~/.zprofile and ~/.bash_profile off
             "files": {"file:.config/ghostty/config": "replace"},
             "other": "1",
@@ -222,7 +222,7 @@ class WizardPtyTests(unittest.TestCase):
         self.assertEqual(picked["casks"], [])
         self.assertEqual(picked["taps"], [])
         self.assertEqual(picked["mas"], self.defaults["picked"]["mas"])
-        self.assertEqual(picked["cargo"], ["cargo:bat"])
+        self.assertEqual(picked["runtimes"], ["runtime:node"])
         self.assertEqual(picked["shell"], ["shell:.zshrc"])
         self.assertEqual(picked["other"], ["other:.config/nvim"])
         self.assertEqual(c["options"]["file:.config/ghostty/config"], "replace")

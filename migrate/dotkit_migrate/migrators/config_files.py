@@ -47,6 +47,7 @@ class ConfigFacts:
     gitconfig: Optional[ConfigFile] = None
     mise_config: Optional[ConfigFile] = None  # ~/.config/mise/config.toml
     mise_tools: Dict[str, object] = field(default_factory=dict)  # its [tools], parsed
+    mise_settings: Dict[str, object] = field(default_factory=dict)  # its [settings], parsed
     ghostty_app_support: bool = False
 
 
@@ -60,14 +61,6 @@ def _secrets_of(p: Path) -> List[secrets.Secret]:
         return secrets.scan_file(p)
     except secrets.Unscannable as e:
         return [secrets.Secret(0, f"a file that cannot be checked ({e})")]
-
-
-@dataclass
-class LayeredMise:
-    """Your mise config, when it goes into the repository as config/mise.toml: its tools and settings."""
-
-    tools: Dict[str, object] = field(default_factory=dict)
-    settings: Dict[str, object] = field(default_factory=dict)
 
 
 def _mise_layered(cf: Optional[ConfigFacts], c: Choices) -> bool:
@@ -100,33 +93,14 @@ def mise_dest(f: Facts, c: Choices) -> str:
     return "~/.config/mise/config.toml" if mise_target(f, c) == "kept" else "config/mise.toml"
 
 
-def user_mise_tools(f: Facts) -> Dict[str, object]:
-    """The [tools] of your mise config, carried or kept; empty without one."""
-    cf = facts_of(f)
-    return dict(cf.mise_tools) if cf is not None and cf.mise_config is not None else {}
-
-
-def layered_mise(f: Facts, c: Choices) -> Optional[LayeredMise]:
-    """Your mise config, if it is carried as "layer", or None.
-
-    config_files comes after the tool migrators, so it sets your file as the
-    base of config/mise.toml after they added their tools. They skip the
-    tools of your file with this, so the order does not matter.
-    """
-    cf = facts_of(f)
-    if not _mise_layered(cf, c):
-        return None
-    return _read_mise(cf.mise_config.path)
-
-
-def _read_mise(path: Path) -> LayeredMise:
-    """Your mise config, parsed; empty when it cannot be read or parsed."""
+def _read_mise(path: Path) -> Tuple[Dict[str, object], Dict[str, object]]:
+    """The [tools] and [settings] of your mise config; empty when it cannot be read or parsed."""
     try:
         data = tomllib.loads(_text(path))
     except (OSError, tomllib.TOMLDecodeError):
         data = {}
     tools, settings = data.get("tools"), data.get("settings")
-    return LayeredMise(tools if isinstance(tools, dict) else {}, settings if isinstance(settings, dict) else {})
+    return tools if isinstance(tools, dict) else {}, settings if isinstance(settings, dict) else {}
 
 
 # Settings that are lists of mise: yours replaces dotkit's whole list, so it
@@ -147,7 +121,7 @@ def _names(v: object) -> bool:
     return isinstance(v, list) and all(isinstance(x, str) for x in v)
 
 
-def _idiomatic(f: Facts, txn: Txn, user: LayeredMise, layered: bool) -> None:
+def _idiomatic(f: Facts, txn: Txn, settings: Dict[str, object], layered: bool) -> None:
     """dotkit's idiomatic settings plus yours, for each one that your mise config sets.
 
     A key that your config does not set is not written: a copy would freeze
@@ -157,9 +131,9 @@ def _idiomatic(f: Facts, txn: Txn, user: LayeredMise, layered: bool) -> None:
     """
     r = txn.report
     for key in IDIOMATIC:
-        if key not in user.settings:
+        if key not in settings:
             continue
-        yours = user.settings[key]
+        yours = settings[key]
         base_val = f.base.mise_settings.get(key, [])
         if not _names(yours):
             r.todo("mise", "", [f"your mise config sets `{key}` to {_toml(yours)}, which is not a list of names. "
@@ -263,7 +237,7 @@ class ConfigFiles(Migrator):
         p = ctx.home / MISE_CONFIG
         if p.is_file() and not is_managed(p):
             cf.mise_config = ConfigFile(MISE_CONFIG, p, _secrets_of(p))
-            cf.mise_tools = _read_mise(p).tools
+            cf.mise_tools, cf.mise_settings = _read_mise(p)
         cf.ghostty_app_support = (ctx.home / "Library/Application Support/com.mitchellh.ghostty/config").is_file()
         return cf
 
@@ -320,7 +294,7 @@ class ConfigFiles(Migrator):
             # Your mise config is the base of config/mise.toml. The tool migrators skipped its tools.
             txn.mise().set_base(_text(cf.mise_config.path))
             # Settings come after set_base.
-            _idiomatic(f, txn, _read_mise(cf.mise_config.path), layered=True)
+            _idiomatic(f, txn, cf.mise_settings, layered=True)
         links = {link.target: link for link in base_mod.LINKS}
         git_choice = _git_choice(cf, c)
         git_parts = _git_parts(f, cf, c)
@@ -388,7 +362,7 @@ class ConfigFiles(Migrator):
             txn.links().link(MISE_CONFIG, None)
             r.todo("mise", "", ["~/.config/mise/config.toml stays in place, outside the repository, and dotkit "
                                 "does not link config/mise.toml. `dotkit add` writes mise tools to it."])
-            _idiomatic(f, txn, _read_mise(cf.mise_config.path), layered=False)
+            _idiomatic(f, txn, cf.mise_settings, layered=False)
 
 
 def _base_example(target: str) -> str:

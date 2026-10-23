@@ -5,6 +5,7 @@ import unittest
 
 from dotkit_migrate import registry
 from dotkit_migrate._compat import tomllib
+from dotkit_migrate.declared import Declared
 from dotkit_migrate.migrators import config_files
 from dotkit_migrate.model import Facts
 from tests import fake
@@ -46,15 +47,6 @@ class ConfigFilesTests(unittest.TestCase):
         # The scan checks your mise config for secrets, as every config file.
         self.assertEqual(s.mise_config.path, h.home / ".config/mise/config.toml")
         self.assertTrue(s.mise_config.secrets)
-
-    def test_layered_mise(self):
-        facts = self.p.scan()
-        c = self.p.defaults(self.repo)
-        self.assertEqual(c.option("file:.config/mise/config.toml"), "layer")
-        user = config_files.layered_mise(facts, c)
-        self.assertEqual((user.tools, user.settings), ({"jq": "latest"}, {"experimental": True}))
-        c.options["file:.config/mise/config.toml"] = "keep"
-        self.assertIsNone(config_files.layered_mise(facts, c))
 
     def test_the_tools_of_your_layered_mise_config_are_not_added_again(self):
         """config_files sets your file as the base after the tool migrators: they skip its tools, no conflict."""
@@ -122,7 +114,7 @@ class ConfigFilesTests(unittest.TestCase):
         c.options["file:.config/mise/config.toml"] = "keep"
         facts = s.scan()
         self.assertEqual(config_files.mise_target(facts, c), "kept")
-        self.assertEqual(config_files.user_mise_tools(facts), {})
+        self.assertFalse(Declared.for_setup(facts.base, facts).yours_mise_key("jq"))
         result = s.build(c)
         self.assertIsNone(result.links[".config/mise/config.toml"])
         self.assertNotIn("config/mise.toml", result.files)
@@ -132,19 +124,19 @@ class ConfigFilesTests(unittest.TestCase):
         facts = self.p.scan()
         c = self.p.defaults(self.repo)
         self.assertEqual(config_files.mise_target(facts, c), "repository")
-        self.assertEqual(config_files.user_mise_tools(facts), {"jq": "latest"})
+        self.assertTrue(Declared.for_setup(facts.base, facts).yours_mise_key("jq"))
         c.options["file:.config/mise/config.toml"] = "keep"
         self.assertEqual(config_files.mise_target(facts, c), "kept")
-        self.assertEqual(config_files.user_mise_tools(facts), {"jq": "latest"})
+        self.assertTrue(Declared.for_setup(facts.base, facts).yours_mise_key("jq"))
         h = fake.Home()
         self.addCleanup(h.cleanup)
         empty = fake.session(h, fake.brew_runner()).scan()
         self.assertIsNone(config_files.mise_target(empty, c))
-        self.assertEqual(config_files.user_mise_tools(empty), {})
+        self.assertFalse(Declared.for_setup(empty.base, empty).yours_mise_key("jq"))
         # Without the facts of config_files (its scan failed), too.
         none = Facts(facts.identity, facts.base)
         self.assertIsNone(config_files.mise_target(none, c))
-        self.assertEqual(config_files.user_mise_tools(none), {})
+        self.assertFalse(Declared.for_setup(none.base, none).yours_mise_key("jq"))
 
     def test_file_choices(self):
         p = self.build(options={"file:.config/ghostty/config": "replace", "file:.config/starship.toml": "dotkit",

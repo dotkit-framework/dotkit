@@ -16,7 +16,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dotkit_migrate import adopt, base
+from dotkit_migrate import writer
+from dotkit_migrate.model import AdoptOptions
 from tests import fake, test_golden
 
 NIX = shutil.which("nix")
@@ -155,10 +156,13 @@ class NixListTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         declared = {"masApps": json.loads(out.stdout)}
         self.assertEqual(declared["masApps"], {"Keynote": 1})
-        scan = fake.session(h, fake.brew_runner(mas="409183694 Keynote (14.2)\n")).scan()
-        m = adopt.missing(scan, repo, base.Base(fake.ROOT), declared)
-        self.assertEqual(m.mas, [(409183694, "Keynote (409183694)")])
-        adopt.apply(m, repo)
+        result = fake.session(h, fake.brew_runner(mas="409183694 Keynote (14.2)\n")).adopt(repo, declared,
+                                                                                              AdoptOptions())
+        self.assertEqual(result.output, ["App Store apps -> nix/mas.txt:", "  409183694 Keynote (409183694)",
+                                         "App Store apps, added under another name:",
+                                         "  `Keynote` (ID 409183694): another app has this name, so nix/mas.txt "
+                                         "lists it as `Keynote (409183694)`."])
+        writer.apply_edits(result, repo)
         out = eval_mac(module, "masApps", "--json")
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(json.loads(out.stdout), {"Keynote": 1, "Keynote (409183694)": 409183694})

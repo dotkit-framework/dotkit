@@ -114,8 +114,8 @@ class ListDocTests(unittest.TestCase):
         files, _ = d.render()
         # Adopt mode: after the existing text, with one comment for the run.
         self.assertEqual(files["nix/taps.txt"], "# mine\nacme/tools https://example.com/tools.git\n"
-                                                "# From mac, see MIGRATION.md.\nx/y https://example.com/y.git\n")
-        self.assertEqual(files["nix/mas.txt"], "1 Pages\n# From mac, see MIGRATION.md.\n2 Pages (2)\n")
+                                                "# Added by dotkit migrate on mac.\nx/y https://example.com/y.git\n")
+        self.assertEqual(files["nix/mas.txt"], "1 Pages\n# Added by dotkit migrate on mac.\n2 Pages (2)\n")
 
     def test_strict_conflict_raises(self):
         d = setup_docs(strict=True)
@@ -332,6 +332,25 @@ class MiseDocTests(unittest.TestCase):
                          '[tools]\nx = "1"\n"a" = "1"\n\n[settings]\ny = 1\n')
         self.assertEqual(docs.insert_tools("[env]\nA = '1'\n", ['"a" = "1"']),
                          "[env]\nA = '1'\n\n[tools]\n\"a\" = \"1\"\n")
+
+
+class FlaggedTests(unittest.TestCase):
+    """The views say whether the secret check flags the exact line that an entry would be."""
+
+    def test_flagged(self):
+        d = setup_docs()
+        t = d.begin("x")
+        self.assertTrue(t.mise().flagged("pipx:detect-secrets", "latest"))
+        self.assertFalse(t.mise().flagged("pipx:ruff", "latest"))
+        self.assertTrue(t.list("nix/mas.txt").flagged("123 Token: Keeper"))
+        self.assertFalse(t.list("nix/mas.txt").flagged("123 Keynote"))
+        self.assertFalse(t.list("nix/brews.txt").flagged("wget"))
+        t.rollback()
+        # The tool line as MiseDoc writes it is the line that was checked.
+        t = d.begin("x")
+        t.mise().add_tool("pipx:detect-secrets", "latest")
+        t.commit()
+        self.assertIn('\n"pipx:detect-secrets" = "latest"\n', d.render()[0]["config/mise.toml"])
 
 
 class LinksAndFilesTests(unittest.TestCase):

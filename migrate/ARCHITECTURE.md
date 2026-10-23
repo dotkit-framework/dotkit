@@ -176,7 +176,7 @@ the runner and the environment, which belong to the scan. What they need
 from outside comes through `Facts` (section 4.2).
 
 Pure helpers of one migrator that others call take facts and choices, for
-example `config_files.layered_mise(facts, choices)` and
+example `config_files.mise_target(facts, choices)` and
 `config_files.merged_sources(facts, choices)` (the files merged into one
 repository file). They must handle missing facts (`None`).
 
@@ -381,7 +381,7 @@ The document types:
 
 | Type | Files | Operations | Checks at add | Adopt mode |
 |---|---|---|---|---|
-| `ListDoc` | `nix/brews.txt`, `nix/casks.txt`, `nix/taps.txt`, `nix/mas.txt` | `add(entry, comment="") -> bool`, `names()`, `added()` | brews/casks: one word without `#`; taps: `owner/repo` and an optional URL without spaces; mas: digits, a space, then a non-empty name | yes: appends after the existing text, with one `# From <host>, see MIGRATION.md.` comment per run |
+| `ListDoc` | `nix/brews.txt`, `nix/casks.txt`, `nix/taps.txt`, `nix/mas.txt` | `add(entry, comment="") -> bool`, `names()`, `added()` | brews/casks: one word without `#`; taps: `owner/repo` and an optional URL without spaces; mas: digits, a space, then a non-empty name | yes: appends after the existing text, with one comment per run: `# From <host>, see MIGRATION.md.` in setup, `# Added by dotkit migrate on <host>.` in adopt, which writes no MIGRATION.md |
 | `MiseDoc` | `config/mise.toml` | `add_tool(key, value, comment="") -> bool`, `has_tool(key)`, `set_base(text)`, `set_setting(key, value) -> bool`, `replace_setting(key, value, expect) -> bool`, `added()` | key: non-empty, no newline; value: str, list of str, or a flat table of str/int/bool | yes (`add_tool` only) |
 | `LinksDoc` | `nix/home.nix` `dotkit.links` (anchor `    ".zshrc.local" = "config/zsh/zshrc";\n`, `plan.py:834`) | `link(target, source_or_None) -> bool` | target relative to home, no `..`; source a repository path or None | no |
 | `ShellRcDoc` | `config/zsh/zshenv`, `config/zsh/zprofile`, `config/zsh/zshrc`, `config/bash/bash_profile`, and their `local/<name>.<shell>` | `add_part(header, text)`, `add_secret(text)`, `ensure()` (write the file even when empty) | main in `SHELL_LAYERS` | no |
@@ -399,8 +399,8 @@ The document types:
   comes after the tool migrators in `MIGRATORS`, so `set_base` usually runs
   last. The tool migrators therefore never rely on the document to skip the
   tools of your mise config. They ask a pure helper:
-  `config_files.layered_mise(facts, choices)` until step 12, and
-  `Declared.mise_key` from step 12. `MiseDoc` keeps tool entries apart from
+  `Declared.yours_mise_key` (before step 12, a helper of `config_files` did
+  this). `MiseDoc` keeps tool entries apart from
   the base text and renders them into the final base. If `set_base` brings a
   key that a committed entry already has, that is a conflict (strict mode
   raises).
@@ -448,8 +448,10 @@ class Declared:
     def for_repo(cls, base: Base, repo: Path, nix_declared: dict, facts: Facts) -> "Declared": ...
     def brew(self, name: str, kind: str) -> Optional[str]   # what provides it, e.g. "ripgrep (dotkit, from Nix)",
                                                              # "jq (your mise config)"; None: nothing does
-    def mise_key(self, key: str) -> bool
-    def tool(self, name: str) -> bool                        # via BREW_ALIASES and mise_short
+    def mise_key(self, key: str) -> bool                     # the base, the repository, or your mise config
+    def yours_mise_key(self, key: str) -> bool               # your mise config only
+    def tool(self, name: str) -> bool                        # a command that the base or the repository has,
+                                                             # from Nix, Homebrew, or mise (BREW_ALIASES, mise_short)
     def tap(self, name: str) -> bool
     def mas_id(self, app_id: int) -> bool
     def mas_name(self, name: str) -> bool                    # a name that is taken: the raw names of
@@ -469,10 +471,47 @@ class Declared:
   and `nix/mas.txt`, and any entries that someone wrote into `homebrew.*` by
   hand. Adopt only ever writes to the two list files.
 
-A Homebrew formula is skipped when `brew()` returns something. The report
-says what provides it and how to remove the Homebrew copy. This replaces
-`Planner.brew_split` (`plan.py:110-118`) and `adopt.missing`
+How the migrators use it. The skips are the same in setup and in adopt; the
+report sentences below are written in setup only. Adopt skips a declared
+item silently, so that a second run with nothing new outputs nothing.
+
+- A Homebrew formula is skipped when `brew()` returns something. The report
+  says what provides it and how to remove the Homebrew copy. For a tool of
+  your mise config, that is a block of its own in "Homebrew copies of
+  dotkit tools": "Your mise config has these tools, so they are not in your
+  lists. The Homebrew copy stays installed. Remove it when nothing else
+  needs it; brew says when another formula depends on it." with items such
+  as "`jq`: your mise config has jq. `brew uninstall jq`".
+- An npm, pipx, cargo, or Go tool is skipped when `tool()` is true (for
+  example `cargo:bat`, which the base has from Nix), with a block in "Tools
+  that are not in mise": "dotkit has these tools already, so they are not
+  added." and items such as "`bat` (cargo install): dotkit has bat (from
+  Nix). Old copy: `cargo uninstall bat`". It is skipped silently when
+  `yours_mise_key` is true for its key (`npm:prettier`), and in adopt also
+  when `mise_key` is.
+- A runtime asks `yours_mise_key` only. The base's `node = "24"` is a
+  default, not a version of yours, so an nvm `node 20` is still offered and
+  added.
+
+`yours_mise_key` replaces `config_files.user_mise_tools`, which goes. This
+replaces `Planner.brew_split` (`plan.py:110-118`) and `adopt.missing`
 (`adopt.py:31-74`).
+
+A generated line can look like a secret only because of a name: the mise
+line `"pipx:detect-secrets" = "latest"`, or an App Store line `123 Token:
+Keeper`. Before it adds an entry, a migrator asks the view
+(`ListView.flagged(entry)`, `MiseView.flagged(key, value)`, which run
+`secrets.line_secret` on the exact line that would be written). A flagged
+entry is not added, in setup and in adopt alike, and it gets a to-do. That
+to-do, and any other text about the entry (for example under "Not carried,
+by your choice" when it is deselected), names it without the flagged line:
+a tool by its name and its `mise use -g` command, an App Store app by its
+ID, a tap by its name, with `brew tap-info <name>` for its URL. For
+example: "`detect-secrets` (pipx): dotkit's secret check flags its line in
+config/mise.toml, so it is not added. Add it by hand: `mise use -g
+pipx:detect-secrets`." So the guard never has to mask such a line, and
+adopt never stops on one. In adopt, the to-do comes back on each run until
+the entry is added by hand: it is still missing.
 
 The `appstore` migrator gives an app the `<name> (<id>)` label (section
 12.3) when `Declared.mas_name` or the `nix/mas.txt` document already has its
@@ -568,8 +607,14 @@ class Plan:
   (`onexc` on Python 3.12 and newer, `onerror` on 3.9); if the directory
   still remains, a note on stderr names it.
 - `apply_edits(result, repo)` for adopt:
-  1. write every changed file as a sibling temp file;
-  2. verify them;
+  1. check that each file still has the text that the plan was built from
+     (otherwise stop: "<file> changed since the scan; run dotkit migrate
+     again"); resolve a list file that is a link to its target, which must
+     be inside the repository (otherwise stop with an error); then write
+     every changed file as a temp file next to its target;
+  2. verify them: only lines that the file did not have before count, so a
+     repository that already holds a line that looks like a secret can
+     still be adopted into;
   3. `os.replace` them one by one;
   4. if one replace fails, write back the old texts kept in memory.
 
@@ -1089,11 +1134,11 @@ class Runtimes(Migrator):
                      note="off: mise installs them; the base has " + base_runtimes(f.base))]
 
     def plan(self, f, c, txn):
-        user = config_files.layered_mise(f, c)                          # your config, if carried as "layer"
+        declared = Declared.for_setup(f.base, f)
         for tool, versions in runtime_lines(facts_of(f)).items():
             if not c.selected("runtimes", f"runtime:{tool}"):
                 continue
-            if user is not None and tool in user.tools:
+            if declared.yours_mise_key(tool):
                 ...    # "config/mise.toml has <tool> from your mise config already, so these versions were
                        #  not added; `mise use -g <tool>@<version>` for one you need"
             elif txn.mise().add_tool(tool, versions if len(versions) > 1 else versions[0]):
@@ -1251,11 +1296,11 @@ Rules for every step:
 | 7 | **Pages, per-item choices, and the new UI.** `Page`/`Item`/`Choices` of section 4.3 (Homebrew as three pages; one shell item per file); the planner returns pages instead of `groups`/`file_items`/`adoptable`, and `_Build` reads `Choices.picked`/`options`; "Not carried, by your choice"; `ui/screens.py`, `ui/curses_ui.py`, `ui/plain.py` replace `wizard.py` and `prompts.py`; `ScriptedFrontend`; `wizard_child.py` writes the new `Choices` JSON; PTY tests rewritten for the new screens, plain-prompt counts taken from the planner | UI and Choices change; default-choice goldens unchanged | 6 | STD; `wizard.py` and `prompts.py` are gone; new goldens with deselected items; UI flow tests |
 | 8 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session`. The first commit replaces `Planner` with `Session` and switches `ui/`, `__main__`, and the tests to it; the code that is not yet split runs as a private last entry of the registry. Then one migrator per commit, in `MIGRATORS` order: its scan step and its `Scan` fields, its `_Build` part, its pages, and its tests (into `tests/migrators/`) move together. rcparse parsing moves into the `shell` scan, for the page labels; `plan` parses again with the selection-aware chain (section 4.3). `Facts.get`, `Facts.base`, `Facts.check_syntax`, `needs`. One `Txn` per migrator (owner = its key), committed in `MIGRATORS` order, and a core `Txn` for the keymap, `nix/user.nix`, and the scan warnings; no rollback yet (step 11). The identity scan is core and runs first. `Session.scan` catches an exception per migrator and records `"<key>: <type>: <message>"` as a warning, until step 11 turns this into `Failure`. `adopt.py` (until step 12) reads the migrators' facts and imports `tap_lines`/`mas_lines` from `migrators/homebrew.py` and `migrators/appstore.py`. The whole-plan tests move to `tests/test_session.py` | no change, except on the failure path that no golden reaches: a scan warning now starts with the migrator key (`homebrew: …` instead of `brew: …`), warnings come in `MIGRATORS` order, and a migrator stops at its first failing part (cargo failing now also loses the Go tools of `built_tools`) | 7 | STD per commit; at the end `plan.py`, `scan.py`, the `Scan` dataclass, `_Build`, `migrators/_rest.py`, and the private registry entry are gone |
 | 9 | **Runtimes rules.** The union rule for both idiomatic settings, written by `config_files` right after its `set_base`, and a to-do instead of an edit when your mise config is kept in place (section 12.1); runtime versions in report text and page note from `Base.mise` (replaces `plan.py:181`, `490-493`); `.tool-versions` in the hint; `VersionManagerSpec.env_var` and `catalog.manager_dir` (section 12.1) for detection and for the npm and Volta scans of `node_tools`, and `npm_globs` become relative to the manager's directory (one fnm location); the version-manager item says "config/mise.toml has these versions now" only for tools that `MiseDoc.add_tool` accepted, and for a tool that your mise config already has it says "config/mise.toml has <tool> from your mise config already, so these versions were not added; `mise use -g <tool>@<version>` for one you need" (today `plan.py:482-483` checks only that the page is on) | changes report text and possibly `config/mise.toml` | 8 | goldens updated and reviewed; tests: pyenv with `python` in your mise config gets the second text; your config without the keys writes nothing; a single-line key gets the union and parses; a multi-line or dotted key gives the to-do; base values come from the base file; a kept mise config with the key gets the to-do and is not edited; `NVM_DIR` pointing elsewhere finds nvm and its npm globals there, and an `NVM_DIR` that does not exist finds no nvm even if `~/.nvm` exists; `VOLTA_HOME` is followed |
-| 9a | **Tools when your mise config is kept in place.** When `~/.config/mise/config.toml` stays in place ("keep", the only option when it has a secret), the repository's `config/mise.toml` is not linked, so mise never reads it. One pure helper, `config_files.mise_target(facts, choices)` ("repository", "kept", or `None` without a config of yours), tells the tool migrators (node_tools, python_tools, built_tools, runtimes) which case applies. `config_files.mise_dest(facts, choices)` names where your global mise tools live (`config/mise.toml`, or `~/.config/mise/config.toml` when kept), for the summary line "mise installs the tools of …" and the texts "To add one to <dest>:", "Add it to <dest> by hand", and "Move their tools to <dest>.". When it is "kept", they add nothing to `config/mise.toml`: no carried row, no "Old copy" removal line, no "has these versions now". A selected tool that your kept config already has gets nothing (`config_files.user_mise_tools(facts)`; from step 12, `Declared.mise_key`). Every other selected tool is an item of one block in the "mise" section, with the intro "Your ~/.config/mise/config.toml stays in place, so mise does not read config/mise.toml of this repository. To get these tools from mise, add them to your config:" and items such as "`typescript` (nvm v20.11.0): `mise use -g npm:typescript`". A runtime with several versions gets the first (default) one, `mise use -g node@20`, and names the others ("also installed: 18"). The version-manager item keeps "With mise: …" only for tools that are not selected. The "mise needs cargo/go for these" line appears when a cargo or Go tool is carried or gets this to-do. This replaces the outcome of the step 5 case (a mise config with a secret, forced to "layer", whose tools went into the unread file) | changes report text and `config/mise.toml` when your config is kept | 9 | goldens unchanged (no fixture keeps a mise config); tests: a kept config with npm, pipx, cargo (without cargo installed), and node 20 and 18 selected leaves `config/mise.toml` as the template and gives the block, `mise use -g node@20` with "also installed: 18", and the cargo line; a tool that the kept config has gets nothing; `test_a_mise_config_that_is_not_carried_does_not_hide_tools` is rewritten to this behavior (still no token anywhere); with a kept config, the summary line and the texts "To add one to <dest>:", "Add it to <dest> by hand", and "Move their tools to <dest>." name `~/.config/mise/config.toml` (`config_files.mise_dest(facts, choices)`); a layered config and no config at all behave as before |
+| 9a | **Tools when your mise config is kept in place.** When `~/.config/mise/config.toml` stays in place ("keep", the only option when it has a secret), the repository's `config/mise.toml` is not linked, so mise never reads it. One pure helper, `config_files.mise_target(facts, choices)` ("repository", "kept", or `None` without a config of yours), tells the tool migrators (node_tools, python_tools, built_tools, runtimes) which case applies. `config_files.mise_dest(facts, choices)` names where your global mise tools live (`config/mise.toml`, or `~/.config/mise/config.toml` when kept), for the summary line "mise installs the tools of …" and the texts "To add one to <dest>:", "Add it to <dest> by hand", and "Move their tools to <dest>.". When it is "kept", they add nothing to `config/mise.toml`: no carried row, no "Old copy" removal line, no "has these versions now". A selected tool that your kept config already has gets nothing (`config_files.user_mise_tools(facts)`; from step 12, `Declared.yours_mise_key`). Every other selected tool is an item of one block in the "mise" section, with the intro "Your ~/.config/mise/config.toml stays in place, so mise does not read config/mise.toml of this repository. To get these tools from mise, add them to your config:" and items such as "`typescript` (nvm v20.11.0): `mise use -g npm:typescript`". A runtime with several versions gets the first (default) one, `mise use -g node@20`, and names the others ("also installed: 18"). The version-manager item keeps "With mise: …" only for tools that are not selected. The "mise needs cargo/go for these" line appears when a cargo or Go tool is carried or gets this to-do. This replaces the outcome of the step 5 case (a mise config with a secret, forced to "layer", whose tools went into the unread file) | changes report text and `config/mise.toml` when your config is kept | 9 | goldens unchanged (no fixture keeps a mise config); tests: a kept config with npm, pipx, cargo (without cargo installed), and node 20 and 18 selected leaves `config/mise.toml` as the template and gives the block, `mise use -g node@20` with "also installed: 18", and the cargo line; a tool that the kept config has gets nothing; `test_a_mise_config_that_is_not_carried_does_not_hide_tools` is rewritten to this behavior (still no token anywhere); with a kept config, the summary line and the texts "To add one to <dest>:", "Add it to <dest> by hand", and "Move their tools to <dest>." name `~/.config/mise/config.toml` (`config_files.mise_dest(facts, choices)`); a layered config and no config at all behave as before |
 | 10 | **Registry invariants.** Unique page keys and item-id prefixes; `sections` ⊆ `SECTIONS` (`ORDER` becomes `SECTIONS`); the empty home; the AST no-write test; the secret property test; every section intro passes `secrets.line_secret(...) is None`: the literals, module constants, and fixed parts of f-strings in `.todo(...)` calls, and every block intro of the fixture plans as built (before masking); the rcparse hints too; page intros and notes are not checked (they are not in MIGRATION.md). An intro never holds user data; that belongs in an item. Also: `shutil.move` and `shutil.rmtree` are forbidden in `migrators/`, and each migrator writes only the sections it declares | no change | 8 | the tests pass; a migrator that writes a file, or copies a token file, fails them; an intro with "password manager" in it fails |
 | 10a | **Secret names inside other assignments.** `secrets._ASSIGNMENTS` becomes a lookahead, like `_SETTINGS`, so that `finditer` checks every `name=`/`name:` position, also one inside the value of an earlier match (`Note: PASSWORD=…`, `run: PGPASSWORD=… psql`, `x=TOKEN=…`, `-Dapi.password=…`, `?token=…`). The named groups stay. A name is at most 256 characters (`[A-Za-z_][\w.\-]{0,255}`), so each position costs the same and a long line stays linear. Every user of `secrets` gets the fix: the shell router, the guard, and the verification; step 11's failure text calls `secrets.line_secret` directly, with no prefix stripping of its own | changes secret detection: more lines are secrets | 10 | goldens unchanged; tests: a `~/.zshrc` with `export JAVA_OPTS=-Dapi.password=…` and `export PIP_INDEX_URL=https://…?token=…` sends both lines to `local/zshrc.zsh`; `Note: PASSWORD=…` is flagged; `export PATH=$HOME/bin:$PATH`, `export LESS=-R`, and `alias ll='ls -l'` stay clean; a 1 MB file is still scanned in about the time it took before (a smoke test); a 20 KB line `x=foo-bar-baz-…` is scanned within a fixed bound; a name of 200 characters with a secret value is still flagged; on the real Mac, a read-only comparison of the old and the new `line_secret` over the text files of the home directory lists each line that is newly flagged (file, line number, and the name found, never the value), and the list is reviewed |
 | 11 | **Crash isolation.** One transaction per migrator; isolated `scan` and `pages`; `Failure`; the identity pseudo-migrator; `manual_steps` for every migrator (section 7.5 texts for `shell` and `config_files`); "Problems during the migration"; summary and stderr lines; `--debug`; masking; strict mode (`fake.session` default, `DOTKIT_MIGRATE_STRICT=1` in the e2e job, hidden `--strict`); exit code 0 with failures; in the UI, the warning line and the review Problems block (section 8) | the scan catch-all (`scan.py:648-651`, by then inside the migrators) becomes isolation; plan crashes are newly isolated | 10 | `tests/test_isolation.py`; UI flow tests for the warning line and the Problems block; the failure text of `ValueError('bad entry: _authToken=…')` is masked (section 6, point 5); the plan goldens gain only `"failures": []` (`Plan.failures`, section 4.8), in a commit of its own; nothing else in them changes, because the fixtures have no faults; an isolation test with `other:.bashrc` selected and `other_config.plan` raising still has the `~/.bashrc` note under "Other shell files" |
-| 12 | **Adopt unification.** `Declared` (section 4.5); `adopt()` for homebrew, appstore, node_tools, python_tools, built_tools; `Session.adopt`; `writer.apply_edits`; adopt output from the documents' `added()` and the report; `adopt.py` removed; the pnpm rule applies to npm packages only (today `adopt.py` skips a package named `pnpm` from any backend). Setup now also skips a formula that your mise config provides | de-duplication change | 11 | goldens updated and reviewed; `adopt.py` is gone; tests: your mise config has `jq` and brew has `jq` → skipped in setup and adopt; apply twice → the second run adds nothing; a fault in the second replace restores the first file |
+| 12 | **Adopt unification.** `Declared` (section 4.5); `adopt()` for homebrew, appstore, node_tools, python_tools, built_tools; `Session.adopt`; `writer.apply_edits`; adopt output from the documents' `added()` and the report; `adopt.py` removed; the pnpm rule applies to npm packages only (today `adopt.py` skips a package named `pnpm` from any backend). Setup now also skips a formula that your mise config provides, and an npm, pipx, cargo, or Go tool that the base has (`Declared.tool`), as adopt does; runtimes ask `Declared.yours_mise_key` only (section 4.5) | de-duplication change; the adopt list comment becomes `# Added by dotkit migrate on <host>.` | 11 | goldens updated and reviewed (adopt and plan goldens); `adopt.py` is gone; tests: your mise config has `jq` and brew has `jq` → skipped in setup and adopt; `cargo:bat` with `bat` in the base → not offered in setup, not added in adopt, with the "dotkit has" item; an nvm `node 20` with the base's `node = "24"` is still offered and added; a repository with an existing secret-looking line can still be adopted into, and a new secret line still aborts; apply twice → the second run adds nothing; a fault in the second replace restores the first file |
 | 13 | **Leftovers report** (section 11). `Package.commands`; executable listings in the `shell` and `leftovers` scans; `base.TOOL_PATH` checked against `nix/home.nix`; report-only parsing of `~/.bashrc`, `~/.zlogin`, `~/.zlogout`, `~/.profile`; the shadowing warnings with their context and fixes; the Homebrew stale/cleanup warning, including deselected items; the reference check next to every removal | new report text | 8 | goldens updated and reviewed; fixtures: `~/.npm-global/bin` with `tsc` carried from `~/.zshrc` while `npm:typescript` moves to mise → "interactive shells" warning with file and line; `~/.local/bin/ruff` while `pipx:ruff` moves → "GUI apps" warning; `source ~/.nvm/nvm.sh` in `~/.bashrc` → "still runs"; a carried line that re-adds `/opt/homebrew/bin` → no warning |
 | 14 | **Package docstring.** `dotkit_migrate/__init__.py` points to this file and keeps the Python 3.9 rules; README "Work on dotkit" mentions it | no change | all | review |
 
