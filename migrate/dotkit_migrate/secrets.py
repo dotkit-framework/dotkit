@@ -27,7 +27,7 @@ _VALUE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("a Google API key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}")),
     ("a private key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
     ("a JSON web token", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.")),
-    ("a password in a URL", re.compile(r"[a-z][a-z0-9+.-]*://[^\s/:@'\"]+:[^\s/@'\"$]+@")),
+    ("a password in a URL", re.compile(r"[a-z][a-z0-9+.-]{0,31}://[^\s/:@'\"]+:[^\s/@'\"$]+@")),
     ("a user and password", re.compile(r"(^|\s)(-u|--user|--password)[\s=]+['\"]?[^\s'\"$:]+:[^\s'\"$]+")),
     ("an authorization header", re.compile(
         r"(?i)\b(authorization:\s*)?(bearer|basic|token)\s+[A-Za-z0-9+/=_.\-]{20,}")),
@@ -47,10 +47,14 @@ _SECRET_NAME = re.compile(
 
 # NAME=value or name = value or name:value, anywhere in a line: after
 # export, typeset -x, local, { or ;, inside an alias value, in a comment.
-# Names may be quoted, as in JSON config.
+# Names may be quoted, as in JSON config. A lookahead, like _SETTINGS, so
+# that finditer checks every position, also a name inside the value of an
+# earlier match: `Note: PASSWORD=...`, `x=TOKEN=...`, `-Dapi.password=...`.
+# A name has at most 256 characters, so each position costs the same and a
+# long line stays linear.
 _ASSIGNMENTS = re.compile(
-    r"""(?<![\w$.])(?P<name>[A-Za-z_][\w.\-]*)["']?(?P<sep>\s*=\s*|:\s*)"""
-    r"""(?P<value>"[^"]*"?|'[^']*'?|[^\s;&|)}'"]+)"""
+    r"""(?=(?<![\w$.])(?P<name>[A-Za-z_][\w.\-]{0,255})["']?(?P<sep>\s*=\s*|:\s*)"""
+    r"""(?P<value>"[^"]*"?|'[^']*'?|[^\s;&|)}'"]+))"""
 )
 
 # Config directives and CLI options with a space rather than =. The
@@ -61,6 +65,8 @@ _SETTINGS = re.compile(
 )
 _SSHPASS = re.compile(r"""\bsshpass\s+-p\s*(["'][^"']*["']|[^\s;&|)}'"]+)""")
 
+# A URL scheme has at most 32 characters, so a long run of scheme characters
+# stays linear; the patterns are not anchored, so a match still ends at "://".
 # Allow only the hash value in a revision field or URL, never the rest of
 # the line: a neighboring token still needs all the normal secret checks.
 _HEX_REV = r"[0-9a-fA-F]{40}(?![0-9a-fA-F])"
@@ -68,7 +74,7 @@ _REV_FIELD = re.compile(
     rf"""(?i)(?<![\w.-])["']?(?:commit|rev|sha|hash|revision)["']?\s*[:=]\s*["']?({_HEX_REV})"""
 )
 _REV_URL = re.compile(
-    rf"""[a-z][a-z0-9+.-]*://[^\s'"`<>]*?(?:[#@]|[?&]rev=)({_HEX_REV})"""
+    rf"""[a-z][a-z0-9+.-]{{0,31}}://[^\s'"`<>]*?(?:[#@]|[?&]rev=)({_HEX_REV})"""
 )
 
 

@@ -135,6 +135,17 @@ class ShellTests(unittest.TestCase):
                 self.assertNotIn("DEV", text, rel)
                 self.assertNotIn("GOPATH", text, rel)
 
+    def test_names_inside_values_go_to_local(self):
+        """Step 10a: a secret name inside the value of another assignment sends the line to local/."""
+        java = "export JAVA_OPTS=-Dapi.password=hunter2hunter2"
+        pip = "export PIP_INDEX_URL=https://pypi.example.com/simple?token=hunter2hunter2"
+        self.h.write(".zshrc", f"{java}\n{pip}\nexport LESS=-R\n")
+        s = fake.session(self.h, fake.brew_runner())
+        p = s.build(s.defaults(self.repo))
+        self.assertEqual(p.local["local/zshrc.zsh"], f"# From ~/.zshrc.\n{java}\n{pip}\n")
+        self.assertIn("export LESS=-R", p.files["config/zsh/zshrc"])
+        self.assertNotIn("hunter2", "".join(p.files.values()) + p.report + "\n".join(p.summary))
+
     def test_failed_syntax_check_reports_the_lines(self):
         self.h.write(".zshrc", "f() {\n  echo hi\n}\nexport A=1\n")
         s = fake.session(self.h, fake.brew_runner(), check=lambda shell, text: "f()" not in text)

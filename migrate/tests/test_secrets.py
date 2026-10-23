@@ -1,3 +1,4 @@
+import time
 import unittest
 
 from dotkit_migrate import secrets
@@ -166,6 +167,43 @@ class SecretTests(unittest.TestCase):
             "url = https://github.com/jane/repo",
         ):
             self.assertIsNone(secrets.line_secret(line), line)
+
+    def test_a_name_inside_the_value_of_another(self):
+        """Every name=/name: position is checked, also one inside the value of an earlier match (step 10a)."""
+        lines = {
+            "export JAVA_OPTS=-Dapi.password=hunter2hunter2": "Dapi.password",
+            "export PIP_INDEX_URL=https://pypi.example.com/simple?token=hunter2hunter2": "token",
+            "Note: PASSWORD=hunter2hunter2": "PASSWORD",
+            "run: PGPASSWORD=hunter2hunter2 psql": "PGPASSWORD",
+            "x=TOKEN=hunter2hunter2": "TOKEN",
+        }
+        for line, what in lines.items():
+            self.assertEqual(secrets.line_secret(line), what, line)
+        for line in ("export PATH=$HOME/bin:$PATH", "export LESS=-R", "alias ll='ls -l'"):
+            self.assertIsNone(secrets.line_secret(line), line)
+
+    def test_a_large_file_is_still_fast(self):
+        """A smoke test: many ordinary lines, 1 MB, took about 0.45 s (0.37 s before step 10a).
+
+        The long lines of test_long_names_stay_linear test the slower path, each with its own bound.
+        """
+        line = "export PATH=$HOME/bin:$PATH; alias ll='ls -l' # a=b c=d e: f url=https://x.example.com/a?b=c&d=e\n"
+        text = line * (1_000_000 // len(line))
+        start = time.perf_counter()
+        self.assertEqual(secrets.scan_text(text), [])
+        self.assertLess(time.perf_counter() - start, 10.0)
+
+    def test_long_names_stay_linear(self):
+        """Names and URL schemes are bounded, so a long line of their characters is scanned in linear time."""
+        for line in ("x=" + "-".join(["foo", "bar", "baz"] * 2300)[:20_000], "x=" + "a-" * 10_000):
+            start = time.perf_counter()
+            secrets.line_secret(line)
+            self.assertLess(time.perf_counter() - start, 0.5, line[:20])
+        name = "a" * 190 + "_PASSWORD"
+        self.assertEqual(secrets.line_secret(f"export {name}=hunter2hunter2"), name)
+        # A URL scheme has at most 32 characters: a long run of scheme characters in front still ends at "://".
+        self.assertEqual(secrets.line_secret("see " + "a-" * 500 + "https://jane:hunter2hunter2@example.com"),
+                         "a password in a URL")
 
     def test_scan_text_has_lines_not_values(self):
         found = secrets.scan_text(fake.fill("a=1\nexport GITHUB_TOKEN=@GH@\n"))
