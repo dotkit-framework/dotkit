@@ -107,10 +107,9 @@ def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs
                "mise installs these at the end of setup (`mise install`). The old copies stay, and "
                "they can come first in PATH. Remove each one when the mise copy works.",
                old)
-    if manual:
-        why = ""
-        if key in catalog.BUILT_FROM_SOURCE:
-            why = f"mise builds {catalog.BUILT_FROM_SOURCE[key]} tools from source, so they are off by default."
-        r.todo("Tools that are not in mise", (why + " " if why else "") +
-               f"They stay where they are. To add one to {dest}:", manual)
+    if manual and key in catalog.BUILT_FROM_SOURCE:
+        r.todo("Tools that are not in mise", f"mise builds {catalog.BUILT_FROM_SOURCE[key]} tools from source, so "
+               f"they are off by default. They stay where they are. To add one to {dest}:", manual)
+    elif manual:
+        r.todo("Tools that are not in mise", f"They stay where they are. To add one to {dest}:", manual)
     return to_mise

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import datetime
 
-# The order of the sections under "To do". Shell line sections go where
-# "Shell lines" is, in the order of rcparse.CATEGORIES.
-ORDER = (
+# The one ordered list of the sections under "To do". Shell line sections go
+# where "Shell lines" is, in the order of rcparse.CATEGORIES. Each migrator's
+# `sections` is a part of it (tests/test_registry.py).
+SECTIONS = (
     "Secrets",
     "Logins",
     "Config files",
@@ -29,12 +30,12 @@ ORDER = (
 
 
 def _sorted(sections: dict) -> list:
-    """The sections in ORDER, and in the order they first appear within one place of it."""
+    """The sections in SECTIONS, and in the order they first appear within one place of it."""
     first = list(sections)
 
     def key(title: str) -> tuple[int, int]:
         head = "Shell lines" if title.startswith("Shell lines") else title
-        rank = ORDER.index(head) if head in ORDER else len(ORDER)
+        rank = SECTIONS.index(head) if head in SECTIONS else len(SECTIONS)
         return rank, first.index(title)
 
     return [sections[t] for t in sorted(sections, key=key)]

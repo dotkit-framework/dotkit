@@ -118,12 +118,18 @@ class BuiltTools(Migrator):
         if b is None:
             return
         pages = self.pages(f)
-        # Next to the tools: in the "mise" block when your mise config is kept in place.
-        where = ("mise", config_files.KEPT_INTRO) if config_files.mise_target(f, c) == "kept" else \
-            ("Tools that moved to mise", "")
+        kept = config_files.mise_target(f, c) == "kept"
         if plan_tools(f, c, txn, pages, "cargo", b.cargo, "# From cargo install, see MIGRATION.md.",
                       "cargo uninstall {name}") and not b.has_cargo:
-            txn.report.todo(*where, ["mise needs cargo for these: `mise use -g rust`."])
+            _needs(txn, kept, "mise needs cargo for these: `mise use -g rust`.")
         if plan_tools(f, c, txn, pages, "go", b.go, "# From ~/go/bin, see MIGRATION.md.",
                       "rm {path}") and not b.has_go:
-            txn.report.todo(*where, ["mise needs go for these: `mise use -g go`."])
+            _needs(txn, kept, "mise needs go for these: `mise use -g go`.")
+
+
+def _needs(txn: Txn, kept: bool, line: str) -> None:
+    """A line next to the tools: in the "mise" block when your mise config is kept in place."""
+    if kept:
+        txn.report.todo("mise", config_files.KEPT_INTRO, [line])
+    else:
+        txn.report.todo("Tools that moved to mise", "", [line])

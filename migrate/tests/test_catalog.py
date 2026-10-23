@@ -145,6 +145,14 @@ class CatalogRegexTests(unittest.TestCase):
             "nvm": "NVM_DIR", "fnm": "FNM_DIR", "volta": "VOLTA_HOME", "pyenv": "PYENV_ROOT",
             "rbenv": "RBENV_ROOT", "asdf": "ASDF_DATA_DIR", "sdkman": "SDKMAN_DIR", "jenv": "JENV_ROOT"})
 
+    def test_nvm_default_is_the_first_line(self):
+        """Like the version files of pyenv, rbenv, and jenv: what follows the first line is not the version."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        h.write(".nvm/alias/default", "22\n# x\n")
+        nvm = next(s for s in catalog.VERSION_MANAGERS if s.name == "nvm")
+        self.assertEqual(nvm.default(h.home / ".nvm"), "22")
+
     def test_names_unique(self):
         for specs in (catalog.VERSION_MANAGERS, catalog.FRAMEWORKS):
             names = [s.name for s in specs]

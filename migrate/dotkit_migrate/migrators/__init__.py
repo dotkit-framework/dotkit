@@ -47,7 +47,7 @@ class Migrator:
     key: str = ""  # stable id: the facts key, the Txn owner, the test name
     title: str = ""  # human name for problems and warnings
     needs: Tuple[str, ...] = ()  # facts it cannot work without
-    sections: Tuple[str, ...] = ()  # the report sections it writes
+    sections: Tuple[str, ...] = ()  # the report sections it writes, each in report.SECTIONS
 
     def scan(self, ctx: Context) -> object:
         """Read-only: this migrator's facts. Never writes."""

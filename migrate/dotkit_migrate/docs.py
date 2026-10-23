@@ -33,7 +33,7 @@ from . import base as base_mod
 from . import rcparse, secrets
 from ._compat import tomllib
 from .context import tilde
-from .report import ORDER
+from .report import SECTIONS
 
 # --- Text helpers
 
@@ -840,7 +840,7 @@ class ReportDoc(_Doc):
 
     def todo(self, txn: Txn, title: str, intro: str, items: List[str]) -> None:
         """Add to the block of the section with the same intro, or start a new block. Items are not repeated."""
-        if title not in ORDER and title not in _SHELL_SECTIONS:
+        if title not in SECTIONS and title not in _SHELL_SECTIONS:
             raise ValueError(f"not a section of the report: {title!r}")
         w = self._w(txn)
         sec = w.sections.get(title)

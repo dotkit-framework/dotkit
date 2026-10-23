@@ -75,7 +75,7 @@ def _volta_default(root: Path) -> str:
 # In scan order.
 VERSION_MANAGERS: tuple[VersionManagerSpec, ...] = (
     VersionManagerSpec(
-        "nvm", (".nvm",), "node", "versions/node", lambda root: read_text(root / "alias/default").strip(),
+        "nvm", (".nvm",), "node", "versions/node", _first_line("alias/default"),
         env_var="NVM_DIR", mise_replaces=True, words=("nvm", "NVM_DIR"), extra_vars=("NVM_DIR",),
         path_markers=(r"\.nvm",),
         npm_globs=(("versions/node/*/lib/node_modules", -3),)),
