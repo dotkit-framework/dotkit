@@ -1,0 +1,55 @@
+{
+  "describe": [
+    "Homebrew formulae -> nix/brews.txt:",
+    "  hashicorp/tap/terraform",
+    "  acme/tools/thing",
+    "Homebrew casks -> nix/casks.txt:",
+    "  zed",
+    "Tools -> config/mise.toml:",
+    "  npm:eslint (from ~/.npm-global)",
+    "  npm:prettier (from bun)",
+    "  pipx:black (from pipx)",
+    "  pipx:datasette (from uv tool)",
+    "  pipx:httpie (from uv tool)",
+    "  cargo:cargo-watch (from cargo install)",
+    "  go:github.com/rakyll/hey (from <HOME>/go/bin/hey)",
+    "Homebrew taps: add them to homebrew.taps in nix/darwin.nix by hand:",
+    "  \"acme/tools\"",
+    "App Store apps: add them to homebrew.masApps in nix/darwin.nix by hand:",
+    "  \"Pixelmator Pro\" = 1289583905;",
+    "  \"C# Toolkit\" = 1234567890;",
+    "  \"Notes ✏️\" = 1274495053;",
+    "  \"Café \\\"Pro\\\"\" = 1500000001;",
+    "  Keynote = 409183694;",
+    "  Keynote = 409183695;"
+  ],
+  "edited": {
+    "config/mise.toml": [
+      "[tools]",
+      "\"npm:typescript\" = \"latest\"",
+      "\"npm:eslint\" = \"latest\"",
+      "\"npm:prettier\" = \"latest\"",
+      "\"pipx:black\" = \"latest\"",
+      "\"pipx:datasette\" = \"latest\"",
+      "\"pipx:httpie\" = \"latest\"",
+      "\"cargo:cargo-watch\" = \"latest\"",
+      "\"go:github.com/rakyll/hey\" = \"latest\"",
+      "",
+      "[settings]",
+      "experimental = true",
+      ""
+    ],
+    "nix/brews.txt": [
+      "# mine",
+      "wget",
+      "hashicorp/tap/terraform",
+      "acme/tools/thing",
+      ""
+    ],
+    "nix/casks.txt": [
+      "raycast",
+      "zed",
+      ""
+    ]
+  }
+}

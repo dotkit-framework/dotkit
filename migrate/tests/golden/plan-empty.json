@@ -1,0 +1,64 @@
+{
+  "blockers": [],
+  "copies": {},
+  "files": {
+    "MIGRATION.md": [
+      "# Migration from golden-mac",
+      "",
+      "dotkit setup created this repository (~/.dotfiles) from the Mac golden-mac on YYYY-MM-DD. This file lists what it carried over and what needs your attention. Work through the list, then delete this file and commit.",
+      "",
+      "Setup uninstalled nothing that was on the Mac; the Homebrew packages stay installed. A file in the way of a dotkit link is renamed to <name>.before-dotkit.",
+      "",
+      "## Carried over",
+      "",
+      "Nothing.",
+      "",
+      "## To do",
+      "",
+      "Nothing.",
+      ""
+    ],
+    "nix/user.nix": [
+      "# Your macOS account and this repository. dotkit's scripts/setup writes it.",
+      "rec {",
+      "  name = \"jane\";",
+      "  home = \"/Users/${name}\";",
+      "  dotfiles = \"${home}/.dotfiles\";",
+      "}",
+      ""
+    ]
+  },
+  "home": "<HOME>",
+  "keymap": "emacs",
+  "links": {},
+  "local": {},
+  "move_links": [],
+  "repo": "~/.dotfiles",
+  "report": [
+    "# Migration from golden-mac",
+    "",
+    "dotkit setup created this repository (~/.dotfiles) from the Mac golden-mac on YYYY-MM-DD. This file lists what it carried over and what needs your attention. Work through the list, then delete this file and commit.",
+    "",
+    "Setup uninstalled nothing that was on the Mac; the Homebrew packages stay installed. A file in the way of a dotkit link is renamed to <name>.before-dotkit.",
+    "",
+    "## Carried over",
+    "",
+    "Nothing.",
+    "",
+    "## To do",
+    "",
+    "Nothing.",
+    ""
+  ],
+  "summary": [
+    "Repository: ~/.dotfiles (new)",
+    "zsh keymap: emacs",
+    "",
+    "",
+    "MIGRATION.md: 0 items to check by hand.",
+    "",
+    "Nothing is installed or uninstalled now: Homebrew packages stay as they are.",
+    "Setup then builds and applies the configuration. Files in the way of a dotkit",
+    "link are renamed to <name>.before-dotkit. mise installs the tools of config/mise.toml."
+  ]
+}
