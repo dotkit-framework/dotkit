@@ -6,6 +6,7 @@
     "config/home/bashrc": "~/.bashrc",
     "config/starship.toml": "~/.config/starship.toml"
   },
+  "failures": [],
   "files": {
     "MIGRATION.md": [
       "# Migration from golden-mac",

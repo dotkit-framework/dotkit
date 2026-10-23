@@ -1,6 +1,7 @@
 {
   "blockers": [],
   "copies": {},
+  "failures": [],
   "files": {
     "MIGRATION.md": [
       "# Migration from golden-mac",

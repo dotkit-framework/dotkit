@@ -9,6 +9,7 @@
     "config/nvim": "~/.config/nvim",
     "config/starship.toml": "~/.config/starship.toml"
   },
+  "failures": [],
   "files": {
     ".gitignore": [
       "# dotkit builds into .build/.",
