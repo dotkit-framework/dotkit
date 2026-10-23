@@ -14,10 +14,8 @@ from pathlib import Path
 
 from . import base as base_mod
 from . import catalog
-from ._compat import tomllib
 from . import secrets
-from .migrators import tools as tools_mod
-from .context import Context, is_managed, read_json, read_text, version_key
+from .context import Context, is_managed, read_text, version_key
 
 # Shell files that the base links, and the layer files of yours that the
 # base reads after them, in the order zsh and bash read them.
@@ -91,10 +89,6 @@ class OtherConfig:
 @dataclass
 class Scan:
     home: str
-    cargo: list[tools_mod.Package] = field(default_factory=list)
-    go: list[tools_mod.Package] = field(default_factory=list)
-    has_cargo: bool = False
-    has_go: bool = False
     mise_config: Path | None = None
     mise_extra: list[str] = field(default_factory=list)  # other global mise files
     version_managers: list[VersionManager] = field(default_factory=list)
@@ -121,80 +115,10 @@ def _secrets_of(p: Path) -> list[secrets.Secret]:
 class Scanner:
     def __init__(self, ctx: Context):
         self.home = ctx.home
-        self.runner = ctx.runner
         self.base = ctx.base
-        self.env = ctx.env
-
-    def _tilde(self, p: Path) -> str:
-        s = str(p)
-        return "~" + s[len(str(self.home)):] if s.startswith(str(self.home) + "/") else s
 
     def h(self, rel: str) -> Path:
         return self.home / rel
-
-    def env_path(self, var: str, default: str) -> Path:
-        v = self.env.get(var)
-        return Path(v).expanduser() if v else self.h(default)
-
-    # --- Global tools of other package managers
-
-    def scan_cargo(self) -> None:
-        cargo_home = self.env_path("CARGO_HOME", ".cargo")
-        self.s.has_cargo = (cargo_home / "bin/cargo").exists() or bool(self.runner.which("cargo"))
-        installs: dict[str, object] = {}
-        data = read_json(cargo_home / ".crates2.json")
-        if isinstance(data, dict):
-            installs = data.get("installs") or {}
-        else:
-            try:
-                installs = tomllib.loads((cargo_home / ".crates.toml").read_text(encoding="utf-8")).get("v1", {})
-            except (OSError, ValueError):
-                installs = {}
-        out = []
-        for key in sorted(installs):
-            m = re.match(r"^(\S+) (\S+) \((.+)\)$", key)
-            if not m:
-                continue
-            name, version, source = m.groups()
-            ok = source.startswith(("registry+", "sparse+"))
-            out.append(tools_mod.Package(name, version, "cargo install", ok, "" if ok else f"installed from {source}"))
-        self.s.cargo = out
-
-    def scan_go(self) -> None:
-        go = self.runner.which("go", ("/opt/homebrew/bin", "/usr/local/go/bin"))
-        self.s.has_go = bool(go)
-        gobin = self.env.get("GOBIN")
-        d = Path(gobin) if gobin else self.env_path("GOPATH", "go") / "bin"
-        if not d.is_dir():
-            return
-        out = []
-        for p in sorted(d.iterdir()):
-            if not p.is_file() or not os.access(p, os.X_OK):
-                continue
-            module, version = self._go_module(p, go)
-            if module:
-                out.append(tools_mod.Package(module, version, self._tilde(p), True, f"the command {p.name}"))
-            else:
-                out.append(tools_mod.Package(p.name, "", self._tilde(p), False, "no Go module information"))
-        self.s.go = out
-
-    def _go_module(self, p: Path, go: str | None) -> tuple[str, str]:
-        text = self.runner.run([go, "version", "-m", str(p)], timeout=30) if go else None
-        if text:
-            m = re.search(r"(?m)^\s*path\s+(\S+)", text)
-            v = re.search(r"(?m)^\s*mod\s+\S+\s+(\S+)", text)
-            if m:
-                return m.group(1), (v.group(1) if v else "")
-        # Without go: Go writes the same lines into the binary.
-        try:
-            with open(p, "rb") as f:
-                data = f.read(64_000_000)
-        except OSError:
-            return "", ""
-        m = re.search(rb"\npath\t([^\t\n]+)\nmod\t[^\t\n]+\t([^\t\n]+)", b"\n" + data)
-        if m:
-            return m.group(1).decode(errors="replace"), m.group(2).decode(errors="replace")
-        return "", ""
 
     # --- mise and version managers
 
@@ -353,7 +277,7 @@ class Scanner:
     def run(self) -> Scan:
         self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_cargo, self.scan_go, self.scan_mise, self.scan_version_managers, self.scan_frameworks,
+            self.scan_mise, self.scan_version_managers, self.scan_frameworks,
             self.scan_shell_files, self.scan_config_files, self.scan_other_config,
         ):
             try:

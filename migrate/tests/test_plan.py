@@ -281,13 +281,6 @@ class PlanTests(unittest.TestCase):
             self.assertFalse((result.repo / "config" / name).exists())
         self.assertIn(fake.TOKENS["@HEX40@"], (result.repo / "config/clean/lazy-lock.json").read_text())
 
-    def test_cargo_git_revision_report_survives(self):
-        source = fake.fill("git+https://github.com/x/tool#@HEX40@")
-        self.h.json(".cargo/.crates2.json", {"installs": {f"tool 0.1.0 ({source})": {}}})
-        p = fake.session(self.h, fake.brew_runner())
-        result = p.build(p.defaults(self.repo))
-        self.assertIn(source, result.report)
-
     def test_pages_off(self):
         """Every item of the pages that are on by default deselected: each one is "Not carried, by your choice"."""
         off = {k: set() for k in ("formulae", "casks", "taps", "mas", "npm", "pipx", "shell")}

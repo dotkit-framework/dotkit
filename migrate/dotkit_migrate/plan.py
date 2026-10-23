@@ -21,7 +21,6 @@ from .model import Choices, Facts, Item, Page
 from .report import plural
 from .context import tilde
 from .migrators import NOT_CARRIED
-from .migrators import tools as tools_mod
 from .scan import Scan, ShellFile
 
 # --- The choices
@@ -109,18 +108,6 @@ class Planner:
                 unique.setdefault(i.id, i)
             out.append(Page(key, title, dest, intro, "checklist", list(unique.values()), note))
 
-        for key, title, pkgs, intro in (
-            ("cargo", "cargo install tools", s.cargo,
-             "Tools of cargo install. The selected ones move to mise; the old copies stay until you remove them."),
-            ("go", "Go tools", s.go,
-             "The tools in your Go bin directory. The selected ones move to mise; the old copies stay until you "
-             "remove them."),
-        ):
-            off = key in catalog.BUILT_FROM_SOURCE
-            checklist(key, title, "config/mise.toml", intro,
-                      [Item(f"{key}:{p.name}", p.name, f"{p.version or 'installed'} in {p.where}", default=not off)
-                       for p in pkgs if p.ok],
-                      f"off: mise builds them from source with {key}" if off else "")
         managers: dict[str, list[str]] = {}
         for vm in s.version_managers:
             for tool in vm.versions:
@@ -210,14 +197,12 @@ class _Build:
     def __init__(self, planner: Planner, facts: Facts, c: Choices, txn: docs_mod.Txn):
         self.p = planner
         self.s = planner.scan
-        self.facts = facts
         self.identity = facts.identity
         self.base = planner.base
         self.c = c
         self.home = self.s.home
         # The items of the pages: a deselected item that was on by default is "Not carried, by your choice".
-        self.pages = planner.pages()
-        self.items = {i.id: i for page in self.pages for i in page.items}
+        self.items = {i.id: i for page in planner.pages() for i in page.items}
         # The planning steps write only through this transaction.
         self.txn = txn
         self.r = self.txn.report
@@ -243,7 +228,6 @@ class _Build:
         # Your mise config first: the tools that it has are not added again.
         if self.mise_layered():
             self.txn.mise().set_base(self.s.mise_config.read_text(encoding="utf-8", errors="replace"))
-        self.tools()
         self.version_managers()
         self.shell()
         self.config_files()
@@ -257,19 +241,6 @@ class _Build:
         s = self.s
         return bool(s.mise_config and self.c.option("file:.config/mise/config.toml") == "layer"
                     and not secrets.has_secret(s.mise_config))
-
-    def tools(self) -> None:
-        s, r = self.s, self.r
-        groups = (
-            ("cargo", s.cargo, "# From cargo install, see MIGRATION.md.", "cargo uninstall {name}"),
-            ("go", s.go, "# From ~/go/bin, see MIGRATION.md.", "rm {where}"),
-        )
-        for key, pkgs, comment, remove in groups:
-            carried = tools_mod.plan_tools(self.facts, self.c, self.txn, self.pages, key, pkgs, comment, remove)
-            if key == "cargo" and carried and not s.has_cargo:
-                r.todo("Tools that moved to mise", "", ["mise needs cargo for these: `mise use -g rust`."])
-            if key == "go" and carried and not s.has_go:
-                r.todo("Tools that moved to mise", "", ["mise needs go for these: `mise use -g go`."])
 
     def version_managers(self) -> None:
         s, r = self.s, self.r
