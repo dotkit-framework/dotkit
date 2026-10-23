@@ -6,7 +6,7 @@ import unittest
 
 from dotkit_migrate.migrators import node_tools, tools
 from tests import fake
-from tests.test_plan import used_mac
+from tests.test_session import used_mac
 
 
 class NodeToolsTests(unittest.TestCase):

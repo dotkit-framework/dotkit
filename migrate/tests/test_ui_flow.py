@@ -8,7 +8,7 @@ from unittest import mock
 
 from dotkit_migrate.ui import plain, screens
 from tests import fake
-from tests.test_plan import used_mac
+from tests.test_session import used_mac
 
 
 class ScriptedFrontend(screens.Frontend):

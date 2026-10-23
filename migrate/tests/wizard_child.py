@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dotkit_migrate.ui import curses_ui, plain  # noqa: E402
 from tests import fake  # noqa: E402
-from tests.test_plan import used_mac  # noqa: E402
+from tests.test_session import used_mac  # noqa: E402
 
 
 def main() -> None:

@@ -2,8 +2,10 @@
 
 import unittest
 
+from dotkit_migrate._compat import tomllib
 from dotkit_migrate.migrators import built_tools
 from tests import fake
+from tests.test_session import used_mac
 
 
 class BuiltToolsTests(unittest.TestCase):
@@ -51,6 +53,14 @@ class BuiltToolsTests(unittest.TestCase):
         p = fake.session(self.h, fake.brew_runner())
         result = p.build(p.defaults(self.repo))
         self.assertIn(source, result.report)
+
+    def test_a_selected_cargo_tool(self):
+        p = fake.session(self.h, used_mac(self.h))
+        c = p.defaults(self.repo)
+        c.picked["cargo"] = {"cargo:bat"}
+        result = p.build(c)
+        self.assertEqual(tomllib.loads(result.files["config/mise.toml"])["tools"]["cargo:bat"], "latest")
+        self.assertIn("1 cargo tool -> config/mise.toml", result.summary)
 
 
 if __name__ == "__main__":

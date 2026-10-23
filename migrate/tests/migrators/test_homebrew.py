@@ -89,6 +89,23 @@ class HomebrewTests(unittest.TestCase):
         m = adopt.missing(s, h.home / ".dotfiles", fake.base.Base(fake.ROOT), {})
         self.assertEqual(m.taps, ["ok/tap"])
 
+    def test_taps_that_cannot_go_into_the_list(self):
+        runner = fake.brew_runner(taps=[
+            {"name": "ok/tap", "remote": "https://github.com/ok/homebrew-tap"},
+            {"name": "acme/space", "remote": "https://example.com/a b.git"},
+            {"name": "acme/hash", "remote": "https://example.com/a.git#main"},
+        ])
+        p = fake.session(self.h, runner)
+        result = p.build(p.defaults(self.repo))
+        self.assertTrue(result.files["nix/taps.txt"].endswith(", see MIGRATION.md.\nok/tap\n"))
+        self.assertNotIn("acme/", result.files["nix/taps.txt"])
+        for name, url, why in (("acme/space", "https://example.com/a b.git", "it has a space"),
+                               ("acme/hash", "https://example.com/a.git#main", "it has a `#`")):
+            self.assertIn(f"- `{name}`: its URL cannot go into nix/taps.txt ({why}). Add it by hand to "
+                          f"`homebrew.taps` in nix/darwin.nix as "
+                          f'`{{ name = "{name}"; clone_target = "{url}"; }}`.\n', result.report)
+        self.assertIn("1 Homebrew tap -> nix/taps.txt", result.summary)
+
 
 if __name__ == "__main__":
     unittest.main()

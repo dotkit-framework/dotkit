@@ -6,7 +6,7 @@ import unittest
 from dotkit_migrate import writer
 from dotkit_migrate.migrators import other_config
 from tests import fake
-from tests.test_plan import other_config as other_items, pick, used_mac
+from tests.test_session import other_config as other_items, pick, used_mac
 
 
 class OtherConfigTests(unittest.TestCase):

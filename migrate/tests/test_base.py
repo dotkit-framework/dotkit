@@ -16,7 +16,7 @@ class BaseTests(unittest.TestCase):
         links = dict(re.findall(r'^\s*"([^"]+)" = (?:lib\.mkDefault )?"?([^";]+)"?;', text, re.M))
         targets = {t for t, src in links.items() if src.startswith(("config/", "scripts/"))}
         targets |= {".local/share/dotkit"}
-        # A file of the dotfiles repository: plan.py handles it as the mise config.
+        # A file of the dotfiles repository: config_files handles it as the mise config.
         targets -= {".config/mise/config.toml"}
         self.assertEqual(targets, set(base.BASE_TARGETS))
         for link in base.LINKS:

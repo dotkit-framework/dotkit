@@ -6,7 +6,7 @@ import unittest
 from dotkit_migrate._compat import tomllib
 from dotkit_migrate.migrators import runtimes
 from tests import fake
-from tests.test_plan import used_mac
+from tests.test_session import used_mac
 
 
 class RuntimesTests(unittest.TestCase):
@@ -80,6 +80,13 @@ class RuntimesTests(unittest.TestCase):
         self.assertIn("nvm (~/.nvm): node v20.11.0 (default 20). With mise: `mise use -g node@20`.", result.report)
         c.picked["runtimes"] = set()
         self.assertFalse(any(line.startswith("runtime versions") for line in p.build(c).summary))
+
+    def test_a_selected_runtime(self):
+        p = fake.session(self.h, used_mac(self.h))
+        c = p.defaults(self.repo)
+        c.picked["runtimes"] = {"runtime:node"}
+        tools = tomllib.loads(p.build(c).files["config/mise.toml"])["tools"]
+        self.assertEqual(tools["node"], "20")
 
 
 if __name__ == "__main__":

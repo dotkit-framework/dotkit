@@ -202,7 +202,7 @@ mas_name() {
   mas=$(command -v mas 2>/dev/null) || mas=/opt/homebrew/bin/mas
   [[ -x $mas ]] || return 2
   # The installed apps first. `mas list` prints "ID  Name  (version)"; this is
-  # the regex of the scan of the migration wizard (migrate/dotkit_migrate/scan.py).
+  # the regex of the scan of the migration wizard (migrate/dotkit_migrate/migrators/appstore.py).
   # perl reads all of it: an early exit would stop mas with SIGPIPE.
   out=$("$mas" list 2>/dev/null | ID=$1 perl -ne '
     if (!defined $n && /^\s*(\d+)\s+(.+?)\s+\(([^)]*)\)\s*$/ && $1 eq $ENV{ID}) { $n = $2; $n =~ s/^\s+|\s+$//g }

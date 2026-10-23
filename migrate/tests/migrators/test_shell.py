@@ -9,7 +9,7 @@ from dotkit_migrate import writer
 from dotkit_migrate.migrators import shell
 from dotkit_migrate.ui import screens
 from tests import fake
-from tests.test_plan import TOKEN
+from tests.test_session import TOKEN
 
 
 class ShellTests(unittest.TestCase):

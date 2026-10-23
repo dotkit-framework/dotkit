@@ -1,7 +1,9 @@
 """The migration wizard of dotkit: scan a Mac, plan a dotfiles repository, write it.
 
-scan.py reads the Mac and changes nothing. plan.py turns a scan and the
-choices into a plan: the files of the new repository and the report.
+registry.py has MIGRATORS, one per source of the Mac (migrators/), and the
+Session that runs them: each migrator scans the Mac and changes nothing,
+asks its questions as pages, and adds its part of the plan to the
+documents (docs.py): the files of the new repository and the report.
 writer.py renders the documents into a plan, guards it against secrets, and
 writes it; checks.py checks the plan against the Mac and makes the summary.
 ui/ asks for the choices: ui/screens.py has the screens as data, and

@@ -28,6 +28,17 @@ class AppStoreTests(unittest.TestCase):
         self.assertFalse(s.mas)
         self.assertEqual(s.store_apps, ["Pages"])
 
+    def test_two_apps_with_one_name(self):
+        """The second app gets a label."""
+        p = fake.session(self.h, fake.brew_runner(mas="409183694 Keynote (14.2)\n1234 Keynote (1.0)\n"
+                                                      "497799835 Xcode (16.0)\n"))
+        result = p.build(p.defaults(str(self.h.home / ".dotfiles")))
+        self.assertTrue(result.files["nix/mas.txt"].endswith(
+            ", see MIGRATION.md.\n409183694 Keynote\n1234 Keynote (1234)\n497799835 Xcode\n"))
+        self.assertIn("- `Keynote` (ID 1234): another app has this name, so nix/mas.txt lists it as "
+                      "`Keynote (1234)`.\n", result.report)
+        self.assertIn("3 App Store apps -> nix/mas.txt", result.summary)
+
 
 if __name__ == "__main__":
     unittest.main()

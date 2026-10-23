@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 from tests import fake
-from tests.test_plan import used_mac
+from tests.test_session import used_mac
 
 CHILD = Path(__file__).resolve().parent / "wizard_child.py"
 UP, DOWN, LEFT, RIGHT = "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C"

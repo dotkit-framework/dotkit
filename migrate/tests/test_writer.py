@@ -9,7 +9,7 @@ from unittest import mock
 
 from dotkit_migrate import docs, report, secrets, writer
 from tests import fake, test_golden
-from tests.test_plan import other_config, pick, used_mac
+from tests.test_session import other_config, pick, used_mac
 
 TEMPLATE = fake.ROOT / "templates/default"
 

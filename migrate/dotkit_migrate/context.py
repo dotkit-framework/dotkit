@@ -1,7 +1,7 @@
 """What the scan reads: the home directory, the environment, the commands, and the base.
 
-Also the read-only file helpers and the path helpers that the scan, the
-planner, and the screens share. Nothing here writes a file.
+Also the read-only file helpers and the path helpers that the migrators,
+the Session, and the screens share. Nothing here writes a file.
 """
 
 from __future__ import annotations

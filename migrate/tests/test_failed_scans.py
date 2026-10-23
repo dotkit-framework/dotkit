@@ -15,7 +15,7 @@ from unittest import mock
 from dotkit_migrate import __main__ as cli
 from dotkit_migrate import registry
 from tests import fake
-from tests.test_plan import used_mac
+from tests.test_session import used_mac
 
 # The page keys of each migrator, and what `dotkit migrate --all` adds from it on used_mac.
 SOURCES = {

@@ -6,7 +6,7 @@ diff of tests/golden/ for review.
 
 The Macs:
   - empty: nothing installed, no files.
-  - used-mac: tests/test_plan.py's used_mac, with the default choices.
+  - used-mac: tests/test_session.py's used_mac, with the default choices.
   - kitchen-sink: every source the scan knows, every item of every
     checklist page selected (so every adoptable config is carried), the vi
     keymap, and a few file choices that are not the defaults.
@@ -52,7 +52,7 @@ from unittest import mock
 from dotkit_migrate import adopt, base, registry
 from dotkit_migrate.model import Choices
 from tests import fake
-from tests.test_plan import used_mac
+from tests.test_session import used_mac
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 REGOLD = os.environ.get("DOTKIT_MIGRATE_REGOLD") == "1"

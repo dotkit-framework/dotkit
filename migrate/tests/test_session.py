@@ -71,6 +71,50 @@ def used_mac(h: fake.Home) -> fake.FakeRunner:
     )
 
 
+class SessionTests(unittest.TestCase):
+    def setUp(self):
+        self.h = fake.Home()
+        self.addCleanup(self.h.cleanup)
+
+    def test_identity(self):
+        facts = fake.session(self.h, fake.brew_runner(), {"SHELL": "/bin/bash"}).scan()
+        self.assertEqual(facts.warnings, [])
+        i = facts.identity
+        self.assertEqual((i.home, i.git_name, i.git_email, i.login_shell),
+                         (str(self.h.home), "Jane Appleseed", "jane@example.com", "/bin/bash"))
+
+    def test_facts(self):
+        """Each migrator's facts by its key; the Session sets the base and check_syntax."""
+        def check(shell, text):
+            return True
+
+        p = fake.session(self.h, fake.brew_runner(formulae=["wget"]), check=check)
+        facts = p.scan()
+        self.assertIs(p.scan(), facts, "the scan runs once")
+        self.assertEqual([m.key for m in registry.MIGRATORS], [
+            "homebrew", "appstore", "node_tools", "python_tools", "built_tools", "runtimes", "shell", "frameworks",
+            "config_files", "other_config", "logins"])
+        self.assertEqual(facts.get("homebrew").formulae, ["wget"])
+        self.assertIsNone(facts.get("leftovers"))
+        self.assertIs(facts.base, p.ctx.base)
+        self.assertIs(facts.check_syntax, check)
+
+    def test_a_failed_scan_is_a_warning(self):
+        """The identity first, then in MIGRATORS order; the failed migrator has no facts."""
+        class Broken(fake.FakeRunner):
+            def run(self, argv, timeout=120, env=None):
+                raise RuntimeError("boom")
+
+        p = fake.session(self.h, Broken(paths={"brew": fake.BREW}))
+        facts = p.scan()
+        self.assertEqual(facts.warnings, ["identity: RuntimeError: boom", "homebrew: RuntimeError: boom"])
+        self.assertIsNone(facts.get("homebrew"))
+        self.assertIsNotNone(facts.get("appstore"))
+        report = p.build(p.defaults(str(self.h.home / ".dotfiles"))).report
+        self.assertIn("### Scan errors\n\nPart of the scan failed. Check these by hand.\n\n"
+                      "- identity: RuntimeError: boom\n- homebrew: RuntimeError: boom\n", report)
+
+
 class PlanTests(unittest.TestCase):
     def setUp(self):
         self.h = fake.Home()
@@ -180,17 +224,6 @@ class PlanTests(unittest.TestCase):
                       "repository, which Git ignores, and the repository file reads it. On a new Mac, copy the "
                       "file by hand, or keep its lines in a manager for passwords.\n", r)
 
-    def test_tools_not_in_mise_keep_their_intros(self):
-        # Default choices: npm is on, but pnpm is never carried; cargo is off.
-        r = self.build().report
-        npm = r.index("They stay where they are. To add one to config/mise.toml:\n")
-        cargo = r.index("mise builds cargo tools from source, so they are off by default. They stay where they "
-                        "are. To add one to config/mise.toml:\n")
-        self.assertLess(npm, r.index("`pnpm` (nvm v20.11.0): dotkit has no global pnpm"))
-        self.assertLess(r.index("`pnpm` (nvm v20.11.0): dotkit has no global pnpm"), cargo)
-        self.assertLess(cargo, r.index("`bat` (cargo install): `mise use -g cargo:bat`"))
-        self.assertEqual(r.count("### Tools that are not in mise"), 1)
-
     def test_no_secret_in_the_repository(self):
         p = self.build()
         for rel, text in p.files.items():
@@ -290,37 +323,6 @@ class PlanTests(unittest.TestCase):
             self.assertIn(text, p.report)
         self.assertIn("- `acme/tools`: git@gitlab.com:acme/homebrew-tools.git\n", p.report)
         self.assertNotIn("~/.config/nvim\n", p.report.split("### Other config\n")[1])
-
-    def test_taps_and_apps_that_cannot_go_into_the_lists(self):
-        runner = fake.brew_runner(taps=[
-            {"name": "ok/tap", "remote": "https://github.com/ok/homebrew-tap"},
-            {"name": "acme/space", "remote": "https://example.com/a b.git"},
-            {"name": "acme/hash", "remote": "https://example.com/a.git#main"},
-        ], mas="409183694 Keynote (14.2)\n1234 Keynote (1.0)\n497799835 Xcode (16.0)\n")
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        p = fake.session(h, runner)
-        result = p.build(p.defaults(str(h.home / ".dotfiles")))
-        self.assertTrue(result.files["nix/taps.txt"].endswith(", see MIGRATION.md.\nok/tap\n"))
-        self.assertNotIn("acme/", result.files["nix/taps.txt"])
-        for name, url, why in (("acme/space", "https://example.com/a b.git", "it has a space"),
-                               ("acme/hash", "https://example.com/a.git#main", "it has a `#`")):
-            self.assertIn(f"- `{name}`: its URL cannot go into nix/taps.txt ({why}). Add it by hand to "
-                          f"`homebrew.taps` in nix/darwin.nix as "
-                          f'`{{ name = "{name}"; clone_target = "{url}"; }}`.\n', result.report)
-        # Two apps with one name: the second gets a label.
-        self.assertTrue(result.files["nix/mas.txt"].endswith(
-            ", see MIGRATION.md.\n409183694 Keynote\n1234 Keynote (1234)\n497799835 Xcode\n"))
-        self.assertIn("- `Keynote` (ID 1234): another app has this name, so nix/mas.txt lists it as "
-                      "`Keynote (1234)`.\n", result.report)
-        self.assertIn("1 Homebrew tap -> nix/taps.txt", result.summary)
-        self.assertIn("3 App Store apps -> nix/mas.txt", result.summary)
-
-    def test_runtimes_and_cargo_on(self):
-        p = self.build(picked={"runtimes": {"runtime:node"}, "cargo": {"cargo:bat"}})
-        tools = tomllib.loads(p.files["config/mise.toml"])["tools"]
-        self.assertEqual(tools["node"], "20")
-        self.assertEqual(tools["cargo:bat"], "latest")
 
     def test_empty_mac(self):
         h = fake.Home()
