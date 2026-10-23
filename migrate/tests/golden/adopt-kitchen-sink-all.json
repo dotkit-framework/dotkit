@@ -5,6 +5,16 @@
     "  acme/tools/thing",
     "Homebrew casks -> nix/casks.txt:",
     "  zed",
+    "Homebrew taps -> nix/taps.txt:",
+    "  acme/tools git@gitlab.com:acme/homebrew-tools.git",
+    "App Store apps -> nix/mas.txt:",
+    "  1289583905 Pixelmator Pro",
+    "  1234567890 C# Toolkit",
+    "  1274495053 Notes ✏️",
+    "  1500000001 Café \"Pro\"",
+    "  409183694 Keynote",
+    "  409183695 Keynote (409183695)",
+    "  `Keynote` (ID 409183695): another app has this name, so nix/mas.txt lists it as `Keynote (409183695)`.",
     "Tools -> config/mise.toml:",
     "  npm:eslint (from ~/.npm-global)",
     "  npm:prettier (from bun)",
@@ -13,15 +23,8 @@
     "  pipx:httpie (from uv tool)",
     "  cargo:cargo-watch (from cargo install)",
     "  go:github.com/rakyll/hey (from ~/go/bin/hey)",
-    "Homebrew taps: add them to homebrew.taps in nix/darwin.nix by hand:",
-    "  \"acme/tools\"",
-    "App Store apps: add them to homebrew.masApps in nix/darwin.nix by hand:",
-    "  \"Pixelmator Pro\" = 1289583905;",
-    "  \"C# Toolkit\" = 1234567890;",
-    "  \"Notes ✏️\" = 1274495053;",
-    "  \"Café \\\"Pro\\\"\" = 1500000001;",
-    "  Keynote = 409183694;",
-    "  Keynote = 409183695;"
+    "Homebrew taps, not added:",
+    "  `corp/tap`: its URL cannot go into nix/taps.txt (it has a space). Add it by hand to `homebrew.taps` in nix/darwin.nix as `{ name = \"corp/tap\"; clone_target = \"https://git.example.com/homebrew tap.git\"; }`."
   ],
   "edited": {
     "config/mise.toml": [
@@ -49,6 +52,21 @@
     "nix/casks.txt": [
       "raycast",
       "zed",
+      ""
+    ],
+    "nix/mas.txt": [
+      "497799835 Xcode",
+      "1289583905 Pixelmator Pro",
+      "1234567890 C# Toolkit",
+      "1274495053 Notes ✏️",
+      "1500000001 Café \"Pro\"",
+      "409183694 Keynote",
+      "409183695 Keynote (409183695)",
+      ""
+    ],
+    "nix/taps.txt": [
+      "hashicorp/tap",
+      "acme/tools git@gitlab.com:acme/homebrew-tools.git",
       ""
     ]
   }
