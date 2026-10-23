@@ -4,12 +4,13 @@ MIGRATORS is the one source of order: scan order, page order, plan order,
 and the order of the "Carried over" rows. The Session scans once, asks each
 migrator for its pages, and builds a fresh plan for each set of choices.
 Core, not migrators: the identity scan, nix/user.nix, the keymap, the scan
-warnings, the checks, and the writer.
+warnings, the "Login shell" to-do, the checks, and the writer.
 """
 
 from __future__ import annotations
 
 import getpass
+import os
 import re
 import socket
 from collections.abc import Callable
@@ -21,7 +22,7 @@ from . import docs as docs_mod
 from . import report as report_mod
 from .context import Context, expand, tilde
 from .docs import nix_string
-from .migrators import _rest, appstore, built_tools, homebrew, node_tools, python_tools, runtimes
+from .migrators import _rest, appstore, built_tools, homebrew, node_tools, python_tools, runtimes, shell
 from .model import Choices, Facts, Identity, Page, Plan
 
 MIGRATORS = (
@@ -31,6 +32,7 @@ MIGRATORS = (
     python_tools.PythonTools(),
     built_tools.BuiltTools(),
     runtimes.Runtimes(),
+    shell.Shell(),
     _rest.Rest(),
 )
 
@@ -122,6 +124,13 @@ class Session:
         core.shell_nix().set_keymap(choices.keymap)
         for w in facts.warnings:
             core.report.todo("Scan errors", "Part of the scan failed. Check these by hand.", [w])
+        # It reads only the identity, so it stays when the shell scan fails.
+        login_shell = ident.login_shell
+        shell = os.path.basename(login_shell or "")
+        if login_shell and not login_shell.endswith("/sw/bin/zsh") and shell != "zsh":
+            core.report.todo("Login shell",
+                             f"Your login shell is {login_shell}. dotkit makes the zsh of Nix the login shell, so "
+                             f"the config of {shell} is not used in new terminals.", [])
         core.commit()
         plan = writer.render(docs)
         checks.check(docs, plan)

@@ -8,19 +8,15 @@ go into a file that Git tracks.
 
 from __future__ import annotations
 
-import copy
-import os
-from collections.abc import Callable
 from pathlib import Path
 
 from . import base as base_mod
-from . import rcparse, secrets
+from . import secrets
 from . import docs as docs_mod
-from .model import Choices, Facts, Item, Page
+from .model import Choices, Item, Page
 from .report import plural
 from .context import tilde
-from .migrators import NOT_CARRIED
-from .scan import Scan, ShellFile
+from .scan import Scan
 
 # --- The choices
 
@@ -38,43 +34,11 @@ def _file_item(target: str, options: list[str], default: str, note: str) -> Item
 
 
 class Planner:
-    def __init__(self, scan: Scan, base: base_mod.Base | None = None,
-                 check_syntax: Callable[[str, str], bool] | None = None):
+    def __init__(self, scan: Scan, base: base_mod.Base | None = None):
         self.scan = scan
         self.base = base or base_mod.Base()
-        # check_syntax(shell, text): True when the text parses. None: no check.
-        self.check_syntax = check_syntax
-        # The parsed shell files, by the set of the deselected ones (see rc_results).
-        self._rc: dict[frozenset[str], dict[str, rcparse.Result]] = {}
 
     # --- What the wizard shows
-
-    def rc_results(self, skipped: frozenset[str] = frozenset()) -> dict[str, rcparse.Result]:
-        """The parsed shell files, by name. Layer files that were not read before are not parsed.
-
-        The variables that the carried lines set pass on to the next file. A
-        file in `skipped` (deselected) is parsed too, for its findings and the
-        names of its secret lines, but it passes on nothing: the next file starts
-        with the variables known before it. The pages use the full chain.
-        """
-        if skipped not in self._rc:
-            out: dict[str, rcparse.Result] = {}
-            files = {f.name: f for f in self.scan.shell_files if not f.managed}
-            for shell, names in (("zsh", (".zshenv", ".zshenv.local", ".zprofile", ".zprofile.local",
-                                          ".zshrc", ".zshrc.local")),
-                                 ("bash", (".bash_profile", ".bash_profile.local"))):
-                parser = rcparse.Parser(self.scan.home, shell)
-                known: dict[str, str] = {}
-                for name in names:
-                    f = files.get(name)
-                    if f is None or not f.read:
-                        continue
-                    r = parser.parse(name, f.text, known)
-                    if name not in skipped:
-                        known = r.variables
-                    out[name] = r
-            self._rc[skipped] = out
-        return self._rc[skipped]
 
     def pages(self) -> list[Page]:
         """The questions, one page per source, in the order of the plan. Pages without items are left out."""
@@ -87,22 +51,6 @@ class Planner:
                 unique.setdefault(i.id, i)
             out.append(Page(key, title, dest, intro, "checklist", list(unique.values()), note))
 
-        shell_items = []
-        for name, r in self.rc_results().items():
-            if not (r.statements or r.secrets):
-                continue
-            main = name.removesuffix(".local")
-            layer, repo_file = base_mod.SHELL_LAYERS[main]
-            parts = [plural(r.statements, "line")] if r.statements else []
-            detail = f"To {repo_file} (~/{layer})."
-            if r.secrets:
-                parts.append(plural(len(r.secrets), "line") + " with a secret")
-                detail += " The lines with a secret go to local/, which Git ignores."
-            label = f"~/{name}: " + " and ".join(parts)
-            shell_items.append(Item(f"shell:{name}", label, detail))
-        checklist("shell", "Shell lines", "config/zsh, config/bash",
-                  "The lines of your shell files that dotkit can carry, by file. MIGRATION.md lists the lines "
-                  "that it cannot carry.", shell_items)
         out.append(Page("files", "Your config files", "config/", "dotkit has its own file for each of these. "
                         "Choose which one each tool reads.", "choices", self._file_items()))
         other = []
@@ -158,20 +106,17 @@ class Planner:
 
     # --- The plan
 
-    def plan(self, facts: Facts, c: Choices, txn: docs_mod.Txn) -> None:
-        _Build(self, facts, c, txn).run()
+    def plan(self, c: Choices, txn: docs_mod.Txn) -> None:
+        _Build(self, c, txn).run()
 
 
 class _Build:
-    def __init__(self, planner: Planner, facts: Facts, c: Choices, txn: docs_mod.Txn):
+    def __init__(self, planner: Planner, c: Choices, txn: docs_mod.Txn):
         self.p = planner
         self.s = planner.scan
-        self.identity = facts.identity
         self.base = planner.base
         self.c = c
         self.home = self.s.home
-        # The items of the pages: a deselected item that was on by default is "Not carried, by your choice".
-        self.items = {i.id: i for page in planner.pages() for i in page.items}
         # The planning steps write only through this transaction.
         self.txn = txn
         self.r = self.txn.report
@@ -184,20 +129,11 @@ class _Build:
     def picked(self, page: str, item_id: str) -> bool:
         return self.c.selected(page, item_id)
 
-    def left_out(self, item_id: str) -> bool:
-        """True for an item that was on by default and that you deselected. Off by default: its own to-do."""
-        item = self.items.get(item_id)
-        return item is not None and item.default
-
-    def not_carried(self, intro: str, items: list[str]) -> None:
-        if items:
-            self.r.todo("Not carried, by your choice", intro, items)
-
     def run(self) -> None:
         # Your mise config first: the tools that it has are not added again.
         if self.mise_layered():
             self.txn.mise().set_base(self.s.mise_config.read_text(encoding="utf-8", errors="replace"))
-        self.shell()
+        self.frameworks()
         self.config_files()
         self.other_config()
         self.secret_files()
@@ -212,116 +148,12 @@ class _Build:
 
     # --- Shell files
 
-    def shell(self) -> None:
+    def frameworks(self) -> None:
         s, r = self.s, self.r
-        # The chain of the selected files. A copy: a failed syntax check below changes the results.
-        skipped = frozenset(n for n in self.p.rc_results()
-                            if f"shell:{n}" in self.items and not self.picked("shell", f"shell:{n}"))
-        results = copy.deepcopy(self.p.rc_results(skipped))
-        unread = [f for f in s.shell_files if not f.managed and not f.read]
-        by_repo: dict[str, list[tuple[ShellFile | None, rcparse.Result | None]]] = {}
-        files = {f.name: f for f in s.shell_files if not f.managed}
-        for main, (layer, _) in base_mod.SHELL_LAYERS.items():
-            for name in (main, layer):
-                f = files.get(name)
-                if f is None:
-                    continue
-                by_repo.setdefault(main, []).append((f, results.get(name)))
-
-        for main, entries in by_repo.items():
-            layer, repo_file = base_mod.SHELL_LAYERS[main]
-            shell = "bash" if main == ".bash_profile" else "zsh"
-            rc = self.txn.shell_rc(main)
-            written = False
-            for f, res in entries:
-                if res is None:
-                    continue
-                on = self.picked("shell", f"shell:{f.name}")
-                carried = res.carried_text() if on else ""
-                if carried and self.p.check_syntax and not self.p.check_syntax(shell, carried):
-                    # Keep the lines that parse on their own; report the functions.
-                    for cl in [c for c in res.carried if c.kind == "function"]:
-                        res.findings.append(rcparse.Finding(cl.lines, rcparse.BLOCKS, cl.text,
-                                                            f"{shell} -n could not check it"))
-                    res.carried = [c for c in res.carried if c.kind != "function"]
-                    res.findings.sort(key=lambda x: x.lines)
-                    carried = res.carried_text()
-                    if carried and not self.p.check_syntax(shell, carried):
-                        for cl in res.carried:
-                            if cl.kind != "comment":
-                                res.findings.append(rcparse.Finding(cl.lines, rcparse.COMMANDS, cl.text,
-                                                                    f"{shell} -n could not check it"))
-                        res.carried = []
-                        carried = ""
-                if carried:
-                    rc.add_part(f"# From ~/{f.name}. MIGRATION.md lists the lines that are not here.", carried)
-                    written = True
-                    r.carried(plural(res.statements, "line") + f" of ~/{f.name}", f"{repo_file} (~/{layer})")
-                if res.secrets and on:
-                    rc.add_secret("\n".join([f"# From ~/{f.name}."] + [x.text for x in res.secrets]))
-                    written = True
-                    r.todo("Secrets", "These lines have a secret, so they are not in Git. They are in a file in "
-                                      "local/ of this repository, which Git ignores, and the repository file reads "
-                                      "it. On a new Mac, copy the file by hand, or keep its lines in a manager for "
-                                      "passwords.",
-                           [f"~/{f.name}:{x.lines[0]}: `{x.name}` -> {rc.local}"
-                            for x in res.secrets])
-                if not on and self.left_out(f"shell:{f.name}"):
-                    # What the page offered: the full chain, as the page label counts it.
-                    self.not_carried(NOT_CARRIED, [_shell_left_out(f.name, self.p.rc_results()[f.name], repo_file)])
-                self.findings(f.name, res)
-            # A file for each layer that exists, also when it carries nothing: the
-            # link moves an old layer file out of the way, so that dotkit does not
-            # read a file that was not read before.
-            if not (written or main == ".zshrc" or layer in files):
-                continue
-            rc.ensure()
-            if main != ".zshrc":
-                self.txn.links().link(layer, repo_file)
-        for f in unread:
-            r.todo("Shell lines", "", [f"~/{f.name} was not read by ~/{f.name.removesuffix('.local')}, so nothing "
-                                       f"of it is carried. dotkit links its own ~/{f.name} and renames yours to "
-                                       f"~/{f.name}.before-dotkit. Copy what you need."])
-        for name in s.other_shell_files:
-            if self.picked("other", f"other:{name}"):
-                continue
-            note = {
-                ".bashrc": "It stays in place. dotkit's ~/.bash_profile reads it in an interactive bash.",
-                ".profile": "bash -l no longer reads it, because dotkit links ~/.bash_profile. Copy what you "
-                            "need to config/bash/bash_profile and link it as ~/.bash_profile.local.",
-                ".bash_login": "bash -l no longer reads it, because dotkit links ~/.bash_profile.",
-                ".zlogin": "It stays in place, and zsh still reads it after the dotkit files. Check that it "
-                           "still works, or move its lines to config/zsh/zshrc.",
-                ".zlogout": "It stays in place, and zsh still reads it.",
-            }[name]
-            r.todo("Other shell files", "", [f"~/{name}: {note}"])
         if s.frameworks:
             r.todo("Shell frameworks",
                    "dotkit's zsh does not load them. Remove each one when you no longer need it.",
                    [f"{n}: `rm -rf {p}`" for n, p in s.frameworks.items()])
-        login_shell = self.identity.login_shell
-        shell = os.path.basename(login_shell or "")
-        if login_shell and not login_shell.endswith("/sw/bin/zsh") and shell != "zsh":
-            r.todo("Login shell",
-                   f"Your login shell is {login_shell}. dotkit makes the zsh of Nix the login shell, so the "
-                   f"config of {shell} is not used in new terminals.", [])
-
-    def findings(self, name: str, res: rcparse.Result) -> None:
-        order = [c for c, _ in rcparse.CATEGORIES]
-        by_cat: dict[str, list[rcparse.Finding]] = {}
-        for f in res.findings:
-            by_cat.setdefault(f.category, []).append(f)
-        zshrc = "config/zsh/zshrc" if name.startswith(".zsh") else "config/bash/bash_profile"
-        zshenv = "config/zsh/zshenv" if name.startswith(".zsh") else "config/bash/bash_profile"
-        for cat in order:
-            fs = by_cat.get(cat)
-            if not fs:
-                continue
-            items = []
-            for f in fs:
-                text = "(not shown: it has a secret)" if f.secret else _code(f.text)
-                items.append(f"~/{name}:{f.where} {text}" + (f" ({f.note})" if f.note else ""))
-            self.r.todo(f"Shell lines: {cat}", rcparse.hint(cat, zshrc, zshenv), items)
 
     # --- Config files
 
@@ -465,28 +297,6 @@ class _Build:
         if items:
             self.r.todo("Logins", "These files hold logins. They stay in place and are not in the repository.",
                         items)
-
-
-def _shell_left_out(name: str, res: rcparse.Result, repo_file: str) -> str:
-    """The "Not carried, by your choice" item of a shell file: what could be carried, and the secrets by name."""
-    parts = []
-    if res.statements:
-        parts.append(f"{plural(res.statements, 'line')} that could be carried to {repo_file}. Copy the ones "
-                     "you need.")
-    if res.secrets:
-        names = ", ".join(f"`{x.name}` (line {x.lines[0]})" for x in res.secrets)
-        parts.append(f"Its lines with secrets are not carried: {names}. Keep them out of files that Git tracks.")
-    assert parts, f"~/{name} is a shell item, so it has lines or secrets"
-    return f"~/{name}: " + " ".join(parts)
-
-
-def _code(text: str) -> str:
-    first = text.strip().splitlines()[0] if text.strip() else ""
-    if len(first) > 100:
-        first = first[:99] + "…"
-    more = text.strip().count("\n")
-    first = first.replace("`", "'")
-    return f"`{first}`" + (f" (+{more} lines)" if more else "")
 
 
 def _base_example(target: str) -> str:

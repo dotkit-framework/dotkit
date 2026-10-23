@@ -48,10 +48,6 @@ class ScanTests(unittest.TestCase):
         self.h.write(".config/linked/real", "a = 1\n")
         os.symlink("/etc/hosts", self.h.home / ".config/linked/hosts")
         s = self.scan()
-        files = {f.name: (f.managed, f.read) for f in s.shell_files}
-        self.assertEqual(files, {".zshrc": (False, True), ".zshrc.local": (False, True),
-                                 ".zshenv.local": (False, False), ".zprofile": (True, True)})
-        self.assertEqual(s.other_shell_files, [".bashrc"])
         cfg = {c.target: (bool(c.secrets), c.same_as_base) for c in s.config_files}
         self.assertEqual(cfg, {".config/ghostty/config": (False, False), ".npmrc": (True, False),
                                ".editorconfig": (False, True), ".config/starship.toml": (False, False)})

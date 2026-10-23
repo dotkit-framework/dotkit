@@ -54,10 +54,10 @@ class Rest(Migrator):
         return scan_mod.Scanner(ctx).run()
 
     def _planner(self, facts: Facts) -> plan_mod.Planner:
-        return plan_mod.Planner(facts.get(self.key), facts.base, facts.check_syntax)
+        return plan_mod.Planner(facts.get(self.key), facts.base)
 
     def pages(self, facts: Facts) -> List[Page]:
         return self._planner(facts).pages()
 
     def plan(self, facts: Facts, choices: Choices, txn: Txn) -> None:
-        self._planner(facts).plan(facts, choices, txn)
+        self._planner(facts).plan(choices, txn)

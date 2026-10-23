@@ -127,8 +127,9 @@ MIGRATORS = (
 ```
 
 Core, not migrators: the repository path, the zsh keymap (written by the
-Session to `ShellNixDoc`), `nix/user.nix`, the identity scan (section 4.2),
-`checks.py`, and the writer.
+Session to `ShellNixDoc`), `nix/user.nix`, the identity scan (section 4.2)
+and the "Login shell" to-do, which reads only the identity, the scan
+warnings, `checks.py`, and the writer.
 
 These modules of today do not exist in the target, and nothing keeps their
 names alive: `plan.py`, `scan.py`, `adopt.py`, `write.py`, `wizard.py`,

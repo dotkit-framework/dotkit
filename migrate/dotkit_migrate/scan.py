@@ -17,23 +17,6 @@ from . import catalog
 from . import secrets
 from .context import Context, is_managed, read_text
 
-# Shell files that the base links, and the layer files of yours that the
-# base reads after them, in the order zsh and bash read them.
-SHELL_FILES = (
-    ".zshenv", ".zshenv.local", ".zprofile", ".zprofile.local", ".zshrc", ".zshrc.local",
-    ".bash_profile", ".bash_profile.local",
-)
-# The layer file of each base shell file, for the files above.
-SHELL_MAIN = {
-    ".zshenv.local": ".zshenv",
-    ".zprofile.local": ".zprofile",
-    ".zshrc.local": ".zshrc",
-    ".bash_profile.local": ".bash_profile",
-}
-# Shell files that dotkit does not link. They stay and keep working, or
-# stop being read: see plan.py.
-OTHER_SHELL_FILES = (".bashrc", ".profile", ".bash_login", ".zlogin", ".zlogout")
-
 # Dotfiles in the home directory that a person may want in the repository.
 HOME_DOTFILES = (
     ".bashrc", ".vimrc", ".tmux.conf", ".inputrc", ".ideavimrc", ".curlrc", ".wgetrc", ".psqlrc",
@@ -48,16 +31,6 @@ _STATE_NAMES = re.compile(
 )
 _MAX_FILES = 300
 _MAX_BYTES = 2_000_000
-
-
-@dataclass
-class ShellFile:
-    name: str  # relative to the home directory
-    path: Path
-    text: str
-    managed: bool = False  # a dotkit or Home Manager link already
-    # For a layer file (~/.zshrc.local): the main file reads it.
-    read: bool = True
 
 
 @dataclass
@@ -82,8 +55,6 @@ class Scan:
     home: str
     mise_config: Path | None = None
     frameworks: dict[str, str] = field(default_factory=dict)
-    shell_files: list[ShellFile] = field(default_factory=list)
-    other_shell_files: list[str] = field(default_factory=list)
     config_files: list[ConfigFile] = field(default_factory=list)
     gitconfig: ConfigFile | None = None
     other_config: list[OtherConfig] = field(default_factory=list)
@@ -125,26 +96,6 @@ class Scanner:
                     break
 
     # --- Files in the home directory
-
-    def scan_shell_files(self) -> None:
-        texts: dict[str, str] = {}
-        for name in SHELL_FILES:
-            p = self.h(name)
-            if not (p.is_file() or p.is_symlink()):
-                continue
-            managed = is_managed(p)
-            text = "" if managed else read_text(p)
-            texts[name] = text
-            self.s.shell_files.append(ShellFile(name, p, text, managed))
-        for f in self.s.shell_files:
-            main = SHELL_MAIN.get(f.name)
-            if main and not f.managed:
-                # Read before only when the main file sourced it.
-                f.read = f.name in texts.get(main, "")
-        for name in OTHER_SHELL_FILES:
-            p = self.h(name)
-            if p.is_file() and not is_managed(p):
-                self.s.other_shell_files.append(name)
 
     def scan_config_files(self) -> None:
         for link in base_mod.LINKS:
@@ -235,7 +186,7 @@ class Scanner:
         self.s = Scan(home=str(self.home))
         for step in (
             self.scan_mise, self.scan_frameworks,
-            self.scan_shell_files, self.scan_config_files, self.scan_other_config,
+            self.scan_config_files, self.scan_other_config,
         ):
             try:
                 step()

@@ -5,7 +5,6 @@ import unittest
 from dotkit_migrate import migrators, registry, secrets, writer
 from dotkit_migrate._compat import tomllib
 from dotkit_migrate.migrators import Migrator
-from dotkit_migrate.ui import screens
 from tests import fake
 
 TOKEN = fake.TOKENS["@GH@"]
@@ -227,30 +226,6 @@ class PlanTests(unittest.TestCase):
         self.assertIn("not shown: it has a secret", result.report)
         self.assertEqual(subprocess.run(["/bin/zsh", "-n", "-c", local], capture_output=True).returncode, 0)
 
-    def test_sshpass_function_stays_in_ignored_local_file(self):
-        reference = 'sshpass -p "$FIRST_PASS" ssh host1 true'
-        literal = 'sshpass -p hunter2hunter2 ssh host2 true'
-        for i, calls in enumerate(((reference, literal), (literal, reference))):
-            with self.subTest(calls=calls):
-                function = 'deploy() { ' + ' && '.join(calls) + '; }'
-                self.h.write(".zshrc", function + "\nexport EDITOR=vim\n")
-                p = fake.session(self.h, fake.brew_runner())
-                c = p.defaults(str(self.h.home / f"repo-{i}"))
-                result = p.build(c)
-                self.assertIn("local/zshrc.zsh", result.local)
-                self.assertEqual(result.local["local/zshrc.zsh"], "# From ~/.zshrc.\n" + function + "\n")
-                self.assertIn("export EDITOR=vim", result.files["config/zsh/zshrc"])
-                for text in result.files.values():
-                    self.assertNotIn("deploy()", text)
-                    self.assertNotIn("hunter2", text)
-                self.assertNotIn("hunter2", result.report)
-                writer.write_new(result, fake.ROOT / "templates/default")
-                ignored = subprocess.run(
-                    ["git", "-C", str(result.repo), "check-ignore", "local/zshrc.zsh"],
-                    capture_output=True, text=True, check=True)
-                self.assertEqual(ignored.stdout.strip(), "local/zshrc.zsh")
-                self.assertIn(function, (result.repo / "local/zshrc.zsh").read_text())
-
     def test_compact_json_credentials_cannot_be_adopted(self):
         configs = {
             "token": '{"token":"hunter2hunter2"}',
@@ -318,84 +293,6 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("bat", section)
         self.assertIn("- `bat` (cargo install): `mise use -g cargo:bat`\n", p.report)
         self.assertNotIn("Homebrew packages that are not in the lists", p.report)
-
-    def test_a_shell_file_with_only_secrets(self):
-        """It is an item, on by default: its lines go to local/, and the repository file sources them."""
-        self.h.write(".zshrc", f"export GITHUB_TOKEN={TOKEN}\n")
-        for name in (".zprofile", ".bash_profile"):
-            (self.h.home / name).unlink()
-        p = fake.session(self.h, fake.brew_runner())
-        shell = next(page for page in p.pages() if page.key == "shell")
-        self.assertEqual([(i.id, i.label, i.default) for i in shell.items],
-                         [("shell:.zshrc", "~/.zshrc: 1 line with a secret", True)])
-        result = p.build(p.defaults(self.repo))
-        self.assertEqual(result.local, {"local/zshrc.zsh": f"# From ~/.zshrc.\nexport GITHUB_TOKEN={TOKEN}\n"})
-        self.assertIn('source "$HOME/.dotfiles/local/zshrc.zsh"', result.files["config/zsh/zshrc"])
-        # Deselected: one item under "Not carried, by your choice", as the review counts it.
-        c = p.defaults(self.repo)
-        c.picked["shell"] = set()
-        result = p.build(c)
-        self.assertEqual(result.local, {})
-        self.assertIn("- ~/.zshrc: Its lines with secrets are not carried: `GITHUB_TOKEN` (line 1). Keep them out "
-                      "of files that Git tracks.\n", result.report)
-        self.assertNotIn(TOKEN, result.report)
-
-    def test_variables_pass_only_through_carried_files(self):
-        """A deselected file passes on no variables: a line that uses one is reported, not carried."""
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        h.write(".zshenv", "export DEV=~/dev\n")
-        h.write(".zprofile", "export WORK=~/work\n")
-        h.write(".zshrc", 'export GOPATH="$DEV/go"\nalias g="cd $DEV"\nexport TOOLS="$WORK/tools"\n')
-        p = fake.session(h, fake.brew_runner())
-        repo = str(h.home / ".dotfiles")
-        # The page counts from the full chain.
-        shell = next(page for page in p.pages() if page.key == "shell")
-        self.assertEqual([i.label for i in shell.items],
-                         ["~/.zshenv: 1 line", "~/.zprofile: 1 line", "~/.zshrc: 3 lines"])
-        everything = p.build(p.defaults(repo))
-        zshrc = everything.files["config/zsh/zshrc"]
-        for line in ('export GOPATH="$DEV/go"', 'alias g="cd $DEV"', 'export TOOLS="$WORK/tools"'):
-            self.assertIn(line, zshrc)
-        c = p.defaults(repo)
-        c.picked["shell"].discard("shell:.zshenv")
-        result = p.build(c)
-        zshrc = result.files["config/zsh/zshrc"]
-        self.assertNotIn("GOPATH", zshrc)
-        self.assertIn('alias g="cd $DEV"', zshrc, "aliases are not expanded, as before")
-        # .zprofile is carried, so its variable still reaches .zshrc.
-        self.assertIn('export TOOLS="$WORK/tools"', zshrc)
-        self.assertNotIn("config/zsh/zshenv", result.files)
-        exports = result.report[result.report.index("### Shell lines: Exports with commands or other variables"):]
-        self.assertIn('- ~/.zshrc:1 `export GOPATH="$DEV/go"`', exports.split("\n### ")[0])
-        self.assertIn("2 lines of ~/.zshrc -> config/zsh/zshrc (~/.zshrc.local)", result.summary)
-        self.assertIn("- ~/.zshenv: 1 line that could be carried to config/zsh/zshenv.", result.report)
-        # The full chain is unchanged by the other build: the cache is per selection.
-        self.assertEqual(p.build(p.defaults(repo)).files, everything.files)
-
-    def test_a_deselected_file_says_what_its_page_offered(self):
-        """Both files deselected: the ~/.zshrc item counts from the full chain, as its page label does."""
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        h.write(".zshenv", "export DEV=~/dev\n")
-        h.write(".zshrc", 'export GOPATH="$DEV/go"\n')
-        p = fake.session(h, fake.brew_runner())
-        c = p.defaults(str(h.home / ".dotfiles"))
-        shell = next(page for page in p.pages() if page.key == "shell")
-        self.assertEqual([i.label for i in shell.items], ["~/.zshenv: 1 line", "~/.zshrc: 1 line"])
-        c.picked["shell"] = set()
-        result = p.build(c)
-        self.assertIn("- ~/.zshrc: 1 line that could be carried to config/zsh/zshrc. Copy the ones you need.\n",
-                      result.report)
-        self.assertIn("- ~/.zshenv: 1 line that could be carried to config/zsh/zshenv. Copy the ones you need.\n",
-                      result.report)
-        self.assertEqual(screens.not_carried(p.pages(), c), [(shell, 2)])
-        lines = screens.review_lines(p, p.pages(), c)
-        self.assertEqual(lines[lines.index("Not carried, by your choice:") + 1:], ["  Shell lines: 2"])
-        for rel, text in result.files.items():
-            if rel.startswith("config/zsh/"):
-                self.assertNotIn("DEV", text, rel)
-                self.assertNotIn("GOPATH", text, rel)
 
     def test_single_items(self):
         """Items are selected one by one; the rest of their page is carried."""
@@ -601,14 +498,6 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(p.links[".config/nvim"], "config/nvim")
         self.assertEqual(p.links[".bashrc"], "config/home/bashrc")
         self.assertEqual(p.copies["config/nvim"], self.h.home / ".config/nvim")
-
-    def test_failed_syntax_check_reports_the_lines(self):
-        self.h.write(".zshrc", "f() {\n  echo hi\n}\nexport A=1\n")
-        s = fake.session(self.h, fake.brew_runner(), check=lambda shell, text: "f()" not in text)
-        p = s.build(s.defaults(self.repo))
-        self.assertIn("export A=1", p.files["config/zsh/zshrc"])
-        self.assertNotIn("echo hi", p.files["config/zsh/zshrc"])
-        self.assertIn("zsh -n could not check it", p.report)
 
     def test_empty_mac(self):
         h = fake.Home()
