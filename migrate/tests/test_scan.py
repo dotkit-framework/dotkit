@@ -19,11 +19,6 @@ class ScanTests(unittest.TestCase):
         self.assertEqual((self.facts.identity.git_name, self.facts.identity.git_email),
                          ("Jane Appleseed", "jane@example.com"))
 
-    def test_frameworks(self):
-        self.h.mkdir(".oh-my-zsh")
-        self.h.write(".p10k.zsh", "")
-        self.assertEqual(self.scan().frameworks, {"Oh My Zsh": "~/.oh-my-zsh", "Powerlevel10k": "~/.p10k.zsh"})
-
     def test_home_files(self):
         self.h.write(".zshrc", "source ~/.zshrc.local\n")
         self.h.write(".zshrc.local", "alias x=y\n")

@@ -133,7 +133,6 @@ class _Build:
         # Your mise config first: the tools that it has are not added again.
         if self.mise_layered():
             self.txn.mise().set_base(self.s.mise_config.read_text(encoding="utf-8", errors="replace"))
-        self.frameworks()
         self.config_files()
         self.other_config()
         self.secret_files()
@@ -147,13 +146,6 @@ class _Build:
                     and not secrets.has_secret(s.mise_config))
 
     # --- Shell files
-
-    def frameworks(self) -> None:
-        s, r = self.s, self.r
-        if s.frameworks:
-            r.todo("Shell frameworks",
-                   "dotkit's zsh does not load them. Remove each one when you no longer need it.",
-                   [f"{n}: `rm -rf {p}`" for n, p in s.frameworks.items()])
 
     # --- Config files
 

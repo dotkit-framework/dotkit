@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
-from . import catalog
 from . import secrets
 from .context import Context, is_managed, read_text
 
@@ -54,7 +53,6 @@ class OtherConfig:
 class Scan:
     home: str
     mise_config: Path | None = None
-    frameworks: dict[str, str] = field(default_factory=dict)
     config_files: list[ConfigFile] = field(default_factory=list)
     gitconfig: ConfigFile | None = None
     other_config: list[OtherConfig] = field(default_factory=list)
@@ -86,14 +84,6 @@ class Scanner:
         p = self.h(".config/mise/config.toml")
         if p.is_file() and not is_managed(p):
             self.s.mise_config = p
-
-    def scan_frameworks(self) -> None:
-        for spec in catalog.FRAMEWORKS:
-            for rel in spec.paths:
-                p = self.h(rel)
-                if p.exists() and not is_managed(p):
-                    self.s.frameworks[spec.name] = "~/" + rel
-                    break
 
     # --- Files in the home directory
 
@@ -185,7 +175,7 @@ class Scanner:
     def run(self) -> Scan:
         self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_mise, self.scan_frameworks,
+            self.scan_mise,
             self.scan_config_files, self.scan_other_config,
         ):
             try:
