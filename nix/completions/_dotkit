@@ -83,6 +83,7 @@ _dotkit_prefixes() {
     'mise\::the mise registry'
     'npm\::an npm package'
     'pipx\::a PyPI package'
+    'mas\::a Mac App Store app (ID)'
     'cargo\::a Rust crate'
     'go\::a Go module'
     'github\::a GitHub release (OWNER/REPO)'

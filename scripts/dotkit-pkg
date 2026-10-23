@@ -12,7 +12,9 @@
 #   4. A Homebrew formula, or a cask with only a command -> nix/brews.txt,
 #      nix/casks.txt.
 # The .txt files have one name per line (nix/read-list.nix reads them), so an
-# edit is a line append or a line delete.
+# edit is a line append or a line delete. nix/mas.txt has an App Store ID and
+# the name of the app per line (nix/read-mas.nix); `dotkit add mas:ID` gets the
+# name from mas.
 # npm and PyPI are not curated: anyone can publish any name. A bare name never
 # selects them; the plan shows them with the prefix to use after a check.
 # An app cask and a formula with the same name stop with an error.
@@ -26,6 +28,7 @@ source "$dotkit/scripts/nix.sh"
 packages_txt="$repo/nix/packages.txt"
 brews_txt="$repo/nix/brews.txt"
 casks_txt="$repo/nix/casks.txt"
+mas_txt="$repo/nix/mas.txt"
 # Separates the fields of a lookup result. Not whitespace, so `read` keeps
 # empty fields.
 sep=$'\x1f'
@@ -55,6 +58,7 @@ usage() {
     '  mise:NAME   the mise registry                        -> config/mise.toml' \
     '  npm:PKG     npm install -g PKG                       -> config/mise.toml' \
     '  pipx:PKG    pipx install PKG, uv tool install PKG    -> config/mise.toml' \
+    '  mas:ID      mas install ID, an App Store app         -> nix/mas.txt' \
     '  Other mise backends: cargo:CRATE, go:MODULE, github:OWNER/REPO, aqua:OWNER/REPO, ...' \
     '' \
     'Options:' \
@@ -64,7 +68,7 @@ usage() {
     '  -h, --help     Show this help.' \
     '' \
     'Tools in the dotkit base are not added again, and remove does not remove them.' \
-    'Mac App Store apps: edit homebrew.masApps in nix/darwin.nix.'
+    'Homebrew taps: edit nix/taps.txt.'
 }
 
 die() { printf 'dotkit: %s\n' "$*" >&2; exit 1; }
@@ -191,6 +195,29 @@ npm_lookup() {
   ] | $jq_fields" <<<"$json"
 }
 
+# Prints the name of Mac App Store app $1, from mas. Returns 2 when mas is not
+# installed, 1 when mas does not know the app, and 3 when its output cannot be read.
+mas_name() {
+  local mas out
+  mas=$(command -v mas 2>/dev/null) || mas=/opt/homebrew/bin/mas
+  [[ -x $mas ]] || return 2
+  # The installed apps first. `mas list` prints "ID  Name  (version)"; this is
+  # the regex of the scan of the migration wizard (migrate/dotkit_migrate/scan.py).
+  # perl reads all of it: an early exit would stop mas with SIGPIPE.
+  out=$("$mas" list 2>/dev/null | ID=$1 perl -ne '
+    if (!defined $n && /^\s*(\d+)\s+(.+?)\s+\(([^)]*)\)\s*$/ && $1 eq $ENV{ID}) { $n = $2; $n =~ s/^\s+|\s+$//g }
+    END { print $n if defined $n }
+  ') || out=''
+  [[ -z $out ]] || { printf '%s' "$out"; return 0; }
+  # Then the App Store. Not verified against the output of a real mas: the
+  # first line of `mas info` is taken to be "Name version [price]". Drop a
+  # trailing [...], then the last word (the version); the rest is the name.
+  out=$("$mas" info "$1" 2>/dev/null) || return 1
+  out=$(head -n 1 <<<"$out" | sed -E 's/[[:space:]]*\[[^]]*\][[:space:]]*$//; s/^[[:space:]]+//; s/[[:space:]]*[^[:space:]]+[[:space:]]*$//')
+  [[ -n $out ]] || return 3
+  printf '%s' "$out"
+}
+
 pypi_lookup() {
   local json
   json=$(curl -fsSL --max-time 10 "https://pypi.org/pypi/$1/json" 2>/dev/null) || return 1
@@ -209,6 +236,11 @@ list_names() { awk '{ sub(/#.*/, "") } NF { print $1 }' "$1"; }
 # with dotkit: for the base lists.
 find_declared() {
   local name=$1 bare=${1#*:} f dir label
+  # App Store apps: by ID, in the list of the dotfiles repository only.
+  if [[ $name == mas:* ]]; then
+    [[ ! -f $mas_txt ]] || list_names "$mas_txt" | awk -v n="$bare" '$1 == n { print "nix/mas.txt\t" n }'
+    return 0
+  fi
   for dir in "$dotkit" "$repo"; do
     label=''
     [[ $dir == "$repo" ]] || label=dotkit:
@@ -230,6 +262,20 @@ mise_keys() {
       if (key == full || key == n || key == "npm:" full || last == n) print f "\t" key
     }
   ' "$1"
+}
+
+# Prints the ID of the App Store app with name $1 in nix/mas.txt $2 or in the
+# planned entries after it ("mas:ID Name"), as nix/read-mas.nix reads the lines.
+# The name goes through the environment, so awk does not read escapes in it;
+# awk reads all lines, so the pipe never breaks.
+mas_id_of() {
+  local name=$1 file=$2
+  shift 2
+  {
+    awk '{ sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, "") } /^[0-9]+[[:space:]]/ { print }' "$file"
+    local e
+    for e in "$@"; do [[ $e != mas:* ]] || printf '%s\n' "${e#mas:}"; done
+  } | N=$name awk '{ id = $1; sub(/^[0-9]+[[:space:]]+/, "") } $0 == ENVIRON["N"] && !f { print id; f = 1 }'
 }
 
 # Appends name $2 to list file $1.
@@ -422,6 +468,24 @@ resolve() {
     select_candidate mise 'selected with mise:'
     return 0
     ;;
+  mas:*)
+    c_name=${arg#mas:}
+    [[ $c_name =~ ^[1-9][0-9]*$ ]] || { r_reason="'$c_name' is not an App Store ID. mas list shows the IDs."; return 1; }
+    local name status=0
+    name=$(mas_name "$c_name") || status=$?
+    if ((status == 2)); then
+      r_reason='mas is not installed, so the name of the app is unknown. Run dotkit add brew:mas first.'
+      return 1
+    fi
+    if ((status == 3)); then
+      r_reason="cannot read the name of App Store app $c_name from mas. Add it to nix/mas.txt as \`$c_name Name\`."
+      return 1
+    fi
+    ((status == 0)) || { r_reason="mas finds no App Store app with the ID $c_name."; return 1; }
+    # The reason is the name of the app, for the plan.
+    r_kind=mas r_entry="$c_name $name" r_spec=$arg r_reason=$name
+    return 0
+    ;;
   *:*)
     c_name=${arg#*:} c_spec=$arg
     c_spec_out=$(mise_spec_lookup "$arg") || { r_reason="mise cannot find '$arg'."; return 1; }
@@ -497,6 +561,7 @@ target_file() {
   cask) echo nix/casks.txt ;;
   formula) echo nix/brews.txt ;;
   mise) echo config/mise.toml ;;
+  mas) echo nix/mas.txt ;;
   esac
 }
 
@@ -536,11 +601,12 @@ confirm() {
 # Back up the list files, run the edit command "$@", build, and apply. Restore
 # the files when the edit or the build fails, or on Ctrl-C.
 apply_nix() {
-  local backup f
+  local backup f lists=(packages.txt brews.txt casks.txt)
+  [[ ! -f $mas_txt ]] || lists+=(mas.txt)
   backup=$(mktemp -d)
-  cp "$packages_txt" "$brews_txt" "$casks_txt" "$backup/"
+  for f in "${lists[@]}"; do cp "$repo/nix/$f" "$backup/"; done
   restore() {
-    for f in packages.txt brews.txt casks.txt; do cp "$backup/$f" "$repo/nix/$f"; done
+    for f in "${lists[@]}"; do cp "$backup/$f" "$repo/nix/$f"; done
     rm -rf "$backup"
   }
   trap 'restore; printf "\ndotkit: stopped. The Nix files are restored.\n" >&2; exit 130' INT TERM
@@ -584,6 +650,32 @@ cmd_add() {
       printf '%s: same entry as an earlier argument (%s)\n' "$tool" "$r_spec"
       continue
     fi
+    # An App Store app has no command to check.
+    if [[ $r_kind == mas ]]; then
+      if [[ ! -f $mas_txt ]]; then
+        warn "$tool: nix/mas.txt does not exist. Create it, and list it in dotkit.lists.masApps in nix/darwin.nix."
+        failed=1
+        continue
+      fi
+      # homebrew.masApps lists apps by name, and the name is only a label. A
+      # name that another app has gets the label "Name (ID)".
+      local id=${r_entry%% *} label=$r_reason
+      if [[ -n $(mas_id_of "$label" "$mas_txt" ${nix_edits[@]+"${nix_edits[@]}"}) ]]; then
+        label="$r_reason ($id)"
+        if [[ -n $(mas_id_of "$label" "$mas_txt" ${nix_edits[@]+"${nix_edits[@]}"}) ]]; then
+          warn "$tool: other apps have the names '$r_reason' and '$label'. Add it to nix/mas.txt under another name: $id <name>"
+          failed=1
+          continue
+        fi
+        entry="mas:$id $label"
+      fi
+      printf '%s -> nix/mas.txt (%s)\n' "$r_spec" "$label"
+      [[ $label == "$r_reason" ]] ||
+        printf "nix/mas.txt has another app named %s; added as '%s'.\n" "$r_reason" "$label"
+      planned=$((planned + 1))
+      nix_edits+=("$entry")
+      continue
+    fi
     # A tool can have another name in the config: rg is ripgrep, and
     # tealdeer supplies tldr.
     if [[ -z $force ]] && path=$(existing_command "$r_bin"); then
@@ -625,6 +717,7 @@ cmd_add() {
         nix:*) append_entry "$packages_txt" "${e#nix:}" || return 1 ;;
         cask:*) append_entry "$casks_txt" "${e#cask:}" || return 1 ;;
         formula:*) append_entry "$brews_txt" "${e#formula:}" || return 1 ;;
+        mas:*) append_entry "$mas_txt" "${e#mas:}" || return 1 ;;
         esac
       done
     }
@@ -654,6 +747,7 @@ cmd_remove() {
     nix:*) files=nix/packages.txt pattern='^(dotkit:)?nix/packages' ;;
     brew:*) files='nix/brews.txt or nix/casks.txt' pattern='^(dotkit:)?nix/(brews|casks)' ;;
     cask:*) files=nix/casks.txt pattern='^(dotkit:)?nix/casks' ;;
+    mas:*) files=nix/mas.txt pattern='^nix/mas' ;;
     *:*) files=config/mise.toml pattern='^(dotkit:)?config/mise' ;;
     esac
     [[ -z $pattern ]] || line=$(grep -E "$pattern" <<<"$line" || true)
@@ -678,6 +772,7 @@ cmd_remove() {
     nix/packages.txt) entry=nix:$entry ;;
     nix/brews.txt) entry=formula:$entry ;;
     nix/casks.txt) entry=cask:$entry ;;
+    nix/mas.txt) entry=mas:$entry ;;
     esac
     contains "$entry" ${nix_edits[@]+"${nix_edits[@]}"} ${mise_keys[@]+"${mise_keys[@]}"} && continue
     printf '%s: remove %s from %s\n' "$tool" "${entry#*:}" "$file"
@@ -699,6 +794,7 @@ cmd_remove() {
         nix:*) delete_entry "$packages_txt" "${e#nix:}" || return 1 ;;
         formula:*) delete_entry "$brews_txt" "${e#formula:}" || return 1 ;;
         cask:*) delete_entry "$casks_txt" "${e#cask:}" || return 1 ;;
+        mas:*) delete_entry "$mas_txt" "${e#mas:}" || return 1 ;;
         esac
       done
     }
@@ -710,6 +806,7 @@ cmd_remove() {
       case $entry in
       formula:*) brew_uninstall formula "${entry#formula:}" ;;
       cask:*) brew_uninstall cask "${entry#cask:}" ;;
+      mas:*) warn "the App Store app ${entry#mas:} stays installed. dotkit does not uninstall App Store apps." ;;
       esac
     done
   fi
@@ -785,7 +882,7 @@ cmd_list() {
     done
     if [[ $src == brew ]]; then
       nix_flake eval --json "$flake#darwinConfigurations.mac.config.homebrew.masApps" |
-        jq -r 'keys[] | "brew  \(.)" + (" " * ([36 - length, 0] | max)) + " app store"'
+        jq -r 'keys[] | gsub("\\\\(?<c>[\\\\\"#])"; "\(.c)") | "brew  \(.)" + (" " * ([36 - length, 0] | max)) + " app store"'
     fi
   done
 }
@@ -799,6 +896,7 @@ cmd_names() {
     list_names "$dir/nix/packages.txt"
     list_names "$dir/nix/brews.txt"
     list_names "$dir/nix/casks.txt"
+    [[ ! -f $dir/nix/mas.txt ]] || list_names "$dir/nix/mas.txt" | sed 's/^/mas:/'
     awk '
       /^\[/ { on = ($0 == "[tools]"); next }
       on && /^[^#[:space:]][^=]*=/ { key = $0; sub(/[[:space:]]*=.*/, "", key); gsub(/"/, "", key); print key }
