@@ -110,9 +110,6 @@ class Planner:
             out.append(Page(key, title, dest, intro, "checklist", list(unique.values()), note))
 
         for key, title, pkgs, intro in (
-            ("pipx", "pipx and uv tools", s.pipx,
-             "Tools of pipx and uv tool. The selected ones move to mise; the old copies stay until you remove "
-             "them."),
             ("cargo", "cargo install tools", s.cargo,
              "Tools of cargo install. The selected ones move to mise; the old copies stay until you remove them."),
             ("go", "Go tools", s.go,
@@ -264,7 +261,6 @@ class _Build:
     def tools(self) -> None:
         s, r = self.s, self.r
         groups = (
-            ("pipx", s.pipx, "# From pipx and uv tool, see MIGRATION.md.", "{remove}"),
             ("cargo", s.cargo, "# From cargo install, see MIGRATION.md.", "cargo uninstall {name}"),
             ("go", s.go, "# From ~/go/bin, see MIGRATION.md.", "rm {where}"),
         )

@@ -91,7 +91,6 @@ class OtherConfig:
 @dataclass
 class Scan:
     home: str
-    pipx: list[tools_mod.Package] = field(default_factory=list)
     cargo: list[tools_mod.Package] = field(default_factory=list)
     go: list[tools_mod.Package] = field(default_factory=list)
     has_cargo: bool = False
@@ -138,41 +137,6 @@ class Scanner:
         return Path(v).expanduser() if v else self.h(default)
 
     # --- Global tools of other package managers
-
-    def scan_python_tools(self) -> None:
-        found: dict[str, tools_mod.Package] = {}
-        homes = [self.env_path("PIPX_HOME", ".local/pipx"), self.h("Library/Application Support/pipx")]
-        for home in homes:
-            for meta_path in sorted(home.glob("venvs/*/pipx_metadata.json")):
-                meta = read_json(meta_path) or {}
-                main = meta.get("main_package") or {}
-                name = main.get("package") or meta_path.parent.name
-                spec = main.get("package_or_url") or name
-                ok, note = True, ""
-                if re.search(r"[/:@]", spec) and not re.fullmatch(r"[A-Za-z0-9._\-\[\],]+", spec):
-                    ok, note = False, f"installed from {spec}"
-                injected = sorted((meta.get("injected_packages") or {}).keys())
-                if injected:
-                    note = "injected packages: " + ", ".join(injected)
-                found.setdefault(name, tools_mod.Package(name, main.get("package_version", ""), "pipx", ok, note))
-        tools = self.env_path("UV_TOOL_DIR", ".local/share/uv/tools")
-        for receipt in sorted(tools.glob("*/uv-receipt.toml")):
-            try:
-                data = tomllib.loads(receipt.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            reqs = (data.get("tool") or {}).get("requirements") or []
-            if not reqs:
-                continue
-            first = reqs[0] if isinstance(reqs[0], dict) else {"name": str(reqs[0])}
-            name = first.get("name") or receipt.parent.name
-            ok, note = True, ""
-            if any(k in first for k in ("git", "url", "path", "directory", "editable")):
-                ok, note = False, "installed from a URL or a directory"
-            if len(reqs) > 1:
-                note = "with " + ", ".join(r.get("name", "?") for r in reqs[1:] if isinstance(r, dict))
-            found.setdefault(name, tools_mod.Package(name, "", "uv tool", ok, note))
-        self.s.pipx = sorted(found.values(), key=lambda p: p.name)
 
     def scan_cargo(self) -> None:
         cargo_home = self.env_path("CARGO_HOME", ".cargo")
@@ -389,7 +353,6 @@ class Scanner:
     def run(self) -> Scan:
         self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_python_tools,
             self.scan_cargo, self.scan_go, self.scan_mise, self.scan_version_managers, self.scan_frameworks,
             self.scan_shell_files, self.scan_config_files, self.scan_other_config,
         ):
