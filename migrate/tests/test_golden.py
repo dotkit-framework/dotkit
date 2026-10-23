@@ -110,7 +110,7 @@ PS1='%~ %# '
 eval "$(starship init zsh)"
 """
 
-# App Store apps: spaces, a #, Unicode, a quote, and a name twice.
+# App Store apps: spaces, a #, Unicode, a quote, a name twice, and a name that the secret check flags.
 MAS = (
     "497799835 Xcode (16.0)\n"
     "1289583905 Pixelmator Pro (3.6)\n"
@@ -119,6 +119,8 @@ MAS = (
     "1500000001 Caf\u00e9 \"Pro\" (2.1)\n"
     "409183694 Keynote (14.2)\n"
     "409183695 Keynote (1.0)\n"
+    # Its line in nix/mas.txt, "1600000002 Token: Keeper", looks like a secret to the check.
+    "1600000002 Token: Keeper (4.0)\n"
 )
 
 
@@ -168,6 +170,10 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     # pipx and uv tools.
     h.json(".local/pipx/venvs/black/pipx_metadata.json",
            {"main_package": {"package": "black", "package_version": "24.2.0", "package_or_url": "black"}})
+    # Its line in config/mise.toml, "pipx:detect-secrets" = "latest", looks like a secret to the check.
+    h.json(".local/pipx/venvs/detect-secrets/pipx_metadata.json",
+           {"main_package": {"package": "detect-secrets", "package_version": "1.5.0",
+                             "package_or_url": "detect-secrets"}})
     h.write(".local/share/uv/tools/httpie/uv-receipt.toml", '[tool]\nrequirements = [{ name = "httpie" }]\n')
     h.write(".local/share/uv/tools/datasette/uv-receipt.toml",
             '[tool]\nrequirements = [{ name = "datasette" }, { name = "datasette-vega" }]\n')
