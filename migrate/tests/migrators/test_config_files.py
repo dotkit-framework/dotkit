@@ -122,5 +122,114 @@ class ConfigFilesTests(unittest.TestCase):
         self.assertNotIn("config/npmrc", p.copies)
 
 
+    ENABLE = "idiomatic_version_file_enable_tools"
+    DISABLE = "idiomatic_version_file_disable_files"
+
+    def mise_plan(self, text, option="layer", base_settings=None):
+        """The plan of a Mac with only this ~/.config/mise/config.toml, strict."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        h.write(".config/mise/config.toml", text)
+        ctx = fake.context_of(h, fake.brew_runner())
+        if base_settings is not None:
+            ctx.base.__dict__["mise_settings"] = base_settings
+        p = registry.Session(ctx, strict=True)
+        c = p.defaults(str(h.home / ".dotfiles"))
+        c.options["file:.config/mise/config.toml"] = option
+        return p.build(c)
+
+    def test_idiomatic_settings_you_do_not_set_are_not_written(self):
+        """Your config without the keys: nothing is written, so dotkit's lists stay in effect."""
+        text = '[tools]\njq = "latest"\n\n[settings]\nexperimental = true\n'
+        result = self.mise_plan(text)
+        out = result.files["config/mise.toml"]
+        self.assertTrue(out.endswith(text))
+        self.assertNotIn("idiomatic", out)
+        self.assertNotIn("idiomatic", result.report)
+
+    BASE_ENABLE = '`["node", "python", "ruby", "rust"]`'
+
+    def test_a_single_line_key_gets_the_union(self):
+        """The edit of your line, and a to-do that says so: an edit of your content is never silent."""
+        text = (f'[settings]\n{self.ENABLE} = ["go", "node"]  # mine\n'
+                f"{self.DISABLE} = ['python:pyproject.toml']\nexperimental = true\n")
+        result = self.mise_plan(text)
+        settings = tomllib.loads(result.files["config/mise.toml"])["settings"]
+        self.assertEqual(settings, {self.ENABLE: ["node", "python", "ruby", "rust", "go"],
+                                    self.DISABLE: ["ruby:Gemfile", "node:package.json", "python:pyproject.toml"],
+                                    "experimental": True})
+        self.assertIn(f'{self.ENABLE} = ["node", "python", "ruby", "rust", "go"]  # mine\n',
+                      result.files["config/mise.toml"])
+        self.assertIn(f'config/mise.toml: `{self.ENABLE}` is now `["node", "python", "ruby", "rust", "go"]`, '
+                      "dotkit's list and yours, because a list in your config replaces dotkit's "
+                      '(yours was `["go", "node"]`). Check it.', result.report)
+        self.assertIn(f'config/mise.toml: `{self.DISABLE}` is now '
+                      '`["ruby:Gemfile", "node:package.json", "python:pyproject.toml"]`, dotkit\'s list and yours, '
+                      "because a list in your config replaces dotkit's (yours was `[\"python:pyproject.toml\"]`). "
+                      "Check it.", result.report)
+        self.assertEqual(result.report.count("is now `["), 2)
+
+    def test_a_key_with_every_name_of_dotkit_is_not_changed(self):
+        """The lists are allowlists: as a set, yours has dotkit's names already. No edit and no to-do."""
+        text = f'[settings]\n{self.ENABLE} = ["rust", "ruby", "python", "node"]\n'
+        for option in ("layer", "keep"):
+            with self.subTest(option):
+                result = self.mise_plan(text, option=option)
+                if option == "layer":
+                    self.assertTrue(result.files["config/mise.toml"].endswith(text))
+                self.assertNotIn("idiomatic", result.report)
+
+    def test_a_key_that_cannot_be_replaced_gives_the_to_do(self):
+        todo = (f"config/mise.toml sets `{self.ENABLE}`, which replaces dotkit's {self.BASE_ENABLE}. "
+                'Set it to `["node", "python", "ruby", "rust", "go"]`.')
+        cases = {
+            "a value on several lines": f'[settings]\n{self.ENABLE} = [\n  "go",\n]\n',
+            "a dotted key": f'settings.{self.ENABLE} = ["go"]\n',
+        }
+        for why, text in cases.items():
+            with self.subTest(why):
+                result = self.mise_plan(text)
+                self.assertTrue(result.files["config/mise.toml"].endswith(text))
+                self.assertEqual(tomllib.loads(result.files["config/mise.toml"])["settings"][self.ENABLE], ["go"])
+                self.assertIn(todo, result.report)
+                self.assertNotIn("is now `[", result.report, "nothing was edited")
+
+    def test_a_value_that_is_not_a_list_of_names(self):
+        """No union and no edit, in both modes: a to-do of its own."""
+        cases = {f'{self.ENABLE} = "node,ruby"\n': '`"node,ruby"`',
+                 f'{self.ENABLE} = ["go", 1]\n': '`["go", 1]`'}
+        for line, shown in cases.items():
+            for option in ("layer", "keep"):
+                with self.subTest(line=line, option=option):
+                    text = "[settings]\n" + line
+                    result = self.mise_plan(text, option=option)
+                    if option == "layer":
+                        self.assertTrue(result.files["config/mise.toml"].endswith(text))
+                    self.assertIn(f"your mise config sets `{self.ENABLE}` to {shown}, which is not a list of "
+                                  f"names. dotkit's value is {self.BASE_ENABLE}. Check it.", result.report)
+                    self.assertNotIn("Set it to", result.report)
+                    self.assertNotIn("is now `[", result.report)
+
+    def test_a_kept_mise_config_gets_the_to_do_and_is_not_edited(self):
+        text = f'[settings]\n{self.ENABLE} = ["go"]\n'
+        result = self.mise_plan(text, option="keep")
+        self.assertIsNone(result.links[".config/mise/config.toml"])
+        self.assertNotIn("idiomatic", result.files.get("config/mise.toml", ""))
+        self.assertFalse([q for q in result.copies.values() if str(q).endswith(".config/mise/config.toml")])
+        self.assertIn(f"~/.config/mise/config.toml sets `{self.ENABLE}`, which replaces dotkit's "
+                      f'{self.BASE_ENABLE}. Set it to `["node", "python", "ruby", "rust", "go"]`.', result.report)
+        self.assertNotIn("is now `[", result.report)
+
+    def test_the_union_starts_with_the_base_file(self):
+        """dotkit's values come from the base config/mise.toml (Base.mise_settings), not from the code."""
+        text = f'[settings]\n{self.ENABLE} = ["go"]\n{self.DISABLE} = ["x:y"]\n'
+        result = self.mise_plan(text, base_settings={self.ENABLE: ["deno", "go"]})
+        settings = tomllib.loads(result.files["config/mise.toml"])["settings"]
+        self.assertEqual(settings, {self.ENABLE: ["deno", "go"], self.DISABLE: ["x:y"]})
+        self.assertEqual(
+            tomllib.loads((fake.ROOT / "config/mise.toml").read_text())["settings"][self.ENABLE],
+            ["node", "python", "ruby", "rust"], "the other tests assume the base of today")
+
+
 if __name__ == "__main__":
     unittest.main()

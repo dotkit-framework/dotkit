@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -73,6 +74,15 @@ def tilde(path: str | Path, home: str) -> str:
     if p == home:
         return "~"
     return "~/" + p[len(home) + 1:] if p.startswith(home + "/") else p
+
+
+def shell_path(path: str) -> str:
+    """A path for a command in the report: quoted for the shell, with a leading ~/ outside the quotes."""
+    if path == "~":
+        return path
+    if path.startswith("~/"):
+        return "~/" + shlex.quote(path[2:])
+    return shlex.quote(path)
 
 
 def expand(path: str, home: str) -> str:

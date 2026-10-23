@@ -29,14 +29,18 @@ def facts_of(f: Facts) -> Optional[NodeFacts]:
     return f.get(NodeTools.key)
 
 
-def node_version_globs() -> List[Tuple[str, str, int]]:
-    """The global npm packages of each Node version: (glob relative to the home, label, index of the version).
+def node_version_globs(ctx: Context) -> List[Tuple[Path, str, str, int]]:
+    """The global npm packages of each Node version: (directory, glob in it, label, index of the version).
 
-    The version managers first, then mise. The order decides the label of a
-    directory that two globs find.
+    The version managers first, each in its directory (catalog.manager_dir),
+    then mise. The order decides the label of a directory that two globs find.
     """
-    globs = [(pattern, spec.name, index) for spec in catalog.VERSION_MANAGERS for pattern, index in spec.npm_globs]
-    globs.append((".local/share/mise/installs/node/*/lib/node_modules", "mise node", -3))
+    globs = []
+    for spec in catalog.VERSION_MANAGERS:
+        root = catalog.manager_dir(spec, ctx.home, ctx.env) if spec.npm_globs else None
+        if root is not None:
+            globs += [(root, pattern, spec.name, index) for pattern, index in spec.npm_globs]
+    globs.append((ctx.home, ".local/share/mise/installs/node/*/lib/node_modules", "mise node", -3))
     return globs
 
 
@@ -51,8 +55,8 @@ def _node_module_roots(ctx: Context) -> List[Tuple[Path, str]]:
     if prefix and not is_managed(home / ".npmrc"):
         p = prefix.group(1).replace("${HOME}", str(home)).replace("$HOME", str(home))
         roots.append((Path(p).expanduser() / "lib/node_modules", f"npm prefix {prefix.group(1)}"))
-    for pattern, label, index in node_version_globs():
-        for p in sorted(home.glob(pattern)):
+    for root, pattern, label, index in node_version_globs(ctx):
+        for p in sorted(root.glob(pattern)):
             roots.append((p, f"{label} {p.parts[index]}"))
     # Keg-only Homebrew nodes, for example node@20.
     for p in sorted(ctx.brew_prefix.glob("opt/node@*/lib/node_modules")):
@@ -114,7 +118,8 @@ class NodeTools(Migrator):
         bun = env_path(ctx, "BUN_INSTALL", ".bun") / "install/global/package.json"
         for name, version in sorted(((read_json(bun) or {}).get("dependencies") or {}).items()):
             add(name, str(version).lstrip("^~"), "bun")
-        for p in sorted((ctx.home / ".volta/tools/user/packages").glob("*.json")):
+        volta = catalog.manager_dir(catalog.version_manager("volta"), ctx.home, ctx.env)
+        for p in sorted(volta.glob("tools/user/packages/*.json")) if volta else []:
             meta = read_json(p) or {}
             if meta.get("name"):
                 add(meta["name"], str(meta.get("version", "")), "volta")

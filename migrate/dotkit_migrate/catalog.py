@@ -8,11 +8,11 @@ manager or framework is a new entry here.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from .context import read_json, read_text
+from .context import expand, read_json, read_text
 
 # Homebrew without its update, hints, and analytics: the scan only reads.
 BREW_ENV = {
@@ -27,11 +27,14 @@ BREW_ENV = {
 class VersionManagerSpec:
     name: str
     # Where it lives, relative to the home directory; the first that exists wins.
+    # env_var, when it is set, wins over them (manager_dir).
     dirs: tuple[str, ...] = ()
     tool: str = ""  # the mise tool; "" for asdf, which has one tool per plugin
     versions: str = ""  # the directory of the versions, relative to its directory
     # The global version, read from its directory; "" when it has none.
     default: Callable[[Path], str] | None = None
+    # The variable that moves its directory, as NVM_DIR.
+    env_var: str = ""
     # mise can take over its versions. False: the report says what to do instead.
     mise_replaces: bool = False
     # Words of shell lines that use it: whole words, matched as they are.
@@ -42,8 +45,8 @@ class VersionManagerSpec:
     # comes before a "/" or the end of the directory.
     path_markers: tuple[str, ...] = ()
     # Where it keeps the global npm packages of each Node version: a glob
-    # relative to the home directory, and the index of the version in the
-    # parts of a found path.
+    # relative to its directory, and the index of the version in the parts
+    # of a found path.
     npm_globs: tuple[tuple[str, int], ...] = ()
     # False: a line-only spec. The scan does not look for it, and rcparse
     # still knows its lines.
@@ -73,32 +76,36 @@ def _volta_default(root: Path) -> str:
 VERSION_MANAGERS: tuple[VersionManagerSpec, ...] = (
     VersionManagerSpec(
         "nvm", (".nvm",), "node", "versions/node", lambda root: read_text(root / "alias/default").strip(),
-        mise_replaces=True, words=("nvm", "NVM_DIR"), extra_vars=("NVM_DIR",), path_markers=(r"\.nvm",),
-        npm_globs=((".nvm/versions/node/*/lib/node_modules", -3),)),
+        env_var="NVM_DIR", mise_replaces=True, words=("nvm", "NVM_DIR"), extra_vars=("NVM_DIR",),
+        path_markers=(r"\.nvm",),
+        npm_globs=(("versions/node/*/lib/node_modules", -3),)),
     VersionManagerSpec(
         "fnm", (".local/share/fnm", "Library/Application Support/fnm", ".fnm"), "node", "node-versions",
         _link_name("aliases/default", -2),
-        mise_replaces=True, words=("fnm",), extra_vars=("FNM_DIR",), path_markers=(r"\.fnm", "fnm"),
-        npm_globs=((".local/share/fnm/node-versions/*/installation/lib/node_modules", -4),
-                   ("Library/Application Support/fnm/node-versions/*/installation/lib/node_modules", -4))),
+        env_var="FNM_DIR", mise_replaces=True, words=("fnm",), extra_vars=("FNM_DIR",), path_markers=(r"\.fnm", "fnm"),
+        npm_globs=(("node-versions/*/installation/lib/node_modules", -4),)),
     VersionManagerSpec(
         "volta", (".volta",), "node", "tools/image/node", _volta_default,
-        mise_replaces=True, words=("volta", "VOLTA_HOME"), extra_vars=("VOLTA_HOME",), path_markers=(r"\.volta",)),
+        env_var="VOLTA_HOME", mise_replaces=True, words=("volta", "VOLTA_HOME"), extra_vars=("VOLTA_HOME",),
+        path_markers=(r"\.volta",)),
     VersionManagerSpec(
         "pyenv", (".pyenv",), "python", "versions", _first_line("version"),
-        mise_replaces=True, words=("pyenv", "PYENV_ROOT"), extra_vars=("PYENV_ROOT",), path_markers=(r"\.pyenv",)),
+        env_var="PYENV_ROOT", mise_replaces=True, words=("pyenv", "PYENV_ROOT"), extra_vars=("PYENV_ROOT",),
+        path_markers=(r"\.pyenv",)),
     VersionManagerSpec(
         "rbenv", (".rbenv",), "ruby", "versions", _first_line("version"),
-        mise_replaces=True, words=("rbenv",), extra_vars=("RBENV_ROOT",), path_markers=(r"\.rbenv",)),
+        env_var="RBENV_ROOT", mise_replaces=True, words=("rbenv",), extra_vars=("RBENV_ROOT",),
+        path_markers=(r"\.rbenv",)),
     VersionManagerSpec(
-        "asdf", (".asdf",), "", "installs",
+        "asdf", (".asdf",), "", "installs", env_var="ASDF_DATA_DIR",
         mise_replaces=True, words=("asdf",), extra_vars=("ASDF_DIR", "ASDF_DATA_DIR"), path_markers=(r"\.asdf",),
-        npm_globs=((".asdf/installs/nodejs/*/lib/node_modules", -3),)),
+        npm_globs=(("installs/nodejs/*/lib/node_modules", -3),)),
     VersionManagerSpec(
         "sdkman", (".sdkman",), "java", "candidates/java", _link_name("candidates/java/current", -1),
+        env_var="SDKMAN_DIR",
         words=("sdkman", "SDKMAN"), extra_vars=("SDKMAN_DIR",), path_markers=(r"\.sdkman",)),
     VersionManagerSpec(
-        "jenv", (".jenv",), "java", "versions", _first_line("version"),
+        "jenv", (".jenv",), "java", "versions", _first_line("version"), env_var="JENV_ROOT",
         words=("jenv",), extra_vars=("JENV_ROOT",), path_markers=(r"\.jenv",)),
     VersionManagerSpec("rvm", words=("rvm",), path_markers=(r"\.rvm",), detect=False),
     VersionManagerSpec("nodenv", words=("nodenv",), extra_vars=("NODENV_ROOT",), path_markers=(r"\.nodenv",),
@@ -119,6 +126,37 @@ ASDF_TOOLS = {"nodejs": "node", "golang": "go"}
 
 def version_manager(name: str) -> VersionManagerSpec:
     return next(spec for spec in VERSION_MANAGERS if spec.name == name)
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def manager_dir(spec: VersionManagerSpec, home: Path, env: Mapping[str, str]) -> Path | None:
+    """The directory of a version manager, or None when it has none.
+
+    Its variable, when it is an absolute path or starts with ~ (the home of
+    the scan), is the directory, and the usual places are not tried: a
+    variable that points to nothing, to a file, or to the home or one of
+    its parents means that the manager is not there. A blank or relative
+    value counts as unset. Otherwise the first of its dirs that exists.
+    """
+    value = (env.get(spec.env_var) or "").strip() if spec.env_var else ""
+    if value == "~" or value.startswith("~/") or value.startswith("/"):
+        p = Path(expand(value, str(home)))
+        # By file identity: also a link to the home, or its path in another case (APFS).
+        if not p.is_dir() or any(_same_file(p, q) for q in (home, *home.parents)):
+            return None
+        return p
+    return next((home / d for d in spec.dirs if (home / d).is_dir()), None)
+
+
+def display_name(tool: str) -> str:
+    """The name of a mise tool in report text: node -> Node."""
+    return tool.capitalize()
 
 
 @dataclass(frozen=True)

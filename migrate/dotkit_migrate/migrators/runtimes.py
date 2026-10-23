@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from .. import catalog
-from ..context import Context, is_managed, read_text, version_key
+from ..base import Base
+from ..context import Context, is_managed, read_text, shell_path, tilde, version_key
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
 from . import Migrator, unique_items
@@ -58,16 +59,33 @@ def runtime_lines(rt: Optional[RuntimeFacts]) -> Dict[str, List[str]]:
     return out
 
 
+def base_runtimes(base: Base) -> str:
+    """The runtimes of the base with their versions, as "Node 24, Python 3.14, and Ruby 3.4"."""
+    runtimes = {spec.tool for spec in catalog.VERSION_MANAGERS if spec.tool} | set(catalog.ASDF_TOOLS.values())
+    names = []
+    for key, value in base.mise.items():
+        if key in runtimes:
+            version = value.get("version", "") if isinstance(value, dict) else value
+            names.append(f"{catalog.display_name(key)} {version}".strip())
+    if len(names) > 2:
+        return ", ".join(names[:-1]) + ", and " + names[-1]
+    return " and ".join(names) or "no runtimes"
+
+
+def _and(names: List[str]) -> str:
+    return ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+
+
 def _managers(ctx: Context) -> List[VersionManager]:
     home = ctx.home
     out = []
     for spec in catalog.VERSION_MANAGERS:
         if not spec.detect:
             continue
-        root = next((home / d for d in spec.dirs if (home / d).is_dir()), None)
+        root = catalog.manager_dir(spec, home, ctx.env)
         if root is None:
             continue
-        vm = VersionManager(spec.name, "~/" + str(root.relative_to(home)), spec.tool)
+        vm = VersionManager(spec.name, tilde(root, str(home)), spec.tool)
         if not spec.tool:
             for plugin in sorted((root / spec.versions).glob("*")):
                 t = catalog.ASDF_TOOLS.get(plugin.name, plugin.name)
@@ -122,7 +140,7 @@ class Runtimes(Migrator):
                      unique_items([Item(f"runtime:{t}", f"{t} {', '.join(v)}",
                                         "From " + ", ".join(managers.get(t, [])), default=False)
                                    for t, v in runtime_lines(rt).items()]),
-                     "off: mise installs them; the base has Node, Python, and Ruby")]
+                     "off: mise installs them; the base has " + base_runtimes(f.base))]
 
     def plan(self, f: Facts, c: Choices, txn: Txn) -> None:
         rt, r = facts_of(f), txn.report
@@ -132,13 +150,18 @@ class Runtimes(Migrator):
         user = config_files.layered_mise(f, c)
         lines = runtime_lines(rt)
         picked = {t for t in lines if c.selected("runtimes", f"runtime:{t}")}
+        added, yours = set(), set()
         for tool, versions in lines.items():
-            if tool in picked and not (user is not None and tool in user.tools):
-                txn.mise().add_tool(tool, versions[0] if len(versions) == 1 else versions)
-        if picked:
+            if tool not in picked:
+                continue
+            if user is not None and tool in user.tools:
+                yours.add(tool)
+            elif txn.mise().add_tool(tool, versions[0] if len(versions) == 1 else versions):
+                added.add(tool)
+        if added:
             r.carried("runtime versions of " + ", ".join(
                 vm.name for vm in rt.managers
-                if vm.versions and (not catalog.version_manager(vm.name).mise_replaces or picked & set(vm.versions))),
+                if vm.versions and (not catalog.version_manager(vm.name).mise_replaces or added & set(vm.versions))),
                 "config/mise.toml")
         items = []
         for vm in rt.managers:
@@ -147,30 +170,32 @@ class Runtimes(Migrator):
                 d = vm.default.get(tool)
                 parts.append(f"{tool} {', '.join(versions)}" + (f" (default {d})" if d else ""))
             what = "; ".join(parts) or "no versions"
-            mise = ""
+            steps = [what]
             if not catalog.version_manager(vm.name).mise_replaces:
-                mise = ("dotkit has the Zulu 17 JDK (JAVA_HOME). For another JDK: `mise ls-remote java`, then "
-                        "`mise use -g java@<version>`")
+                steps.append("dotkit has the Zulu 17 JDK (JAVA_HOME). For another JDK: `mise ls-remote java`, then "
+                             "`mise use -g java@<version>`")
             else:
                 tools = [t for t in vm.versions if t]
-                done = [t for t in tools if t in picked]
-                rest = [t for t in tools if t not in picked]
-                mise = ", ".join(f"`mise use -g {t}@{(lines.get(t) or ['<version>'])[0]}`" for t in rest)
-                if done and not rest:
-                    mise = "config/mise.toml has these versions now"
+                done = [t for t in tools if t in added]
+                rest = [t for t in tools if t not in added and t not in yours]
+                if done and len(done) == len(tools):
+                    steps.append("config/mise.toml has these versions now")
                 elif done:
-                    names = ", ".join(done[:-1]) + " and " + done[-1] if len(done) > 1 else done[0]
-                    mise = f"config/mise.toml has the {names} versions now. With mise: " + mise
-                elif mise:
-                    mise = "With mise: " + mise
-            steps = ". ".join(x for x in (what, mise) if x)
-            items.append(f"{vm.name} ({vm.path}): {steps}. Then remove its lines from the shell files "
-                         f"(the report lists them) and `rm -rf {vm.path}`")
+                    steps.append(f"config/mise.toml has the {_and(done)} versions now")
+                for t in tools:
+                    if t in yours:
+                        steps.append(f"config/mise.toml has {t} from your mise config already, so these versions "
+                                     f"were not added; `mise use -g {t}@<version>` for one you need")
+                if rest:
+                    steps.append("With mise: " + ", ".join(
+                        f"`mise use -g {t}@{(lines.get(t) or ['<version>'])[0]}`" for t in rest))
+            items.append(f"{vm.name} ({vm.path}): {'. '.join(steps)}. Then remove its lines from the shell files "
+                         f"(the report lists them) and `rm -rf {shell_path(vm.path)}`")
         if items:
             r.todo("Version managers",
-                   "mise replaces them; dotkit's shell does not load them. The base has Node 24, Python 3.14, "
-                   "and Ruby 3.4. A project pins its own versions with `mise use` or a .nvmrc, .python-version, "
-                   "or .ruby-version file.", items)
+                   f"mise replaces them; dotkit's shell does not load them. The base has {base_runtimes(f.base)}. "
+                   "A project pins its own versions with `mise use` or a .nvmrc, .python-version, .ruby-version, "
+                   "or .tool-versions file.", items)
         for extra in rt.mise_extra:
             r.todo("mise", "mise still reads these files. Move their tools to config/mise.toml.",
                    [f"~/{extra}"])

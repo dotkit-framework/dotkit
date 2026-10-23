@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 from .. import catalog
-from ..context import Context, is_managed
+from ..context import Context, is_managed, shell_path
 from ..docs import Txn
 from ..model import Choices, Facts
 from . import Migrator
@@ -45,4 +45,4 @@ class Frameworks(Migrator):
         if fw is not None and fw.found:
             txn.report.todo("Shell frameworks",
                             "dotkit's zsh does not load them. Remove each one when you no longer need it.",
-                            [f"{n}: `rm -rf {p}`" for n, p in fw.found.items()])
+                            [f"{n}: `rm -rf {shell_path(p)}`" for n, p in fw.found.items()])

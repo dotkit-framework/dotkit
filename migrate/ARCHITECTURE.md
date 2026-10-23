@@ -404,6 +404,11 @@ The document types:
   the base text and renders them into the final base. If `set_base` brings a
   key that a committed entry already has, that is a conflict (strict mode
   raises).
+- **Settings come after `set_base`.** Unlike tool entries, setting edits
+  work on the base text, so `set_base` raises once a setting was edited
+  (`test_settings_come_after_set_base`). Only `config_files`, which calls
+  `set_base`, edits the settings that come from your config, right after
+  it.
 - `add_tool` inserts at the end of `[tools]`, or creates `[tools]`
   (today's `insert_tools`, `plan.py:286-299`). Render checks that the result
   parses with `tomllib`. If it does not, the render falls back to the base
@@ -601,6 +606,12 @@ every migrator's `sections`. The order:
 18. Other config
 19. Other config that stays out of the repository
 20. Scan warnings
+
+A command in the report that names a path quotes it for the shell, with a
+leading `~/` outside the quotes so that the shell still expands it:
+`rm -rf ~/'Library/Application Support/fnm'`. A path without special
+characters stays as it is (`rm ~/go/bin/hey`). One helper builds these
+paths for every migrator.
 
 The summary (the review screen, `--dry-run`, the plain prompts) starts with
 the problems line when there are failures (section 7.4), then today's lines
@@ -1005,12 +1016,17 @@ VersionManagerSpec(
 )
 # Line-only specs (detect=False) keep rcparse's words for rvm, nodenv, goenv, chruby, tfenv, conda,
 # mamba, micromamba (rcparse.py:91-93).
-# Until step 9, npm_globs are relative to the home directory (fnm has two locations, and both are
-# scanned, as today). Step 9 adds env_var and makes them relative to the manager's directory.
+# The manager's directory: catalog.manager_dir(spec, home, env). If env[spec.env_var], stripped,
+# is an absolute path, or is ~ or starts with ~/ (expanded against the scanned home), it is the
+# directory, and dirs are not tried. When it does not exist, is a file, or is the home or a parent
+# of the home (by file identity: a link or another case of the name counts), the manager is not
+# found. A blank or relative value counts as unset: then the first of dirs that exists. Shown with
+# the home as ~.
+# npm_globs are relative to that directory, so only one fnm location is scanned. The node_tools
+# scan uses the same function (it cannot read the runtimes facts), also for VOLTA_HOME.
+# env_var: NVM_DIR, FNM_DIR, VOLTA_HOME, PYENV_ROOT, RBENV_ROOT, ASDF_DATA_DIR, SDKMAN_DIR, JENV_ROOT.
 
 # migrators/runtimes.py
-IDIOMATIC = ("idiomatic_version_file_enable_tools", "idiomatic_version_file_disable_files")
-
 class Runtimes(Migrator):
     key = "runtimes"; title = "Runtime versions of version managers"
     sections = ("Version managers", "mise")
@@ -1028,22 +1044,47 @@ class Runtimes(Migrator):
     def plan(self, f, c, txn):
         user = config_files.layered_mise(f, c)                          # your config, if carried as "layer"
         for tool, versions in runtime_lines(facts_of(f)).items():
-            if c.selected("runtimes", f"runtime:{tool}"):
-                if txn.mise().add_tool(tool, versions if len(versions) > 1 else versions[0]):
-                    ...                                                 # carried row
-        # Both idiomatic settings are arrays; your value replaces dotkit's completely.
-        for key in IDIOMATIC:
-            if user is not None and key in user.settings:
-                base_val = f.base.mise_settings.get(key, [])
-                union = dedup(list(base_val) + list(user.settings[key]))   # dotkit's order first, then yours
-                if union != user.settings[key] and not txn.mise().replace_setting(
-                        key, union, expect=user.settings[key]):
-                    txn.report.todo("mise", "", [f"config/mise.toml sets `{key}`, which replaces dotkit's "
-                                                 f"{base_val}. Set it to {union}."])
-        # Never write these keys when you do not set them: a copy would freeze dotkit's list.
+            if not c.selected("runtimes", f"runtime:{tool}"):
+                continue
+            if user is not None and tool in user.tools:
+                ...    # "config/mise.toml has <tool> from your mise config already, so these versions were
+                       #  not added; `mise use -g <tool>@<version>` for one you need"
+            elif txn.mise().add_tool(tool, versions if len(versions) > 1 else versions[0]):
+                ...    # carried row; the item says "config/mise.toml has these versions now"
         for vm in facts_of(f).managers:                                 # today's plan.py:468-493
             lines = [x for x in shell.findings(f) if x.source == vm.name]   # None-safe helper
             txn.report.todo("Version managers", intro(f.base), [step_text(vm, lines, c)])
+
+# migrators/config_files.py: the idiomatic settings. It owns your mise config, so it writes the union
+# right after set_base (settings come after set_base, section 4.4).
+IDIOMATIC = ("idiomatic_version_file_enable_tools", "idiomatic_version_file_disable_files")
+
+def mise_settings(f, c, txn, user):                     # user: your parsed ~/.config/mise/config.toml
+    for key in IDIOMATIC:
+        if key not in user.settings:
+            continue                                    # never write a key you do not set: a copy
+                                                        # would freeze dotkit's list
+        base_val = f.base.mise_settings.get(key, [])
+        yours = user.settings[key]
+        if not (isinstance(yours, list) and all(isinstance(x, str) for x in yours)):
+            txn.report.todo("mise", "", [f"your mise config sets `{key}` to {toml(yours)}, which is not a "
+                                         f"list of names. dotkit's value is {toml(base_val)}. Check it."])
+            continue                                    # no union, no edit
+        if set(base_val) <= set(yours):
+            continue                                    # yours has all of dotkit's: order does not matter
+        union = dedup(list(base_val) + yours)           # dotkit's order first, then yours
+        # toml(): a backticked TOML value, ready to paste, e.g. `["node", "python"]`.
+        if layered(c):                                  # carried as "layer": edit the repository file
+            if txn.mise().replace_setting(key, union, expect=yours):
+                txn.report.todo("mise", "", [f"config/mise.toml: `{key}` is now {toml(union)}, dotkit's list "
+                                             f"and yours, because a list in your config replaces dotkit's "
+                                             f"(yours was {toml(yours)}). Check it."])
+            else:
+                txn.report.todo("mise", "", [f"config/mise.toml sets `{key}`, which replaces dotkit's "
+                                             f"{toml(base_val)}. Set it to {toml(union)}."])
+        else:                                           # kept in place: never edit it, only say so
+            txn.report.todo("mise", "", [f"~/.config/mise/config.toml sets `{key}`, which replaces "
+                                         f"dotkit's {toml(base_val)}. Set it to {toml(union)}."])
 ```
 
 - **`Base.mise_settings`** reads `[settings]` of the base `config/mise.toml`,
@@ -1053,7 +1094,9 @@ class Runtimes(Migrator):
 - **No hard-coded runtime versions in text.** The intro's "The base has Node
   24, Python 3.14, and Ruby 3.4" (`plan.py:490-493`) and the page note
   (`plan.py:181`) come from `Base.mise` (`base_runtimes()`), so a base
-  change can't make them wrong.
+  change can't make them wrong. The display name of a tool comes from one
+  function in `catalog.py` (today `key.capitalize()`: `node` → `Node`,
+  `go` → `Go`); a name that needs another spelling gets an entry there.
 - **The project-file hint** (`rcparse.py:43-44`) is correct for the current
   base, which reads `.nvmrc`, `.node-version`, `.python-version`, and
   `.ruby-version`. Keep it, and mention that `.tool-versions` is always read.
@@ -1160,16 +1203,17 @@ Rules for every step:
 | 6 | **Writer and checks.** `writer.py` (render, plan-time guard, `write_new` with write-time verification) replaces `write.py`; `checks.py` (links, moved aside, blockers, summary); `mask_lines` moves to `writer.py`, which also masks the summary; `SecretInRepository` ends the run with a clean error and exit 2; a repository path inside a copied directory, or one that a copied directory would contain, counts as taken (rule 4) | no change on the goldens; two ruled cases that no golden reaches: a summary line with a secret is masked, and an overlapping directory copy is not made and gets the `other_config` to-do | 5 | STD; `write.py` is gone; a test that stages a secret past the guard aborts with no directory left; a summary line with a token is masked; `~/.config/bash` selected for adoption next to a carried `~/.bash_profile` is not copied, has no link, and gets the to-do, and a copied directory that would contain `config/zsh/zshrc` is refused the same way |
 | 7 | **Pages, per-item choices, and the new UI.** `Page`/`Item`/`Choices` of section 4.3 (Homebrew as three pages; one shell item per file); the planner returns pages instead of `groups`/`file_items`/`adoptable`, and `_Build` reads `Choices.picked`/`options`; "Not carried, by your choice"; `ui/screens.py`, `ui/curses_ui.py`, `ui/plain.py` replace `wizard.py` and `prompts.py`; `ScriptedFrontend`; `wizard_child.py` writes the new `Choices` JSON; PTY tests rewritten for the new screens, plain-prompt counts taken from the planner | UI and Choices change; default-choice goldens unchanged | 6 | STD; `wizard.py` and `prompts.py` are gone; new goldens with deselected items; UI flow tests |
 | 8 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session`. The first commit replaces `Planner` with `Session` and switches `ui/`, `__main__`, and the tests to it; the code that is not yet split runs as a private last entry of the registry. Then one migrator per commit, in `MIGRATORS` order: its scan step and its `Scan` fields, its `_Build` part, its pages, and its tests (into `tests/migrators/`) move together. rcparse parsing moves into the `shell` scan, for the page labels; `plan` parses again with the selection-aware chain (section 4.3). `Facts.get`, `Facts.base`, `Facts.check_syntax`, `needs`. One `Txn` per migrator (owner = its key), committed in `MIGRATORS` order, and a core `Txn` for the keymap, `nix/user.nix`, and the scan warnings; no rollback yet (step 11). The identity scan is core and runs first. `Session.scan` catches an exception per migrator and records `"<key>: <type>: <message>"` as a warning, until step 11 turns this into `Failure`. `adopt.py` (until step 12) reads the migrators' facts and imports `tap_lines`/`mas_lines` from `migrators/homebrew.py` and `migrators/appstore.py`. The whole-plan tests move to `tests/test_session.py` | no change, except on the failure path that no golden reaches: a scan warning now starts with the migrator key (`homebrew: …` instead of `brew: …`), warnings come in `MIGRATORS` order, and a migrator stops at its first failing part (cargo failing now also loses the Go tools of `built_tools`) | 7 | STD per commit; at the end `plan.py`, `scan.py`, the `Scan` dataclass, `_Build`, `migrators/_rest.py`, and the private registry entry are gone |
-| 9 | **Runtimes rules.** The union rule for both idiomatic settings (section 12.1); runtime versions in report text and page note from `Base.mise` (replaces `plan.py:181`, `490-493`); `.tool-versions` in the hint; `VersionManagerSpec.env_var` (`NVM_DIR`, `FNM_DIR`, `PYENV_ROOT`, …) is respected by detection and by the npm scan, and `npm_globs` become relative to the manager's directory; the version-manager item says "config/mise.toml has these versions now" only for tools that `MiseDoc.add_tool` accepted, and for a tool that your mise config already has it says "config/mise.toml has <tool> from your mise config already, so these versions were not added; `mise use -g <tool>@<version>` for one you need" (today `plan.py:482-483` checks only that the page is on) | changes report text and possibly `config/mise.toml` | 8 | goldens updated and reviewed; tests: pyenv with `python` in your mise config gets the second text; your config without the keys writes nothing; a single-line key gets the union and parses; a multi-line or dotted key gives the to-do; base values come from the base file |
+| 9 | **Runtimes rules.** The union rule for both idiomatic settings, written by `config_files` right after its `set_base`, and a to-do instead of an edit when your mise config is kept in place (section 12.1); runtime versions in report text and page note from `Base.mise` (replaces `plan.py:181`, `490-493`); `.tool-versions` in the hint; `VersionManagerSpec.env_var` and `catalog.manager_dir` (section 12.1) for detection and for the npm and Volta scans of `node_tools`, and `npm_globs` become relative to the manager's directory (one fnm location); the version-manager item says "config/mise.toml has these versions now" only for tools that `MiseDoc.add_tool` accepted, and for a tool that your mise config already has it says "config/mise.toml has <tool> from your mise config already, so these versions were not added; `mise use -g <tool>@<version>` for one you need" (today `plan.py:482-483` checks only that the page is on) | changes report text and possibly `config/mise.toml` | 8 | goldens updated and reviewed; tests: pyenv with `python` in your mise config gets the second text; your config without the keys writes nothing; a single-line key gets the union and parses; a multi-line or dotted key gives the to-do; base values come from the base file; a kept mise config with the key gets the to-do and is not edited; `NVM_DIR` pointing elsewhere finds nvm and its npm globals there, and an `NVM_DIR` that does not exist finds no nvm even if `~/.nvm` exists; `VOLTA_HOME` is followed |
+| 9a | **Tools when your mise config is kept in place.** When `~/.config/mise/config.toml` stays in place ("keep", the only option when it has a secret), the repository's `config/mise.toml` is not linked, so mise never reads it. The tool migrators (node_tools, python_tools, built_tools, runtimes) then add nothing to it. Each selected tool gets a to-do instead: "`mise use -g <spec>` (your ~/.config/mise/config.toml stays in place, so the repository's config/mise.toml is not read)", and there is no carried row and no "has these versions now". One pure helper, `config_files.mise_target(facts, choices)` ("repository", "kept", or `None` without a config of yours), tells them which case applies | changes report text and `config/mise.toml` when your config is kept | 9 | goldens updated and reviewed; tests: a kept config with npm, pipx, and runtime items selected leaves `config/mise.toml` as the template and gives one to-do per tool; a layered config and no config at all behave as before |
 | 10 | **Registry invariants.** Unique page keys and item-id prefixes; `sections` ⊆ `SECTIONS` (`ORDER` becomes `SECTIONS`); the empty home; the AST no-write test; the secret property test; every static section intro and rcparse hint passes `secrets.line_secret(...) is None` | no change | 8 | the tests pass; a migrator that writes a file, or copies a token file, fails them; an intro with "password manager" in it fails |
 | 11 | **Crash isolation.** One transaction per migrator; isolated `scan` and `pages`; `Failure`; the identity pseudo-migrator; `manual_steps` for every migrator (section 7.5 texts for `shell` and `config_files`); "Problems during the migration"; summary and stderr lines; `--debug`; masking; strict mode (`fake.session` default, `DOTKIT_MIGRATE_STRICT=1` in the e2e job, hidden `--strict`); exit code 0 with failures; in the UI, the warning line and the review Problems block (section 8) | the scan catch-all (`scan.py:648-651`, by then inside the migrators) becomes isolation; plan crashes are newly isolated | 10 | `tests/test_isolation.py`; UI flow tests for the warning line and the Problems block; goldens unchanged (no faults in the fixtures) |
 | 12 | **Adopt unification.** `Declared` (section 4.5); `adopt()` for homebrew, appstore, node_tools, python_tools, built_tools; `Session.adopt`; `writer.apply_edits`; adopt output from the documents' `added()` and the report; `adopt.py` removed; the pnpm rule applies to npm packages only (today `adopt.py` skips a package named `pnpm` from any backend). Setup now also skips a formula that your mise config provides | de-duplication change | 11 | goldens updated and reviewed; `adopt.py` is gone; tests: your mise config has `jq` and brew has `jq` → skipped in setup and adopt; apply twice → the second run adds nothing; a fault in the second replace restores the first file |
 | 13 | **Leftovers report** (section 11). `Package.commands`; executable listings in the `shell` and `leftovers` scans; `base.TOOL_PATH` checked against `nix/home.nix`; report-only parsing of `~/.bashrc`, `~/.zlogin`, `~/.zlogout`, `~/.profile`; the shadowing warnings with their context and fixes; the Homebrew stale/cleanup warning, including deselected items; the reference check next to every removal | new report text | 8 | goldens updated and reviewed; fixtures: `~/.npm-global/bin` with `tsc` carried from `~/.zshrc` while `npm:typescript` moves to mise → "interactive shells" warning with file and line; `~/.local/bin/ruff` while `pipx:ruff` moves → "GUI apps" warning; `source ~/.nvm/nvm.sh` in `~/.bashrc` → "still runs"; a carried line that re-adds `/opt/homebrew/bin` → no warning |
 | 14 | **Package docstring.** `dotkit_migrate/__init__.py` points to this file and keeps the Python 3.9 rules; README "Work on dotkit" mentions it | no change | all | review |
 
-Order: 1 → 1a → 2 → 3 and 4 (in either order) → 5 → 6 → 7 → 8. After 8: 9, 10,
-and 13 in any order; 11 needs 10; 12 needs 11. Land each step that changes
-behavior (1a, 2, 7, 9, 11, 12, 13) on its own, so that each golden diff can be
+Order: 1 → 1a → 2 → 3 and 4 (in either order) → 5 → 6 → 7 → 8. After 8: 9 (then
+9a), 10, and 13 in any order; 11 needs 10; 12 needs 11. Land each step that changes
+behavior (1a, 2, 7, 9, 9a, 11, 12, 13) on its own, so that each golden diff can be
 reviewed by itself.
 
 ## 14. Open items

@@ -122,5 +122,5 @@ class BuiltTools(Migrator):
                       "cargo uninstall {name}") and not b.has_cargo:
             txn.report.todo("Tools that moved to mise", "", ["mise needs cargo for these: `mise use -g rust`."])
         if plan_tools(f, c, txn, pages, "go", b.go, "# From ~/go/bin, see MIGRATION.md.",
-                      "rm {where}") and not b.has_go:
+                      "rm {path}") and not b.has_go:
             txn.report.todo("Tools that moved to mise", "", ["mise needs go for these: `mise use -g go`."])

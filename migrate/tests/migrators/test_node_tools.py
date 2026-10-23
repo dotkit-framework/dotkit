@@ -78,5 +78,30 @@ class NodeToolsTests(unittest.TestCase):
         self.assertEqual(p.build(c).report.count("`mise use -g npm:typescript`"), 2, "both copies stay")
 
 
+    def pkg(self, root, name):
+        p = root / name
+        p.mkdir(parents=True)
+        (p / "package.json").write_text(json.dumps({"name": name, "version": "1.0.0", "bin": "x"}))
+
+    def test_the_npm_scan_follows_the_variables_of_the_version_managers(self):
+        """NVM_DIR and VOLTA_HOME are the directories of nvm and Volta; the usual ones are not read then."""
+        nvm = self.h.root / "opt/nvm"
+        self.pkg(nvm / "versions/node/v22.1.0/lib/node_modules", "typescript")
+        self.pkg(self.h.home / ".nvm/versions/node/v18.0.0/lib/node_modules", "stale")
+        self.h.json("volta/tools/user/packages/yarn.json", {"name": "yarn", "version": "1.22.0"})
+        self.h.json(".volta/tools/user/packages/old.json", {"name": "old", "version": "1.0.0"})
+        env = {"NVM_DIR": str(nvm), "VOLTA_HOME": str(self.h.home / "volta")}
+        s = node_tools.facts_of(fake.session(self.h, fake.brew_runner(), env).scan())
+        self.assertEqual({p.name: p.where for p in s.packages}, {"typescript": "nvm v22.1.0", "yarn": "volta"})
+        env["NVM_DIR"] = str(self.h.root / "missing")
+        s = node_tools.facts_of(fake.session(self.h, fake.brew_runner(), env).scan())
+        self.assertNotIn("stale", {p.name for p in s.packages}, "a variable that points to nothing: no nvm")
+
+    def test_the_npm_scan_reads_the_first_fnm_directory_only(self):
+        self.pkg(self.h.home / ".local/share/fnm/node-versions/v20.11.0/installation/lib/node_modules", "a")
+        self.pkg(self.h.home / "Library/Application Support/fnm/node-versions/v18.0.0/installation/lib/node_modules",
+                 "b")
+        self.assertEqual([(p.name, p.where) for p in self.scan().packages], [("a", "fnm v20.11.0")])
+
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,7 @@ from .. import base as base_mod
 from .. import secrets
 from .._compat import tomllib
 from ..context import Context, is_managed, read_text, tilde
-from ..docs import Txn
+from ..docs import Txn, toml_value
 from ..model import Choices, Facts, Item, Page
 from . import Migrator
 
@@ -84,12 +84,72 @@ def layered_mise(f: Facts, c: Choices) -> Optional[LayeredMise]:
     cf = facts_of(f)
     if not _mise_layered(cf, c):
         return None
+    return _read_mise(cf.mise_config.path)
+
+
+def _read_mise(path: Path) -> LayeredMise:
     try:
-        data = tomllib.loads(_text(cf.mise_config.path))
+        data = tomllib.loads(_text(path))
     except tomllib.TOMLDecodeError:
         data = {}
     tools, settings = data.get("tools"), data.get("settings")
     return LayeredMise(tools if isinstance(tools, dict) else {}, settings if isinstance(settings, dict) else {})
+
+
+# Settings that are lists of mise: yours replaces dotkit's whole list, so it
+# becomes dotkit's list plus yours.
+IDIOMATIC = ("idiomatic_version_file_enable_tools", "idiomatic_version_file_disable_files")
+
+
+def _toml(v: object) -> str:
+    """A value for report text: backticked TOML, as MiseDoc writes it, ready to paste."""
+
+    def plain(x: object) -> bool:
+        return isinstance(x, (bool, int, str)) or (isinstance(x, list) and all(plain(y) for y in x))
+
+    return "`" + (toml_value(v) if plain(v) else str(v)) + "`"
+
+
+def _names(v: object) -> bool:
+    return isinstance(v, list) and all(isinstance(x, str) for x in v)
+
+
+def _idiomatic(f: Facts, txn: Txn, user: LayeredMise, layered: bool) -> None:
+    """dotkit's idiomatic settings plus yours, for each one that your mise config sets.
+
+    A key that your config does not set is not written: a copy would freeze
+    dotkit's list. Carried as "layer", the line of config/mise.toml is
+    replaced (after set_base), and a to-do says so; kept in place, your file
+    is never edited. What cannot be written is a to-do.
+    """
+    r = txn.report
+    for key in IDIOMATIC:
+        if key not in user.settings:
+            continue
+        yours = user.settings[key]
+        base_val = f.base.mise_settings.get(key, [])
+        if not _names(yours):
+            r.todo("mise", "", [f"your mise config sets `{key}` to {_toml(yours)}, which is not a list of names. "
+                                f"dotkit's value is {_toml(base_val)}. Check it."])
+            continue
+        base_names = list(base_val) if _names(base_val) else []
+        # Lists of names that mise allows: the order does not matter.
+        if set(base_names) <= set(yours):
+            continue
+        union: List[str] = []
+        for v in base_names + yours:
+            if v not in union:
+                union.append(v)
+        if not layered:
+            r.todo("mise", "", [f"~/.config/mise/config.toml sets `{key}`, which replaces dotkit's "
+                                f"{_toml(base_val)}. Set it to {_toml(union)}."])
+        elif txn.mise().replace_setting(key, union, expect=yours):
+            r.todo("mise", "", [f"config/mise.toml: `{key}` is now {_toml(union)}, dotkit's list and yours, "
+                                f"because a list in your config replaces dotkit's (yours was {_toml(yours)}). "
+                                "Check it."])
+        else:
+            r.todo("mise", "", [f"config/mise.toml sets `{key}`, which replaces dotkit's {_toml(base_val)}. "
+                                f"Set it to {_toml(union)}."])
 
 
 def _choice(x: ConfigFile, c: Choices) -> str:
@@ -213,6 +273,8 @@ class ConfigFiles(Migrator):
         if layered:
             # Your mise config is the base of config/mise.toml. The tool migrators skipped its tools.
             txn.mise().set_base(_text(cf.mise_config.path))
+            # Settings come after set_base.
+            _idiomatic(f, txn, _read_mise(cf.mise_config.path), layered=True)
         links = {link.target: link for link in base_mod.LINKS}
         git_choice = _git_choice(cf, c)
         git_parts = _git_parts(f, cf, c)
@@ -280,6 +342,7 @@ class ConfigFiles(Migrator):
             txn.links().link(MISE_CONFIG, None)
             r.todo("mise", "", ["~/.config/mise/config.toml stays in place, outside the repository, and dotkit "
                                 "does not link config/mise.toml. `dotkit add` writes mise tools to it."])
+            _idiomatic(f, txn, _read_mise(cf.mise_config.path), layered=False)
 
 
 def _base_example(target: str) -> str:

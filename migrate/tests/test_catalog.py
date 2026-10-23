@@ -6,6 +6,7 @@ import unittest
 
 from dotkit_migrate import catalog, rcparse
 from dotkit_migrate.migrators import node_tools
+from tests import fake
 
 # The literals of rcparse.py before the catalog (commit a75562e).
 OLD_FRAMEWORK = (
@@ -128,7 +129,21 @@ class CatalogRegexTests(unittest.TestCase):
         self.assertGreater(hits, 40)
 
     def test_node_globs(self):
-        self.assertEqual(node_tools.node_version_globs(), OLD_NODE_GLOBS)
+        """The globs are relative to the manager's directory: in the usual places, the old globs, with one
+        fnm location (the first in its dirs) since step 9."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        for d in (".nvm", ".local/share/fnm", "Library/Application Support/fnm", ".asdf"):
+            h.mkdir(d)
+        ctx = fake.context_of(h, fake.FakeRunner())
+        got = [(str(root.relative_to(h.home) / pattern), label, index)
+               for root, pattern, label, index in node_tools.node_version_globs(ctx)]
+        self.assertEqual(got, [g for g in OLD_NODE_GLOBS if not g[0].startswith("Library/")])
+
+    def test_env_vars(self):
+        self.assertEqual({s.name: s.env_var for s in catalog.VERSION_MANAGERS if s.env_var}, {
+            "nvm": "NVM_DIR", "fnm": "FNM_DIR", "volta": "VOLTA_HOME", "pyenv": "PYENV_ROOT",
+            "rbenv": "RBENV_ROOT", "asdf": "ASDF_DATA_DIR", "sdkman": "SDKMAN_DIR", "jenv": "JENV_ROOT"})
 
     def test_names_unique(self):
         for specs in (catalog.VERSION_MANAGERS, catalog.FRAMEWORKS):
@@ -143,6 +158,7 @@ class CatalogRegexTests(unittest.TestCase):
             with self.subTest(spec=spec.name):
                 if spec.detect:
                     self.assertTrue(spec.dirs and spec.versions)
+                    self.assertIn(spec.env_var, spec.extra_vars, "its variable is not carried either")
                     self.assertEqual(spec.default is None, spec.tool == "")
                 else:
                     self.assertEqual((spec.dirs, spec.tool, spec.default), ((), "", None))

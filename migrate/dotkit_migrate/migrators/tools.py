@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .. import catalog
-from ..context import Context
+from ..context import Context, shell_path
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
 from ..report import plural
@@ -71,7 +71,7 @@ def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs
         if c.selected(key, f"{key}:{p.name}"):
             if not (user is not None and spec in user.tools) and mise.add_tool(spec, "latest", comment):
                 carried.append(p)
-                rm = remove.format(name=p.name, where=p.where,
+                rm = remove.format(name=p.name, path=shell_path(p.where),
                                    remove=("pipx uninstall " if p.where == "pipx" else "uv tool uninstall ")
                                    + p.name)
                 old.append(f"`{spec}`, was {p.version or 'installed'} in {p.where}. "

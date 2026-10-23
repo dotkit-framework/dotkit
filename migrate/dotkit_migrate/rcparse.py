@@ -41,7 +41,7 @@ CATEGORIES: tuple[tuple[str, str], ...] = (
                 "Add the plugin lines you miss to {zshrc}. Remove the framework directory when you no "
                 "longer need it."),
     (VERSION_MANAGER, "mise replaces it, see \"Version managers\" below. mise reads .nvmrc, "
-                      ".node-version, .python-version, and .ruby-version files."),
+                      ".node-version, .python-version, and .ruby-version files, and always .tool-versions."),
     (PROMPT, "dotkit draws the prompt with Starship (~/.config/starship.toml). To keep your own prompt, "
              "set `dotkit.zsh.integrations.starship.enable = false;` in nix/shell.nix and add the lines "
              "to {zshrc}."),
