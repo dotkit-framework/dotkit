@@ -10,6 +10,8 @@ The Macs:
   - kitchen-sink: every source the scan knows, every item of every
     checklist page selected (so every adoptable config is carried), the vi
     keymap, and a few file choices that are not the defaults.
+  - used-mac-deselected and kitchen-sink-deselected: the same Macs with
+    single items deselected and selected, page by page.
 Adopt runs on the kitchen-sink Mac against a small repository, once with
 the defaults and once with --all. Its golden has the describe() lines and
 the text of each file that apply() changed.
@@ -229,6 +231,31 @@ def kitchen_sink_choices(p: plan.Planner, repo: str) -> Choices:
     return c
 
 
+def used_mac_deselected(p: plan.Planner, repo: str) -> Choices:
+    """The defaults with single items deselected on the pages that are on, and selected on the pages that are off."""
+    c = p.defaults(repo)
+    c.picked["formulae"].discard("brew:hashicorp/tap/terraform")
+    c.picked["casks"].discard("cask:raycast")
+    c.picked["taps"].discard("tap:acme/tools")
+    c.picked["mas"].discard("mas:497799835")
+    c.picked["npm"].discard("npm:typescript")
+    c.picked["shell"].discard("shell:.zshrc")
+    c.picked["cargo"].add("cargo:bat")
+    c.picked["runtimes"].add("runtime:node")
+    c.picked["other"].add("other:.bashrc")
+    return c
+
+
+def kitchen_sink_deselected(p: plan.Planner, repo: str) -> Choices:
+    """Every item selected, then some left out: part of a version manager, one of two apps with one name, and more."""
+    c = kitchen_sink_choices(p, repo)
+    for page, item in (("runtimes", "runtime:go"), ("mas", "mas:409183694"), ("formulae", "brew:wget"),
+                       ("taps", "tap:hashicorp/tap"), ("pipx", "pipx:httpie"), ("go", "go:github.com/rakyll/hey"),
+                       ("shell", "shell:.zprofile.local"), ("other", "other:.config/nvim")):
+        c.picked[page].remove(item)
+    return c
+
+
 # A small repository for adopt: lists with and without a final line break.
 ADOPT_REPO = {
     "nix/packages.txt": "dust\n",
@@ -293,6 +320,8 @@ PLANS = {
     "plan-empty": (empty_mac, None),
     "plan-used-mac": (used, None),
     "plan-kitchen-sink": (kitchen_sink, kitchen_sink_choices),
+    "plan-used-mac-deselected": (used, used_mac_deselected),
+    "plan-kitchen-sink-deselected": (kitchen_sink, kitchen_sink_deselected),
 }
 ADOPTS = {
     "adopt-kitchen-sink": False,
