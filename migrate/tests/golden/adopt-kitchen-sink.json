@@ -13,7 +13,7 @@
     "  pipx:httpie (from uv tool)",
     "cargo and Go tools, not added: mise builds them from source. Use --all to add them:",
     "  cargo:cargo-watch (from cargo install)",
-    "  go:github.com/rakyll/hey (from <HOME>/go/bin/hey)",
+    "  go:github.com/rakyll/hey (from ~/go/bin/hey)",
     "Homebrew taps: add them to homebrew.taps in nix/darwin.nix by hand:",
     "  \"acme/tools\"",
     "App Store apps: add them to homebrew.masApps in nix/darwin.nix by hand:",

@@ -12,7 +12,7 @@
     "  pipx:datasette (from uv tool)",
     "  pipx:httpie (from uv tool)",
     "  cargo:cargo-watch (from cargo install)",
-    "  go:github.com/rakyll/hey (from <HOME>/go/bin/hey)",
+    "  go:github.com/rakyll/hey (from ~/go/bin/hey)",
     "Homebrew taps: add them to homebrew.taps in nix/darwin.nix by hand:",
     "  \"acme/tools\"",
     "App Store apps: add them to homebrew.masApps in nix/darwin.nix by hand:",
