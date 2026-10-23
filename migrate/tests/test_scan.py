@@ -128,6 +128,16 @@ class ScanTests(unittest.TestCase):
         self.assertEqual([(p.name, p.version, p.ok) for p in s.go],
                          [("golang.org/x/tools/gopls", "v0.15.0", True), ("plain", "", False)])
 
+    def test_go_where_has_the_home_as_tilde(self):
+        self.h.write("go/bin/plain", "#!/bin/sh\n", 0o755)
+        self.assertEqual([p.where for p in self.scan().go], ["~/go/bin/plain"])
+        # A GOBIN outside the home stays absolute.
+        gobin = self.h.root / "gobin"
+        gobin.mkdir()
+        (gobin / "tool").write_text("#!/bin/sh\n")
+        (gobin / "tool").chmod(0o755)
+        self.assertEqual([p.where for p in self.scan(env={"GOBIN": str(gobin)}).go], [str(gobin / "tool")])
+
     def test_version_managers_and_frameworks(self):
         self.h.mkdir(".nvm/versions/node/v18.20.0")
         self.h.mkdir(".nvm/versions/node/v20.11.0")

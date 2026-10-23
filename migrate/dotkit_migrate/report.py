@@ -30,10 +30,21 @@ ORDER = (
 
 
 @dataclass
-class _Section:
-    title: str
-    intro: str = ""
+class _Block:
+    intro: str
     items: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _Section:
+    """A section of "To do": blocks of an intro and its items, in the order they first appear."""
+
+    title: str
+    blocks: list[_Block] = field(default_factory=list)
+
+    @property
+    def items(self) -> list[str]:
+        return [i for b in self.blocks for i in b.items]
 
 
 class Report:
@@ -50,9 +61,13 @@ class Report:
         if sec is None:
             sec = self.sections[title] = _Section(title)
             self._order.append(title)
-        if intro and not sec.intro:
-            sec.intro = intro
-        sec.items += [i for i in items if i not in sec.items]
+        block = next((b for b in sec.blocks if b.intro == intro), None)
+        if block is None:
+            block = _Block(intro)
+            sec.blocks.append(block)
+        for i in items:
+            if i not in block.items:
+                block.items.append(i)
 
     @property
     def count(self) -> int:
@@ -94,12 +109,13 @@ class Report:
         for sec in self._sorted():
             out.append(f"### {sec.title}")
             out.append("")
-            if sec.intro:
-                out += [sec.intro, ""]
-            for item in sec.items:
-                out.append(f"- {item}")
-            if sec.items:
-                out.append("")
+            for block in sec.blocks:
+                if block.intro:
+                    out += [block.intro, ""]
+                for item in block.items:
+                    out.append(f"- {item}")
+                if block.items:
+                    out.append("")
         return "\n".join(out).rstrip("\n") + "\n"
 
 

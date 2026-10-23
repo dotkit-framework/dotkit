@@ -547,7 +547,8 @@ class _Build:
                     secret_lines += [x.text for x in res.secrets]
                     r.todo("Secrets", "These lines have a secret, so they are not in Git. They are in a file in "
                                       "local/ of this repository, which Git ignores, and the repository file reads "
-                                      "it. On a new Mac, copy the file by hand or use a password manager.",
+                                      "it. On a new Mac, copy the file by hand, or keep its lines in a manager for "
+                                      "passwords.",
                            [f"~/{f.name}:{x.lines[0]}: `{x.name}` -> local/{Path(repo_file).name}.{shell}"
                             for x in res.secrets])
                 if not on:

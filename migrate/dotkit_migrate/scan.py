@@ -434,9 +434,9 @@ class Scanner:
                 continue
             module, version = self._go_module(p, go)
             if module:
-                out.append(Package(module, version, str(p), True, f"the command {p.name}"))
+                out.append(Package(module, version, self._tilde(p), True, f"the command {p.name}"))
             else:
-                out.append(Package(p.name, "", str(p), False, "no Go module information"))
+                out.append(Package(p.name, "", self._tilde(p), False, "no Go module information"))
         self.s.go = out
 
     def _go_module(self, p: Path, go: str | None) -> tuple[str, str]:

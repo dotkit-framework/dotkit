@@ -6,6 +6,7 @@ import unittest
 
 from dotkit_migrate import plan, secrets, write
 from dotkit_migrate._compat import tomllib
+from dotkit_migrate.report import Report
 from tests import fake
 
 TOKEN = fake.TOKENS["@GH@"]
@@ -142,6 +143,52 @@ class PlanTests(unittest.TestCase):
                      "nvm (~/.nvm)", "`mise use -g node@20`", "Oh My Zsh: `rm -rf ~/.oh-my-zsh`",
                      "~/.bashrc: It stays in place", "~/.config/nvim", "`acme/tools`: git@gitlab.com"):
             self.assertIn(text, r)
+
+    def test_secrets_intro_is_not_masked(self):
+        r = self.build().report
+        self.assertIn("These lines have a secret, so they are not in Git. They are in a file in local/ of this "
+                      "repository, which Git ignores, and the repository file reads it. On a new Mac, copy the "
+                      "file by hand, or keep its lines in a manager for passwords.\n", r)
+
+    def test_old_taps_keep_their_intro(self):
+        runner = fake.brew_runner(taps=[
+            {"name": "acme/tools", "remote": "git@gitlab.com:acme/homebrew-tools.git"},
+            {"name": "homebrew/cask-fonts"},
+        ])
+        p = fake.planner(fake.scanner(self.h, runner).run())
+        r = p.build(p.defaults(self.repo)).report
+        custom = r.index("These taps are not on GitHub, so the list has their URL. Check it.")
+        merged = r.index("Homebrew merged these taps into its own. Remove them.")
+        self.assertLess(custom, r.index("`acme/tools`: git@gitlab.com"))
+        self.assertLess(r.index("`acme/tools`: git@gitlab.com"), merged)
+        self.assertLess(merged, r.index("`homebrew/cask-fonts`: `brew untap homebrew/cask-fonts`"))
+        self.assertEqual(r.count("### Homebrew taps"), 1)
+
+    def test_tools_not_in_mise_keep_their_intros(self):
+        # Default choices: npm is on, but pnpm is never carried; cargo is off.
+        r = self.build().report
+        npm = r.index("They stay where they are. To add one to config/mise.toml:\n")
+        cargo = r.index("mise builds cargo tools from source, so they are off by default. They stay where they "
+                        "are. To add one to config/mise.toml:\n")
+        self.assertLess(npm, r.index("`pnpm` (nvm v20.11.0): dotkit has no global pnpm"))
+        self.assertLess(r.index("`pnpm` (nvm v20.11.0): dotkit has no global pnpm"), cargo)
+        self.assertLess(cargo, r.index("`bat` (cargo install): `mise use -g cargo:bat`"))
+        self.assertEqual(r.count("### Tools that are not in mise"), 1)
+
+    def test_report_deduplicates_per_block(self):
+        r = Report()
+        r.todo("Homebrew taps", "First intro.", ["`x`"])
+        r.todo("Homebrew taps", "Second intro.", ["`x`"])
+        r.todo("Homebrew taps", "First intro.", ["`x`", "`x`"])
+        text = r.render(self.scan, "~/.dotfiles")
+        self.assertIn("First intro.\n\n- `x`\n\nSecond intro.\n\n- `x`\n", text)
+        self.assertEqual(text.count("- `x`"), 2)
+        self.assertEqual(r.count, 2)
+        r.todo("Logins", "Nothing to list.", [])
+        self.assertEqual(r.count, 3)
+        # Repeats in one call collapse too.
+        r.todo("Config files", "One intro.", ["`y`", "`y`"])
+        self.assertEqual(r.sections["Config files"].items, ["`y`"])
 
     def test_no_secret_in_the_repository(self):
         p = self.build()
