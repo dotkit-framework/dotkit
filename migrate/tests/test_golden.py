@@ -97,6 +97,7 @@ bindkey -v
 setopt AUTO_CD
 export EDITOR=nvim
 export PATH="$HOME/.npm-global/bin:$PATH"
+export PATH="$HOME/bin:$PATH"
 export PATH="$HOME/missing/bin:$PATH"
 # Long listing.
 alias ll='ls -la'
@@ -130,14 +131,34 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     h.write(".zshrc", fake.fill(ZSHRC))
     h.write(".zshrc.local", "alias never_read=true\n")
     h.write(".zshenv", "export LANG=en_US.UTF-8\n")
-    h.write(".zprofile", 'eval "$(/opt/homebrew/bin/brew shellenv)"\nsource ~/.zprofile.local\n')
+    # ~/bin goes to config/zsh/zprofile, before mise starts: ~/.zshrc adding it again is no new directory.
+    h.write(".zprofile", 'eval "$(/opt/homebrew/bin/brew shellenv)"\nexport PATH="$HOME/bin:$PATH"\n'
+            'source ~/.zprofile.local\n')
+    h.mkdir("bin")
     # The fake check_syntax rejects this file, so only its function is left out.
     h.write(".zprofile.local", f"export ZPROFILE_LOCAL=1\ngolden_broken() {{\n  echo {SYNTAX_ERROR}\n}}\n")
     h.write(".bash_profile", "export BASH_SILENCE_DEPRECATION_WARNING=1\n[ -f ~/.bashrc ] && . ~/.bashrc\n")
-    h.write(".bashrc", "export OLD_BASHRC=1\n")
+    # ~/.bashrc still runs, after mise starts.
+    h.write(".bashrc", "export OLD_BASHRC=1\nsource ~/.nvm/nvm.sh\n")
     h.write(".zlogin", "echo welcome\n")
+    h.write(".zlogout", "clear\n")
     h.write(".profile", "export PROFILE=1\n")
+    # The carried PATH line of ~/.zshrc adds this directory: its tsc, a link into typescript in the npm
+    # prefix, comes before mise's npm:typescript.
+    h.write(".npm-global/lib/node_modules/typescript/bin/tsc", "#!/bin/sh\n", mode=0o755)
     h.mkdir(".npm-global/bin")
+    os.symlink("../lib/node_modules/typescript/bin/tsc", h.home / ".npm-global/bin/tsc")
+    # Old copies in dotkit.toolPath: GUI apps run them before the mise shims of pipx:ruff and of node. ruff
+    # links into its pipx venv; Homebrew's node into its Cellar.
+    h.write(".local/pipx/venvs/ruff/bin/ruff", "#!/bin/sh\n", mode=0o755)
+    h.mkdir(".local/bin")
+    os.symlink(h.home / ".local/pipx/venvs/ruff/bin/ruff", h.home / ".local/bin/ruff")
+    node = h.prefix / "Cellar/node/22.1.0/bin/node"
+    node.parent.mkdir(parents=True)
+    node.write_text("#!/bin/sh\n")
+    node.chmod(0o755)
+    (h.prefix / "bin").mkdir()
+    os.symlink("../Cellar/node/22.1.0/bin/node", h.prefix / "bin/node")
     # Frameworks.
     h.mkdir(".oh-my-zsh")
     h.write(".p10k.zsh", "typeset -g POWERLEVEL9K_MODE=nerdfont-complete\n")
@@ -170,6 +191,9 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     # pipx and uv tools.
     h.json(".local/pipx/venvs/black/pipx_metadata.json",
            {"main_package": {"package": "black", "package_version": "24.2.0", "package_or_url": "black"}})
+    h.json(".local/pipx/venvs/ruff/pipx_metadata.json",
+           {"main_package": {"package": "ruff", "package_version": "0.4.0", "package_or_url": "ruff",
+                             "apps": ["ruff"]}})
     # Its line in config/mise.toml, "pipx:detect-secrets" = "latest", looks like a secret to the check.
     h.json(".local/pipx/venvs/detect-secrets/pipx_metadata.json",
            {"main_package": {"package": "detect-secrets", "package_version": "1.5.0",
@@ -259,8 +283,9 @@ def used_mac_deselected(p: registry.Session, repo: str) -> Choices:
 def kitchen_sink_deselected(p: registry.Session, repo: str) -> Choices:
     """Every item selected, then some left out: part of a version manager, one of two apps with one name, and more."""
     c = kitchen_sink_choices(p, repo)
-    for page, item in (("runtimes", "runtime:go"), ("mas", "mas:409183694"), ("formulae", "brew:wget"),
-                       ("taps", "tap:hashicorp/tap"), ("pipx", "pipx:httpie"), ("go", "go:github.com/rakyll/hey"),
+    # Without runtime:node, the Homebrew node in the prefix shadows the base's node.
+    for page, item in (("runtimes", "runtime:go"), ("runtimes", "runtime:node"), ("mas", "mas:409183694"),
+                       ("formulae", "brew:wget"), ("taps", "tap:hashicorp/tap"), ("pipx", "pipx:httpie"), ("go", "go:github.com/rakyll/hey"),
                        ("shell", "shell:.zprofile.local"), ("other", "other:.config/nvim")):
         c.picked[page].remove(item)
     return c
@@ -304,7 +329,8 @@ class Normalizer:
         self.pairs: list[tuple[str, str]] = []
         # The longer form first: the real path of a temp directory can be /private/var/... for /var/....
         for root in sorted({str(h.root), os.path.realpath(h.root)}, key=len, reverse=True):
-            self.pairs += [(root + "/home", "<HOME>"), (root, "<TMP>")]
+            # The Homebrew prefix of fake.Home starts like the home directory.
+            self.pairs += [(root + "/homebrew", "<TMP>/homebrew"), (root + "/home", "<HOME>"), (root, "<TMP>")]
         self.pairs += [(d, "YYYY-MM-DD") for d in dates]
         self.pairs += [(v, k) for k, v in fake.TOKENS.items()]
 
