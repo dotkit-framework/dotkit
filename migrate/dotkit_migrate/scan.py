@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import base as base_mod
 from . import secrets
-from .context import Context, is_managed, read_text
+from .context import Context, is_managed
 
 # Dotfiles in the home directory that a person may want in the repository.
 HOME_DOTFILES = (
@@ -33,14 +33,6 @@ _MAX_BYTES = 2_000_000
 
 
 @dataclass
-class ConfigFile:
-    target: str  # relative to the home directory
-    path: Path
-    secrets: list[secrets.Secret] = field(default_factory=list)
-    same_as_base: bool = False
-
-
-@dataclass
 class OtherConfig:
     rel: str  # relative to the home directory, for example .config/nvim
     is_dir: bool
@@ -52,22 +44,10 @@ class OtherConfig:
 @dataclass
 class Scan:
     home: str
-    mise_config: Path | None = None
-    config_files: list[ConfigFile] = field(default_factory=list)
-    gitconfig: ConfigFile | None = None
     other_config: list[OtherConfig] = field(default_factory=list)
     secret_files: list[str] = field(default_factory=list)
-    ghostty_app_support: bool = False
     # Scan steps that failed, with the error. The report lists them.
     warnings: list[str] = field(default_factory=list)
-
-
-def _secrets_of(p: Path) -> list[secrets.Secret]:
-    """The secrets of a file. A file that cannot be checked counts as one with a secret."""
-    try:
-        return secrets.scan_file(p)
-    except secrets.Unscannable as e:
-        return [secrets.Secret(0, f"a file that cannot be checked ({e})")]
 
 
 class Scanner:
@@ -79,26 +59,6 @@ class Scanner:
         return self.home / rel
 
     # --- mise and version managers
-
-    def scan_mise(self) -> None:
-        p = self.h(".config/mise/config.toml")
-        if p.is_file() and not is_managed(p):
-            self.s.mise_config = p
-
-    # --- Files in the home directory
-
-    def scan_config_files(self) -> None:
-        for link in base_mod.LINKS:
-            p = self.h(link.target)
-            if not p.is_file() or is_managed(p):
-                continue
-            base_file = self.base.file(link.source)
-            same = read_text(p) == read_text(base_file) if base_file.is_file() else False
-            self.s.config_files.append(ConfigFile(link.target, p, _secrets_of(p), same))
-        p = self.h(".gitconfig")
-        if p.is_file() and not is_managed(p):
-            self.s.gitconfig = ConfigFile(".gitconfig", p, _secrets_of(p))
-        self.s.ghostty_app_support = self.h("Library/Application Support/com.mitchellh.ghostty/config").is_file()
 
     def _assess(self, rel: str) -> OtherConfig:
         p = self.h(rel)
@@ -175,8 +135,7 @@ class Scanner:
     def run(self) -> Scan:
         self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_mise,
-            self.scan_config_files, self.scan_other_config,
+            self.scan_other_config,
         ):
             try:
                 step()

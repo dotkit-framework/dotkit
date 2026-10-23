@@ -16,7 +16,7 @@ from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
 from ..report import plural
 from . import NOT_CARRIED, left_out, unique_items
-from . import _rest
+from . import config_files
 
 
 @dataclass
@@ -58,7 +58,7 @@ def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs
     """
     r = txn.report
     mise = txn.mise()
-    user = _rest.layered_mise(f, c)
+    user = config_files.layered_mise(f, c)
     carried, manual, old, left = [], [], [], []
     for p in pkgs or []:
         if key == "npm" and p.name in catalog.NPM_NOT_IN_MISE:

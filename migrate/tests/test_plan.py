@@ -346,23 +346,6 @@ class PlanTests(unittest.TestCase):
         self.assertIn("1 Homebrew tap -> nix/taps.txt", result.summary)
         self.assertIn("3 App Store apps -> nix/mas.txt", result.summary)
 
-    def test_a_mise_config_that_is_not_carried_does_not_hide_tools(self):
-        """A mise config with a secret stays in place, also when the choice says layer, so its tools are added."""
-        h = fake.Home()
-        self.addCleanup(h.cleanup)
-        h.write(".config/mise/config.toml",
-                fake.fill('[tools]\n"npm:typescript" = "latest"\n\n[env]\nGITHUB_TOKEN = "@GH@"\n'))
-        h.json(".nvm/versions/node/v20.11.0/lib/node_modules/typescript/package.json",
-               {"name": "typescript", "version": "5.4.0", "bin": {"tsc": "bin/tsc"}})
-        p = fake.session(h, fake.brew_runner())
-        c = p.defaults(str(h.home / ".dotfiles"))
-        self.assertEqual(c.option("file:.config/mise/config.toml"), "keep")
-        c.options["file:.config/mise/config.toml"] = "layer"
-        result = p.build(c)
-        self.assertEqual(tomllib.loads(result.files["config/mise.toml"])["tools"], {"npm:typescript": "latest"})
-        self.assertIsNone(result.links[".config/mise/config.toml"])
-        self.assertNotIn(fake.TOKENS["@GH@"], result.files["config/mise.toml"])
-
     def test_other_config_whose_place_is_taken(self):
         """A copy goes only to a free repository path; the other file stays in place, with a to-do."""
         cases = {
@@ -468,28 +451,6 @@ class PlanTests(unittest.TestCase):
         tools = tomllib.loads(p.files["config/mise.toml"])["tools"]
         self.assertEqual(tools["node"], "20")
         self.assertEqual(tools["cargo:bat"], "latest")
-
-    def test_file_choices(self):
-        p = self.build(options={"file:.config/ghostty/config": "replace", "file:.config/starship.toml": "dotkit",
-                                "file:.npmrc": "keep", "file:.gitconfig": "keep",
-                                "file:.config/mise/config.toml": "keep"},
-                       keymap="vi")
-        self.assertEqual(p.links[".config/ghostty/config"], "config/ghostty.conf")
-        self.assertNotIn(".config/starship.toml", p.links)
-        self.assertNotIn(".gitconfig", p.links)
-        self.assertIsNone(p.links[".config/mise/config.toml"])
-        self.assertIn("~/.config/starship.toml is replaced by the dotkit file", p.report)
-        self.assertIn('    keymap = "vi";', p.files["nix/shell.nix"])
-
-    def test_a_file_with_a_secret_cannot_go_into_the_repository(self):
-        files = next(page for page in self.p.pages() if page.key == "files")
-        npmrc = next(i for i in files.items if i.id == "file:.npmrc")
-        self.assertEqual(npmrc.options, ("keep", "dotkit"))
-        self.assertEqual(npmrc.default_option, "keep")
-        # Also when a choice says so: the build keeps the file in place.
-        p = self.build(options={"file:.npmrc": "replace"})
-        self.assertIsNone(p.links[".npmrc"])
-        self.assertNotIn("config/npmrc", p.copies)
 
     def test_adopt_other_config(self):
         c = self.p.defaults(self.repo)

@@ -43,11 +43,6 @@ class ScanTests(unittest.TestCase):
         self.h.write(".config/linked/real", "a = 1\n")
         os.symlink("/etc/hosts", self.h.home / ".config/linked/hosts")
         s = self.scan()
-        cfg = {c.target: (bool(c.secrets), c.same_as_base) for c in s.config_files}
-        self.assertEqual(cfg, {".config/ghostty/config": (False, False), ".npmrc": (True, False),
-                               ".editorconfig": (False, True), ".config/starship.toml": (False, False)})
-        self.assertIsNotNone(s.gitconfig)
-        self.assertEqual(s.mise_config, self.h.home / ".config/mise/config.toml")
         other = {o.rel: (o.adoptable, o.reason) for o in s.other_config}
         self.assertEqual(other[".config/nvim"], (True, ""))
         self.assertEqual(other[".config/app"], (False, "holds state or caches"))

@@ -15,7 +15,7 @@ from ..context import Context, is_managed, read_text, version_key
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
 from . import Migrator, unique_items
-from . import _rest
+from . import config_files
 
 
 @dataclass
@@ -129,7 +129,7 @@ class Runtimes(Migrator):
         if rt is None:
             return
         # Your mise config, carried as "layer", has its own versions: they stay.
-        user = _rest.layered_mise(f, c)
+        user = config_files.layered_mise(f, c)
         lines = runtime_lines(rt)
         picked = {t for t in lines if c.selected("runtimes", f"runtime:{t}")}
         for tool, versions in lines.items():

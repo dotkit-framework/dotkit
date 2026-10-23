@@ -22,7 +22,7 @@ from . import docs as docs_mod
 from . import report as report_mod
 from .context import Context, expand, tilde
 from .docs import nix_string
-from .migrators import _rest, appstore, built_tools, frameworks, homebrew, node_tools, python_tools, runtimes, shell
+from .migrators import _rest, appstore, built_tools, config_files, frameworks, homebrew, node_tools, python_tools, runtimes, shell
 from .model import Choices, Facts, Identity, Page, Plan
 
 MIGRATORS = (
@@ -34,6 +34,7 @@ MIGRATORS = (
     runtimes.Runtimes(),
     shell.Shell(),
     frameworks.Frameworks(),
+    config_files.ConfigFiles(),
     _rest.Rest(),
 )
 
