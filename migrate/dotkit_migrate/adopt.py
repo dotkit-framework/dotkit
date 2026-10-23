@@ -9,7 +9,8 @@ from pathlib import Path
 
 from . import base as base_mod
 from . import catalog
-from .plan import insert_tools, mas_lines, mask_lines, ruby_escape, tap_lines, toml_key
+from .docs import insert_tools, ruby_escape, toml_key
+from .plan import mas_lines, mask_lines, tap_lines
 from .scan import Scan
 
 

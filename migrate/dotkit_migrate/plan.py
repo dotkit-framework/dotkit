@@ -16,9 +16,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
-from ._compat import tomllib
 from . import catalog, rcparse, secrets
-from .report import Report, plural
+from . import docs as docs_mod
+from . import report as report_mod
+from .docs import mas_label, mas_problem, nix_string, tap_name_problem, tap_problem
+from .report import plural
 from . import scan as scan_mod
 from .context import expand, is_managed, tilde
 from .scan import Scan, ShellFile
@@ -244,37 +246,14 @@ class Plan:
 SHARED_DIRS = frozenset({".config", ".local", ".local/share", "Library", "Library/Preferences"})
 
 
-def nix_string(s: str) -> str:
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("${", "\\${") + '"'
-
-
 def tap_line(t: scan_mod.Tap) -> str:
     """The line of a tap in nix/taps.txt: the name, and the clone URL of a tap that is not on GitHub."""
     return f"{t.name} {t.remote}" if t.custom else t.name
 
 
-# The lines of nix/taps.txt and nix/mas.txt that nix/read-taps.nix and
-# nix/read-mas.nix accept. A line they reject stops the evaluation of the
-# whole configuration, so a writer checks each line first.
-_TAP_NAME = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
-
-
-def tap_problem(t: scan_mod.Tap) -> str | None:
-    """Why a tap cannot go into nix/taps.txt, or None. A URL with a secret says "it has a secret (<what>)"."""
-    if not _TAP_NAME.fullmatch(t.name):
-        return "its name is not owner/repo of letters, digits, `_`, `.`, and `-`"
-    if not t.custom:
-        return None
-    url = t.remote
-    # The secret first: such a URL is never written and never shown.
-    what = secrets.line_secret(url)
-    if what:
-        return f"it has a secret ({what})"
-    for bad, why in ((not url, "it is empty"), (re.search(r"\s", url), "it has a space"),
-                     ("#" in url, "it has a `#`"), ('"' in url, 'it has a `"`'), ("\\" in url, "it has a `\\`")):
-        if bad:
-            return why
-    return None
+def tap_line_problem(t: scan_mod.Tap) -> str | None:
+    """Why a tap cannot go into nix/taps.txt, or None: its name first, as the name has no spaces."""
+    return tap_name_problem(t.name) or tap_problem(tap_line(t))
 
 
 def tap_lines(taps: list[scan_mod.Tap], declared: set[str]) -> tuple[list[str], list[str]]:
@@ -283,7 +262,7 @@ def tap_lines(taps: list[scan_mod.Tap], declared: set[str]) -> tuple[list[str], 
     for t in taps:
         if t.name in seen:
             continue
-        problem = tap_problem(t)
+        problem = tap_line_problem(t)
         if problem is None:
             seen.add(t.name)
             lines.append(tap_line(t))
@@ -299,22 +278,6 @@ def tap_lines(taps: list[scan_mod.Tap], declared: set[str]) -> tuple[list[str], 
                          f"`homebrew.taps` in nix/darwin.nix as "
                          f"`{{ name = {nix_string(t.name)}; clone_target = {nix_string(t.remote)}; }}`.")
     return lines, todos
-
-
-def mas_problem(app_id: int, name: str) -> str | None:
-    """Why an App Store app cannot go into nix/mas.txt, or None."""
-    if not str(app_id).isdigit():
-        return "its ID is not digits"
-    if not name.strip():
-        return "its name is empty"
-    if "\n" in name or "\r" in name:
-        return "its name has a line break"
-    return None
-
-
-def ruby_escape(name: str) -> str:
-    """A name as nix/read-mas.nix escapes it for the Brewfile: `\\`, `"`, and `#` get a `\\` in front."""
-    return re.sub(r'[\\"#]', lambda m: "\\" + m.group(0), name)
 
 
 def mas_lines(apps: list[tuple[int, str]], taken: dict[str, int],
@@ -335,8 +298,9 @@ def mas_lines(apps: list[tuple[int, str]], taken: dict[str, int],
         if problem:
             todos.append(f"`{n}` (ID {i}): it cannot go into nix/mas.txt: {problem}.")
             continue
-        label = n if n not in taken else f"{n} ({i})"
-        if label in taken:
+        label = mas_label(i, n, taken)
+        if label is None or label in taken:
+            label = f"{n} ({i})"
             todos.append(f"`{n}` (ID {i}): other apps have this name and `{label}`, so it is not in nix/mas.txt. "
                          f"Add it there under another name: `{i} <name>`.")
             continue
@@ -345,26 +309,6 @@ def mas_lines(apps: list[tuple[int, str]], taken: dict[str, int],
         taken[label] = i
         out.append((i, label))
     return out, notes, todos
-
-
-def toml_key(s: str) -> str:
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def insert_tools(text: str, lines: list[str]) -> str:
-    """Text of a mise config with the lines added at the end of its [tools] table."""
-    if not lines:
-        return text
-    rows = text.splitlines()
-    start = next((i for i, r in enumerate(rows) if re.match(r"^\s*\[tools\]\s*(#.*)?$", r)), None)
-    if start is None:
-        body = text.rstrip("\n")
-        return (body + "\n\n" if body else "") + "[tools]\n" + "\n".join(lines) + "\n"
-    end = next((i for i in range(start + 1, len(rows)) if re.match(r"^\s*\[", rows[i])), len(rows))
-    while end > start + 1 and not rows[end - 1].strip():
-        end -= 1
-    rows[end:end] = lines
-    return "\n".join(rows) + "\n"
 
 
 class _Build:
@@ -376,14 +320,14 @@ class _Build:
         self.home = self.s.home
         repo = expand(c.repo, self.home)
         self.plan = Plan(Path(repo), c.keymap, home=self.home)
-        self.r = Report()
         self.on = lambda key: c.groups.get(key, False)
         self.template = self.base.template
-        self.mise_lines: list[str] = []
-        self.brews: list[str] = []
-        self.casks: list[str] = []
-        self.taps: list[str] = []
-        self.mas: list[tuple[int, str]] = []
+        # The planning steps write only through this transaction; render() turns the documents into the plan.
+        self.docs = docs_mod.Docs("setup", self.template, self.plan.repo, home=self.home, host=self.s.hostname)
+        self.txn = self.docs.begin("plan")
+        self.r = self.txn.report
+        # Repository files that are merged from several of yours, and what they are from.
+        self.merged: dict[str, str] = {}
 
     def t(self, path: str | Path) -> str:
         return tilde(path, self.home)
@@ -392,6 +336,9 @@ class _Build:
         return (self.template / rel).read_text(encoding="utf-8")
 
     def run(self) -> Plan:
+        # Your mise config first: the tools that it has are not added again.
+        if self.mise_layered():
+            self.txn.mise().set_base(self.s.mise_config.read_text(encoding="utf-8", errors="replace"))
         self.homebrew()
         self.app_store()
         self.tools()
@@ -401,6 +348,7 @@ class _Build:
         self.other_config()
         self.secret_files()
         self.misc()
+        self.txn.commit()
         self.render()
         return self.plan
 
@@ -415,7 +363,8 @@ class _Build:
             keep, redundant = self.p.brew_split(names, kind)
             flag = "--cask " if kind == "cask" else ""
             if keep and self.on(key):
-                (self.brews if kind == "formula" else self.casks).extend(keep)
+                for n in keep:
+                    self.txn.list(dest).add(n)
                 r.carried(plural(len(keep), "Homebrew formula" if kind == "formula" else "Homebrew cask",
                                   "Homebrew formulae" if kind == "formula" else "Homebrew casks"), dest)
             elif keep:
@@ -430,9 +379,10 @@ class _Build:
                        [f"`{n}`: dotkit has {what}. `brew uninstall {flag}{n}`" for n, what in redundant.items()])
         lines, todos = tap_lines(s.taps, set())
         if lines and self.on("taps"):
-            self.taps = lines
+            for line in lines:
+                self.txn.list("nix/taps.txt").add(line)
             r.carried(plural(len(lines), "Homebrew tap"), "nix/taps.txt")
-            custom = [t for t in s.taps if t.custom and tap_problem(t) is None]
+            custom = [t for t in s.taps if t.custom and tap_line_problem(t) is None]
             if custom:
                 r.todo("Homebrew taps", "These taps are not on GitHub, so the list has their URL. Check it.",
                        [f"`{t.name}`: {t.remote}" for t in custom])
@@ -448,9 +398,11 @@ class _Build:
     def app_store(self) -> None:
         s, r = self.s, self.r
         if s.mas_apps and self.on("mas"):
-            self.mas, notes, todos = mas_lines(s.mas_apps, {}, set())
-            if self.mas:
-                r.carried(plural(len(self.mas), "App Store app"), "nix/mas.txt")
+            apps, notes, todos = mas_lines(s.mas_apps, {}, set())
+            for i, n in apps:
+                self.txn.list("nix/mas.txt").add(f"{i} {n}")
+            if apps:
+                r.carried(plural(len(apps), "App Store app"), "nix/mas.txt")
             if notes or todos:
                 r.todo("App Store apps", "", notes + todos)
         elif s.mas_apps:
@@ -465,23 +417,18 @@ class _Build:
 
     # --- Tools of other package managers
 
-    def user_mise_keys(self) -> set[str]:
-        """The tools of the mise config of yours that goes into the repository."""
-        if self.s.mise_config and self.c.files.get(".config/mise/config.toml") == "layer":
-            return set(base_mod.mise_tools(self.s.mise_config))
-        return set()
+    def mise_layered(self) -> bool:
+        """Your mise config goes into the repository: config/mise.toml is your file."""
+        s = self.s
+        return bool(s.mise_config and self.c.files.get(".config/mise/config.toml") == "layer"
+                    and not secrets.has_secret(s.mise_config))
 
     def tools(self) -> None:
         s, r = self.s, self.r
-        have = self.user_mise_keys()
+        mise = self.txn.mise()
 
         def add(key: str, comment: str) -> bool:
-            if key in have or any(line.startswith(toml_key(key) + " ") for line in self.mise_lines):
-                return False
-            if comment and comment not in self.mise_lines:
-                self.mise_lines.append(comment)
-            self.mise_lines.append(f'{toml_key(key)} = "latest"')
-            return True
+            return mise.add_tool(key, "latest", comment)
 
         groups = (
             ("npm", s.npm, "npm", "# From npm, pnpm, and bun (global packages), see MIGRATION.md.",
@@ -531,14 +478,8 @@ class _Build:
         s, r = self.s, self.r
         lines = self.p.runtime_lines()
         if lines and self.on("runtimes"):
-            have = self.user_mise_keys()
             for tool, versions in lines.items():
-                if tool in have:
-                    continue
-                if len(versions) == 1:
-                    self.mise_lines.append(f'{toml_key(tool)} = "{versions[0]}"')
-                else:
-                    self.mise_lines.append(f"{toml_key(tool)} = [" + ", ".join(f'"{v}"' for v in versions) + "]")
+                self.txn.mise().add_tool(tool, versions[0] if len(versions) == 1 else versions)
             r.carried("runtime versions of " + ", ".join(vm.name for vm in s.version_managers if vm.versions),
                       "config/mise.toml")
         items = []
@@ -591,8 +532,8 @@ class _Build:
         for main, entries in by_repo.items():
             layer, repo_file = base_mod.SHELL_LAYERS[main]
             shell = "bash" if main == ".bash_profile" else "zsh"
-            parts: list[str] = []
-            secret_lines: list[str] = []
+            rc = self.txn.shell_rc(main)
+            written = False
             for f, res in entries:
                 if res is None:
                     continue
@@ -613,19 +554,20 @@ class _Build:
                         res.carried = []
                         carried = ""
                 if carried:
-                    parts.append(f"# From ~/{f.name}. MIGRATION.md lists the lines that are not here.\n" + carried)
+                    rc.add_part(f"# From ~/{f.name}. MIGRATION.md lists the lines that are not here.", carried)
+                    written = True
                     r.carried(plural(res.statements, "line") + f" of ~/{f.name}", f"{repo_file} (~/{layer})")
                 if res.secrets and not on:
                     r.todo("Secrets", "", [f"~/{f.name}:{x.lines[0]}: `{x.name}` has a secret. You chose not to "
                                            "carry shell lines, so it is not carried." for x in res.secrets])
                 elif res.secrets:
-                    secret_lines.append(f"# From ~/{f.name}.")
-                    secret_lines += [x.text for x in res.secrets]
+                    rc.add_secret("\n".join([f"# From ~/{f.name}."] + [x.text for x in res.secrets]))
+                    written = True
                     r.todo("Secrets", "These lines have a secret, so they are not in Git. They are in a file in "
                                       "local/ of this repository, which Git ignores, and the repository file reads "
                                       "it. On a new Mac, copy the file by hand, or keep its lines in a manager for "
                                       "passwords.",
-                           [f"~/{f.name}:{x.lines[0]}: `{x.name}` -> local/{Path(repo_file).name}.{shell}"
+                           [f"~/{f.name}:{x.lines[0]}: `{x.name}` -> {rc.local}"
                             for x in res.secrets])
                 if not on:
                     lines = sum(1 for c in res.carried if c.kind != "comment")
@@ -633,34 +575,14 @@ class _Build:
                         r.todo("Shell lines", "You chose not to carry shell lines. Copy the ones you need.",
                                [f"~/{f.name}: {lines} lines that could be carried"])
                 self.findings(f.name, res)
-            local_name = f"local/{Path(repo_file).name}.{shell}"
-            if secret_lines:
-                self.plan.local[local_name] = "\n".join(secret_lines) + "\n"
-                rel = tilde(self.plan.repo / local_name, self.home).replace("~", "$HOME", 1)
-                parts.insert(0, "# Lines with secrets, not in Git. See MIGRATION.md.\n"
-                                f'if [[ -r "{rel}" ]]; then\n  source "{rel}"\nfi\n')
-            header = ""
-            if repo_file == "config/zsh/zshrc":
-                header = self.tmpl("config/zsh/zshrc")
-            else:
-                header = {
-                    ".zshenv": "# Your zsh lines for every zsh, linked to ~/.zshenv.local. The dotkit zshenv\n"
-                               "# sources this file at the end. Keep it fast and quiet.\n",
-                    ".zprofile": "# Your lines for zsh login shells, linked to ~/.zprofile.local. The dotkit\n"
-                                 "# zprofile sources it, then puts the global tool directories first in PATH.\n",
-                    ".bash_profile": "# shellcheck shell=bash\n# Your lines for bash login shells, linked to\n"
-                                     "# ~/.bash_profile.local. The dotkit bash_profile sources it, then puts the\n"
-                                     "# global tool directories first in PATH.\n",
-                }[main]
             # A file for each layer that exists, also when it carries nothing: the
             # link moves an old layer file out of the way, so that dotkit does not
             # read a file that was not read before.
-            if not (parts or main == ".zshrc" or layer in files):
+            if not (written or main == ".zshrc" or layer in files):
                 continue
-            body = header + ("\n" + "\n".join(parts) if parts else "")
-            self.plan.files[repo_file] = body
+            rc.ensure()
             if main != ".zshrc":
-                self.plan.links[layer] = repo_file
+                self.txn.links().link(layer, repo_file)
         for f in unread:
             r.todo("Shell lines", "", [f"~/{f.name} was not read by ~/{f.name.removesuffix('.local')}, so nothing "
                                        f"of it is carried. dotkit links its own ~/{f.name} and renames yours to "
@@ -729,22 +651,22 @@ class _Build:
                     git_parts.append((where, c.path))
                     continue
             if choice == "layer":
-                self.plan.copies[link.repo_file] = c.path
-                self.plan.links[link.layer] = link.repo_file
+                self.txn.copies.add(link.repo_file, c.path)
+                self.txn.links().link(link.layer, link.repo_file)
                 r.carried(where, f"{link.repo_file} (~/{link.layer}, read after the dotkit file)")
                 if c.target == ".config/ghostty/config":
                     r.todo("Config files", "", [f"{link.repo_file}: Ghostty reads it after the dotkit settings. "
                                                 "Delete the lines that you do not need to set again."])
             elif choice == "replace":
-                self.plan.copies[link.repo_file] = c.path
-                self.plan.links[c.target] = link.repo_file
+                self.txn.copies.add(link.repo_file, c.path)
+                self.txn.links().link(c.target, link.repo_file)
                 r.carried(where, f"{link.repo_file} (instead of the dotkit file)")
                 r.todo("Config files", "", [f"{link.repo_file} replaces the dotkit file "
                                             f"config/{Path(link.source).name}. Compare the two; the dotkit file "
                                             f"has settings that yours does not, for example "
                                             f"{_base_example(c.target)}."])
             elif choice == "keep":
-                self.plan.links[c.target] = None
+                self.txn.links().link(c.target, None)
                 why = "it has secrets (" + ", ".join(sorted({x.what for x in c.secrets})) + ")" if c.secrets else \
                     "you chose to keep it"
                 r.todo("Config files", "", [f"{where} stays in place and outside the repository, because {why}. "
@@ -765,11 +687,12 @@ class _Build:
                                             "dotkit file, as before."])
         if git_parts:
             if len(git_parts) == 1:
-                self.plan.copies["config/gitconfig"] = git_parts[0][1]
+                self.txn.copies.add("config/gitconfig", git_parts[0][1])
             else:
-                self.plan.files["config/gitconfig"] = "".join(
-                    f"# From {w}.\n" + p.read_text(encoding="utf-8", errors="replace").rstrip("\n") + "\n\n" for w, p in git_parts)
-            self.plan.links[".gitconfig"] = "config/gitconfig"
+                self.txn.file("config/gitconfig").set("".join(
+                    f"# From {w}.\n" + p.read_text(encoding="utf-8", errors="replace").rstrip("\n") + "\n\n" for w, p in git_parts))
+                self.merged["config/gitconfig"] = " and ".join(w for w, _ in git_parts)
+            self.txn.links().link(".gitconfig", "config/gitconfig")
             r.carried(" and ".join(w for w, _ in git_parts), "config/gitconfig (~/.gitconfig, read after the "
                                                               "dotkit file)")
             r.todo("Config files", "", ["config/gitconfig: Git reads it after the dotkit settings "
@@ -779,30 +702,30 @@ class _Build:
             r.todo("Config files", "", ["~/Library/Application Support/com.mitchellh.ghostty/config: Ghostty reads "
                                         "it after ~/.config/ghostty/config, so it wins over the dotkit settings. "
                                         "Move its lines to config/ghostty.conf of this repository."])
-        # The mise config.
-        mise_choice = self.c.files.get(".config/mise/config.toml")
-        if s.mise_config and secrets.has_secret(s.mise_config):
-            mise_choice = "keep"
-        text = self.tmpl("config/mise.toml")
-        if s.mise_config and mise_choice == "layer":
-            text = _merge_mise(text, s.mise_config.read_text(encoding="utf-8", errors="replace"))
+        # The mise config. run() made it the base of config/mise.toml when it is layered.
+        if self.mise_layered():
             r.carried("~/.config/mise/config.toml", "config/mise.toml")
         elif s.mise_config:
-            self.plan.links[".config/mise/config.toml"] = None
+            self.txn.links().link(".config/mise/config.toml", None)
             r.todo("mise", "", ["~/.config/mise/config.toml stays in place, outside the repository, and dotkit "
                                 "does not link config/mise.toml. `dotkit add` writes mise tools to it."])
-        self.mise_text = text
 
     def other_config(self) -> None:
         r = self.r
-        adopted, left, skipped = [], [], []
+        adopted, left, skipped, taken = [], [], [], []
         for o in self.s.other_config:
             if o.rel in self.c.adopt and o.adoptable:
                 name = o.rel.removeprefix(".config/").lstrip(".")
                 dest = f"config/{name}" if o.rel.startswith(".config/") else f"config/home/{name}"
-                self.plan.copies[dest] = Path(self.home, o.rel)
-                self.plan.links[o.rel] = dest
-                adopted.append(f"~/{o.rel} -> {dest}")
+                if self.txn.copies.add(dest, Path(self.home, o.rel)):
+                    self.txn.links().link(o.rel, dest)
+                    adopted.append(f"~/{o.rel} -> {dest}")
+                else:
+                    src = self.txn.copies.source(dest)
+                    has = self.t(src) if src else self.merged.get(dest, "another file")
+                    taken.append(f"~/{o.rel}: its place in the repository, {dest}, has {has} already. It stays "
+                                 "in place. To keep it in the repository, copy it under another name and link it "
+                                 "in nix/home.nix.")
             elif o.adoptable:
                 left.append(f"~/{o.rel}")
             elif o.reason not in ("empty", "a Home Manager link"):
@@ -810,6 +733,8 @@ class _Build:
         if adopted:
             r.carried(plural(len(adopted), "other config file or directory", "other config files and directories"),
                       "config/, linked with dotkit.links")
+        if taken:
+            r.todo("Other config", "", taken)
         if left:
             r.todo("Other config", "These stay in place and keep working. To keep one in the repository, copy "
                                    "it to config/ and link it in nix/home.nix, for example "
@@ -843,8 +768,8 @@ class _Build:
     # --- Rendering the files
 
     def render(self) -> None:
-        plan, s = self.plan, self.s
-        self.guard_copies()
+        """The plan from the documents, after the transaction of the planning steps is committed."""
+        plan, s, docs = self.plan, self.s, self.docs
         repo_rel = tilde(plan.repo, self.home)
         user = (
             "# Your macOS account and this repository. dotkit's scripts/setup writes it.\n"
@@ -854,48 +779,14 @@ class _Build:
             f'  dotfiles = "${{home}}/{nix_string(repo_rel[2:])[1:-1]}";\n'
             "}\n"
         )
-        plan.files["nix/user.nix"] = user
-
-        def list_file(rel: str, names: list[str], label: str) -> None:
-            if not names:
-                return
-            body = self.tmpl(rel).rstrip("\n") + "\n\n" + f"# {label}, see MIGRATION.md.\n" + \
-                "".join(n + "\n" for n in names)
-            plan.files[rel] = body
-
-        list_file("nix/brews.txt", self.brews, f"From Homebrew on {s.hostname or 'this Mac'}")
-        list_file("nix/casks.txt", self.casks, f"From Homebrew on {s.hostname or 'this Mac'}")
-
-        list_file("nix/taps.txt", self.taps, f"From Homebrew on {s.hostname or 'this Mac'}")
-        list_file("nix/mas.txt", [f"{i} {n}" for i, n in self.mas],
-                  f"From the App Store on {s.hostname or 'this Mac'}")
-
-        if plan.keymap == "vi":
-            plan.files["nix/shell.nix"] = self.tmpl("nix/shell.nix").replace('# keymap = "vi";', 'keymap = "vi";')
-
-        mise = insert_tools(self.mise_text, self.mise_lines)
-        try:
-            tomllib.loads(mise)
-        except tomllib.TOMLDecodeError as e:
-            self.r.todo("mise", f"config/mise.toml would not parse ({e}), so it has only the template. Add "
-                                "these tools by hand:", [f"`{line}`" for line in self.mise_lines
-                                                         if not line.startswith("#")])
-            mise = self.tmpl("config/mise.toml")
-        if mise != self.tmpl("config/mise.toml"):
-            plan.files["config/mise.toml"] = mise
-
-        links = {k: v for k, v in plan.links.items()}
-        if links:
-            home_nix = self.tmpl("nix/home.nix")
-            rows = []
-            for target, source in sorted(links.items(), key=lambda kv: (kv[1] is None, kv[0])):
-                if source is None:
-                    rows.append(f"    # Yours stays in place, see MIGRATION.md.\n    {nix_string(target)} = null;\n")
-                else:
-                    rows.append(f"    {nix_string(target)} = {nix_string(source)};\n")
-            anchor = '    ".zshrc.local" = "config/zsh/zshrc";\n'
-            home_nix = home_nix.replace(anchor, anchor + "".join(rows))
-            plan.files["nix/home.nix"] = home_nix
+        core = docs.begin("core")
+        core.file("nix/user.nix").set(user)
+        core.shell_nix().set_keymap(plan.keymap)
+        core.commit()
+        self.guard_copies()
+        plan.files, plan.local = docs.render()
+        plan.copies = docs.copies.items()
+        plan.links = docs.links()
 
         self.guard_files()
         if plan.local:
@@ -903,7 +794,9 @@ class _Build:
                 "\n# Files with secrets, from the migration. See MIGRATION.md.\n/local/\n"
 
         self.links_in_the_way()
-        plan.report = "".join(mask_lines(self.r.render(s, repo_rel).splitlines(keepends=True)))
+        plan.blockers = list(docs.report.blockers)
+        report = report_mod.render(docs.report, s.hostname, repo_rel)
+        plan.report = "".join(mask_lines(report.splitlines(keepends=True)))
         plan.files["MIGRATION.md"] = plan.report
         plan.summary = self.summary(repo_rel)
 
@@ -912,22 +805,24 @@ class _Build:
     # and a line with a secret in a generated file, and report it.
 
     def guard_copies(self) -> None:
-        plan = self.plan
-        for rel, src in list(plan.copies.items()):
+        dropped = []
+        for rel, src in self.docs.copies.items().items():
             paths = [src] if not src.is_dir() else [p for p in src.rglob("*") if not p.is_dir()]
             # A link inside a directory is copied as a link. Anything else that
             # cannot be checked counts as a secret.
             if any(secrets.has_secret(p) for p in paths if ".DS_Store" not in p.relative_to(src).parts
                    and not (p.is_symlink() and p != src)):
-                del plan.copies[rel]
-                plan.files.pop(rel, None)
-                for target, source in list(plan.links.items()):
-                    if source == rel:
-                        del plan.links[target]
-                self.r.todo("Secrets", "", [f"{self.t(src)} has a secret, so it is not in the repository."])
+                dropped.append((rel, src))
+        t = self.docs.begin("guard")
+        for rel, src in dropped:
+            t.report.todo("Secrets", "", [f"{self.t(src)} has a secret, so it is not in the repository."])
+        t.commit()
+        for rel, _ in dropped:
+            self.docs.drop(rel)
 
     def guard_files(self) -> None:
         plan = self.plan
+        t = self.docs.begin("guard")
         for rel, text in list(plan.files.items()):
             if not secrets.scan_text(text):
                 continue
@@ -955,7 +850,8 @@ class _Build:
                     if secrets.line_secret(logical):
                         rows[start - 1:end] = ["# (a line with a secret was here, see MIGRATION.md)"] * (end - start + 1)
                 plan.files[rel] = "\n".join(rows) + "\n"
-            self.r.todo("Secrets", "", [f"{rel}: a statement with a secret is not in Git."])
+            t.report.todo("Secrets", "", [f"{rel}: a statement with a secret is not in Git."])
+        t.commit()
 
     def link_targets(self) -> list[str]:
         """The targets of the links of the new configuration, relative to the home directory."""
@@ -987,6 +883,7 @@ class _Build:
         the other shared directories hold too much else to move: setup stops.
         """
         items = []
+        txn = self.docs.begin("checks")
         targets = self.link_targets()
         for t in targets:
             parts = Path(t).parts
@@ -1004,8 +901,7 @@ class _Build:
                            f"which would put them into that directory. Replace the link with a directory "
                            f"(for example: mv ~/{rel} ~/{rel}.old && mkdir ~/{rel}, then move back what you "
                            f"need), then run setup again.")
-                    if msg not in self.plan.blockers:
-                        self.plan.blockers.append(msg)
+                    txn.report.blocker(msg)
                     break
                 if rel in self.plan.move_links:
                     break
@@ -1021,7 +917,8 @@ class _Build:
                              f"~/{rel}.before-dotkit before the first apply; {what}.")
                 break
         if items:
-            self.r.todo("Config files", "", items)
+            txn.report.todo("Config files", "", items)
+        txn.commit()
 
     def _others(self, link: Path, rel: str, targets: list[str]) -> list[str]:
         """The files under a linked directory that no link of the new configuration replaces."""
@@ -1041,7 +938,7 @@ class _Build:
         if p.blockers:
             out += ["Setup cannot continue:"] + [f"  {b}" for b in p.blockers] + [""]
         out += [f"Repository: {repo_rel} (new)", f"zsh keymap: {p.keymap}", ""]
-        out += [f"{what} -> {where}" for what, where in self.r.carried_rows]
+        out += [f"{what} -> {where}" for what, where in self.docs.report.carried_rows]
         if p.local:
             out.append("Lines with secrets -> " + ", ".join(sorted(p.local)) + " (Git ignores local/)")
         nulls = [t for t, v in p.links.items() if v is None]
@@ -1053,7 +950,7 @@ class _Build:
         if p.move_links:
             out.append("Links of yours, renamed to <name>.before-dotkit before the first apply: " +
                        ", ".join(f"~/{t}" for t in p.move_links))
-        out += ["", f"MIGRATION.md: {self.r.count} items to check by hand.", "",
+        out += ["", f"MIGRATION.md: {self.docs.report.count} items to check by hand.", "",
                 "Nothing is installed or uninstalled now: Homebrew packages stay as they are.",
                 "Setup then builds and applies the configuration. Files in the way of a dotkit",
                 "link are renamed to <name>.before-dotkit. mise installs the tools of config/mise.toml."]
@@ -1075,12 +972,6 @@ def _code(text: str) -> str:
     more = text.strip().count("\n")
     first = first.replace("`", "'")
     return f"`{first}`" + (f" (+{more} lines)" if more else "")
-
-
-def _merge_mise(template: str, own: str) -> str:
-    """The template header, then the user's mise config as it was."""
-    header = "".join(line + "\n" for line in template.splitlines() if line.startswith("#"))
-    return header + "\n# From ~/.config/mise/config.toml.\n" + own.rstrip("\n") + "\n"
 
 
 def _base_example(target: str) -> str:

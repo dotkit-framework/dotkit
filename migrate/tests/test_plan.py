@@ -6,7 +6,6 @@ import unittest
 
 from dotkit_migrate import adopt, plan, secrets, write
 from dotkit_migrate._compat import tomllib
-from dotkit_migrate.report import Report
 from tests import fake
 
 TOKEN = fake.TOKENS["@GH@"]
@@ -176,21 +175,6 @@ class PlanTests(unittest.TestCase):
         self.assertLess(cargo, r.index("`bat` (cargo install): `mise use -g cargo:bat`"))
         self.assertEqual(r.count("### Tools that are not in mise"), 1)
 
-    def test_report_deduplicates_per_block(self):
-        r = Report()
-        r.todo("Homebrew taps", "First intro.", ["`x`"])
-        r.todo("Homebrew taps", "Second intro.", ["`x`"])
-        r.todo("Homebrew taps", "First intro.", ["`x`", "`x`"])
-        text = r.render(self.scan, "~/.dotfiles")
-        self.assertIn("First intro.\n\n- `x`\n\nSecond intro.\n\n- `x`\n", text)
-        self.assertEqual(text.count("- `x`"), 2)
-        self.assertEqual(r.count, 2)
-        r.todo("Logins", "Nothing to list.", [])
-        self.assertEqual(r.count, 3)
-        # Repeats in one call collapse too.
-        r.todo("Config files", "One intro.", ["`y`", "`y`"])
-        self.assertEqual(r.sections["Config files"].items, ["`y`"])
-
     def test_no_secret_in_the_repository(self):
         p = self.build()
         for rel, text in p.files.items():
@@ -349,6 +333,73 @@ class PlanTests(unittest.TestCase):
             self.assertNotIn(fake.TOKENS["@GH@"], text)
             self.assertNotIn("git.example.com", text)
 
+    def test_a_tap_name_with_a_space_is_not_written(self):
+        """The name rule comes first: `a/b c` is not the tap a/b with the URL c."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        runner = fake.brew_runner(taps=[{"name": "a/b c"},
+                                        {"name": "ok/tap", "remote": "https://github.com/ok/homebrew-tap"}])
+        s = fake.scanner(h, runner).run()
+        self.assertFalse(s.taps[0].custom)
+        p = fake.planner(s)
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertTrue(result.files["nix/taps.txt"].endswith(", see MIGRATION.md.\nok/tap\n"))
+        self.assertIn("- `a/b c`: it cannot go into nix/taps.txt: its name is not owner/repo of letters, digits, "
+                      "`_`, `.`, and `-`.\n", result.report)
+        m = adopt.missing(s, h.home / ".dotfiles", fake.base.Base(fake.ROOT), {})
+        self.assertEqual(m.taps, ["ok/tap"])
+
+    def test_a_mise_config_that_is_not_carried_does_not_hide_tools(self):
+        """A mise config with a secret stays in place, also when the choice says layer, so its tools are added."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        h.write(".config/mise/config.toml",
+                fake.fill('[tools]\n"npm:typescript" = "latest"\n\n[env]\nGITHUB_TOKEN = "@GH@"\n'))
+        h.json(".nvm/versions/node/v20.11.0/lib/node_modules/typescript/package.json",
+               {"name": "typescript", "version": "5.4.0", "bin": {"tsc": "bin/tsc"}})
+        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        c = p.defaults(str(h.home / ".dotfiles"))
+        self.assertEqual(c.files[".config/mise/config.toml"], "keep")
+        c.files[".config/mise/config.toml"] = "layer"
+        result = p.build(c)
+        self.assertEqual(tomllib.loads(result.files["config/mise.toml"])["tools"], {"npm:typescript": "latest"})
+        self.assertIsNone(result.links[".config/mise/config.toml"])
+        self.assertNotIn(fake.TOKENS["@GH@"], result.files["config/mise.toml"])
+
+    def test_other_config_whose_place_is_taken(self):
+        """A copy goes only to a free repository path; the other file stays in place, with a to-do."""
+        cases = {
+            "an earlier copy": ({".npmrc": "prefix=${HOME}/.local\n", ".config/npmrc": "color=false\n"},
+                                {".npmrc": "replace"}, ".config/npmrc", "config/npmrc", "~/.npmrc"),
+            "a merged file": ({".config/git/config": "[pull]\n\trebase = true\n", ".gitconfig": "[core]\n",
+                               ".config/gitconfig": "[x]\n"},
+                              {}, ".config/gitconfig", "config/gitconfig", "~/.config/git/config and ~/.gitconfig"),
+        }
+        for why, (files, choices, rel, dest, has) in cases.items():
+            with self.subTest(why):
+                h = fake.Home()
+                self.addCleanup(h.cleanup)
+                for name, text in files.items():
+                    h.write(name, text)
+                p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+                self.assertIn(rel, p.adoptable())
+                c = p.defaults(str(h.home / ".dotfiles"))
+                c.files.update(choices)
+                c.adopt.add(rel)
+                result = p.build(c)
+                self.assertNotIn(rel, result.links)
+                if why == "an earlier copy":
+                    self.assertEqual(result.copies[dest], h.home / ".npmrc")
+                    self.assertEqual(result.links[".npmrc"], dest)
+                else:
+                    self.assertNotIn(dest, result.copies)
+                    self.assertTrue(result.files[dest].startswith("# From ~/.config/git/config.\n"))
+                    self.assertEqual(result.links[".gitconfig"], dest)
+                self.assertIn(f"- ~/{rel}: its place in the repository, {dest}, has {has} already. It stays in "
+                              "place. To keep it in the repository, copy it under another name and link it in "
+                              "nix/home.nix.\n", result.report)
+                self.assertNotIn(f"~/{rel} -> {dest}", result.report)
+
     def test_runtimes_and_cargo_on(self):
         p = self.build(groups={"runtimes": True, "cargo": True})
         tools = tomllib.loads(p.files["config/mise.toml"])["tools"]
@@ -379,36 +430,38 @@ class PlanTests(unittest.TestCase):
         self.h.write(".config/tool/config", fake.fill("token = @GH@\n"))
         c = self.p.defaults(self.repo)
         b = plan._Build(self.p, c)
-        b.plan.copies["config/tool"] = self.h.home / ".config/tool"
-        b.plan.links[".config/tool"] = "config/tool"
+        b.txn.copies.add("config/tool", self.h.home / ".config/tool")
+        b.txn.links().link(".config/tool", "config/tool")
         os.mkfifo(self.h.mkdir(".config/pipes") / "fifo")
-        b.plan.copies["config/pipes"] = self.h.home / ".config/pipes"
-        b.mise_text = "# x\n[tools]\n"
-        b.mise_lines = [fake.fill('"npm:x" = "latest" # @GH@')]
+        b.txn.copies.add("config/pipes", self.h.home / ".config/pipes")
+        b.txn.mise().add_tool("npm:x", "latest", fake.fill("# @GH@"))
         # Lines that an earlier rule might miss: the last check catches them on its own.
-        b.plan.files["config/zsh/zshrc"] = fake.fill(
+        b.txn.shell_rc(".zshrc").add_part("# From ~/.zshrc.", fake.fill(
             "export EDITOR=vim\n"
             "export WEIRD_NAME=@RANDOM@\n"
             "alias gh2='GITHUB_TOKEN=abcdef123456 gh'\n"
             "  curl -u admin:hunter2 https://example.com\n"
-            "# @HEX40@\n")
+            "# @HEX40@\n"))
+        b.txn.commit()
         b.render()
         zshrc = b.plan.files["config/zsh/zshrc"]
-        self.assertTrue(zshrc.startswith("export EDITOR=vim\n"))
+        self.assertIn("\n# From ~/.zshrc.\nexport EDITOR=vim\n", zshrc)
         for value in (fake.TOKENS["@RANDOM@"], "abcdef123456", "hunter2", fake.TOKENS["@HEX40@"]):
             self.assertNotIn(value, zshrc)
         self.assertNotIn("config/tool", b.plan.copies)
         self.assertNotIn("config/pipes", b.plan.copies, "a file that cannot be checked counts as a secret")
         self.assertNotIn(".config/tool", b.plan.links)
-        self.assertNotIn(fake.TOKENS["@GH@"], b.plan.files.get("config/mise.toml", ""))
+        self.assertNotIn('".config/tool"', b.plan.files.get("nix/home.nix", ""))
+        self.assertIn('"npm:x" = "latest"', b.plan.files["config/mise.toml"])
+        self.assertNotIn(fake.TOKENS["@GH@"], b.plan.files["config/mise.toml"])
         self.assertIn("has a secret, so it is not in the repository", b.plan.report)
 
     def test_final_guard_keeps_secret_shell_statements_whole(self):
         b = plan._Build(self.p, self.p.defaults(self.repo))
         function = ('request() {\n  echo before\n  curl -H "X-Api-Key: ' + "\\\n" +
                     'hunter2hunter2" https://example.com\n  echo after\n}')
-        b.plan.files["config/zsh/zshrc"] = function + "\nexport EDITOR=vim\n"
-        b.mise_text = "[tools]\n"
+        b.txn.shell_rc(".zshrc").add_part("# From ~/.zshrc.", function + "\nexport EDITOR=vim\n")
+        b.txn.commit()
         b.render()
         tracked = b.plan.files["config/zsh/zshrc"]
         self.assertEqual(b.plan.local["local/zshrc.zsh"], function + "\n")
@@ -460,13 +513,6 @@ class PlanTests(unittest.TestCase):
         p = self.build(repo=str(self.h.home / "my dots"))
         self.assertIn('  dotfiles = "${home}/my dots";\n', p.files["nix/user.nix"])
         self.assertIn('source "$HOME/my dots/local/zshrc.zsh"', p.files["config/zsh/zshrc"])
-
-    def test_insert_tools(self):
-        self.assertEqual(plan.insert_tools("[tools]\n", ['"a" = "1"']), '[tools]\n"a" = "1"\n')
-        self.assertEqual(plan.insert_tools('[tools]\nx = "1"\n\n[settings]\ny = 1\n', ['"a" = "1"']),
-                         '[tools]\nx = "1"\n"a" = "1"\n\n[settings]\ny = 1\n')
-        self.assertEqual(plan.insert_tools("[env]\nA = '1'\n", ['"a" = "1"']),
-                         "[env]\nA = '1'\n\n[tools]\n\"a\" = \"1\"\n")
 
 
 class WriteTests(unittest.TestCase):

@@ -134,14 +134,18 @@ def read_mas(path: Path) -> dict[str, int]:
     return apps
 
 
-def mise_tools(path: Path) -> dict[str, object]:
-    """The [tools] table of a mise config file, or {} when it cannot be read."""
+def _mise_table(path: Path, name: str) -> dict[str, object]:
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
         return {}
-    tools = data.get("tools")
-    return tools if isinstance(tools, dict) else {}
+    table = data.get(name)
+    return table if isinstance(table, dict) else {}
+
+
+def mise_tools(path: Path) -> dict[str, object]:
+    """The [tools] table of a mise config file, or {} when it cannot be read."""
+    return _mise_table(path, "tools")
 
 
 def mise_short(key: str) -> str:
@@ -170,6 +174,11 @@ class Base:
     @cached_property
     def mise(self) -> dict[str, object]:
         return mise_tools(self.root / "config/mise.toml")
+
+    @cached_property
+    def mise_settings(self) -> dict[str, object]:
+        """The [settings] table of the base config/mise.toml."""
+        return _mise_table(self.root / "config/mise.toml", "settings")
 
     @property
     def template(self) -> Path:

@@ -2,6 +2,7 @@ import re
 import unittest
 
 from dotkit_migrate import base
+from dotkit_migrate._compat import tomllib
 from tests import fake
 
 
@@ -44,8 +45,16 @@ class BaseTests(unittest.TestCase):
         self.assertIsNone(self.b.provides_brew("node@20"))
         self.assertIsNone(self.b.provides_brew("ghostty"), "a formula ghostty is not the cask")
 
+    def test_mise_settings(self):
+        """Base.mise_settings is the [settings] table of the base config/mise.toml, as Base.mise is [tools]."""
+        data = tomllib.loads((fake.ROOT / "config/mise.toml").read_text())
+        self.assertEqual(self.b.mise_settings, data["settings"])
+        self.assertEqual(self.b.mise, data["tools"])
+        self.assertIsInstance(self.b.mise_settings["idiomatic_version_file_enable_tools"], list)
+        self.assertEqual(base.Base(fake.ROOT / "nonexistent").mise_settings, {})
+
     def test_template_anchors(self):
-        """plan.py edits the template at these lines."""
+        """docs.py edits the template at these lines."""
         t = self.b.template
         self.assertIn('    ".zshrc.local" = "config/zsh/zshrc";\n', (t / "nix/home.nix").read_text())
         darwin = (t / "nix/darwin.nix").read_text()
