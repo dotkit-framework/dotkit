@@ -68,9 +68,13 @@
     "  pipx:httpie (from uv tool)",
     "  cargo:cargo-watch (from cargo install)",
     "  go:github.com/rakyll/hey (from ~/go/bin/hey)",
+    "Tools that are not in mise:",
+    "  `detect-secrets` (pipx): dotkit's secret check flags its line in config/mise.toml, so it is not added. Add it by hand: `mise use -g pipx:detect-secrets`.",
     "Homebrew taps, not added:",
     "  `corp/tap`: its URL cannot go into nix/taps.txt (it has a space). Add it by hand to `homebrew.taps` in nix/darwin.nix as `{ name = \"corp/tap\"; clone_target = \"https://git.example.com/homebrew tap.git\"; }`.",
     "App Store apps, added under another name:",
-    "  `Keynote` (ID 409183695): another app has this name, so nix/mas.txt lists it as `Keynote (409183695)`."
+    "  `Keynote` (ID 409183695): another app has this name, so nix/mas.txt lists it as `Keynote (409183695)`.",
+    "App Store apps, not added:",
+    "  The App Store app with ID 1600000002: dotkit's secret check flags its line in nix/mas.txt, so it is not added. Add it by hand: `dotkit add mas:1600000002`."
   ]
 }
