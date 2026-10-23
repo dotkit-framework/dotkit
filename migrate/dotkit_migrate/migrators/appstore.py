@@ -1,0 +1,120 @@
+"""App Store apps: the apps that mas lists, to nix/mas.txt.
+
+Without mas, the scan finds the App Store receipts in /Applications, which
+have no IDs; the report says how to add them.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set, Tuple
+
+from ..context import Context
+from ..docs import Txn, mas_label, mas_problem
+from ..model import Choices, Facts, Item, Page
+from ..report import plural
+from . import NOT_CARRIED, Migrator, left_out
+
+
+@dataclass
+class AppStoreFacts:
+    mas: bool = False  # mas listed the apps
+    apps: List[Tuple[int, str]] = field(default_factory=list)  # (ID, name)
+    store_apps: List[str] = field(default_factory=list)  # App Store apps without mas: names only
+
+
+def facts_of(f: Facts) -> Optional[AppStoreFacts]:
+    return f.get(AppStore.key)
+
+
+def mas_lines(apps: List[Tuple[int, str]], taken: Dict[str, int],
+              declared: Set[int]) -> Tuple[List[Tuple[int, str]], List[str], List[str]]:
+    """The App Store apps for nix/mas.txt as (ID, label), notes on the labels, and to-dos for the rest.
+
+    homebrew.masApps lists apps by name, and the name is only a label. An app
+    whose name is `taken` (in nix/mas.txt, by an earlier app, or by a name in
+    the configuration) gets the label `<name> (<ID>)`. An app whose ID is
+    `declared` already is left out.
+    """
+    out, notes, todos, taken = [], [], [], dict(taken)
+    for i, n in apps:
+        n = n.strip()
+        if i in declared:
+            continue
+        problem = mas_problem(i, n)
+        if problem:
+            todos.append(f"`{n}` (ID {i}): it cannot go into nix/mas.txt: {problem}.")
+            continue
+        label = mas_label(i, n, taken)
+        if label is None or label in taken:
+            label = f"{n} ({i})"
+            todos.append(f"`{n}` (ID {i}): other apps have this name and `{label}`, so it is not in nix/mas.txt. "
+                         f"Add it there under another name: `{i} <name>`.")
+            continue
+        if label != n:
+            notes.append(f"`{n}` (ID {i}): another app has this name, so nix/mas.txt lists it as `{label}`.")
+        taken[label] = i
+        out.append((i, label))
+    return out, notes, todos
+
+
+class AppStore(Migrator):
+    key = "appstore"
+    title = "App Store apps"
+    sections = ("App Store apps", "Not carried, by your choice")
+
+    def scan(self, ctx: Context) -> AppStoreFacts:
+        a = AppStoreFacts()
+        mas = ctx.runner.which("mas", ("/opt/homebrew/bin",))
+        if mas:
+            out = ctx.runner.run([mas, "list"], timeout=60)
+            if out is not None:
+                a.mas = True
+                for line in out.splitlines():
+                    m = re.match(r"^\s*(\d+)\s+(.+?)\s+\(([^)]*)\)\s*$", line)
+                    # An app without a name cannot go into nix/mas.txt.
+                    if m and m.group(2).strip():
+                        a.apps.append((int(m.group(1)), m.group(2).strip()))
+                return a
+        try:
+            apps = sorted(ctx.applications.glob("*.app/Contents/_MASReceipt/receipt"))
+        except OSError:
+            apps = []
+        a.store_apps = [p.parents[2].name.removesuffix(".app") for p in apps]
+        return a
+
+    def pages(self, f: Facts) -> List[Page]:
+        a = facts_of(f)
+        if a is None:
+            return []
+        return [Page("mas", "App Store apps", "nix/mas.txt",
+                     "The apps that mas lists. The selected ones go to the list, and a new Mac installs them from "
+                     "the App Store.", "checklist",
+                     [Item(f"mas:{i}", n.strip(), f"ID {i}") for i, n in a.apps if mas_problem(i, n.strip()) is None])]
+
+    def plan(self, f: Facts, c: Choices, txn: Txn) -> None:
+        a, r = facts_of(f), txn.report
+        if a is None:
+            return
+        pages = self.pages(f)
+        items = {i.id for page in pages for i in page.items}
+        # The apps that cannot go into the list are not items; mas_lines() writes their to-dos.
+        chosen = [(i, n) for i, n in a.apps if c.selected("mas", f"mas:{i}") or f"mas:{i}" not in items]
+        apps, notes, todos = mas_lines(chosen, {}, set())
+        for i, n in apps:
+            txn.list("nix/mas.txt").add(f"{i} {n}")
+        if apps:
+            r.carried(plural(len(apps), "App Store app"), "nix/mas.txt")
+        if notes or todos:
+            r.todo("App Store apps", "", notes + todos)
+        left = [f"`{n.strip()}` (App Store app): `dotkit add mas:{i}`"
+                for i, n in a.apps if (i, n) not in chosen and left_out(pages, c, f"mas:{i}")]
+        if left:
+            r.todo("Not carried, by your choice", NOT_CARRIED, left)
+        if a.store_apps:
+            r.todo("App Store apps",
+                   "These apps came from the App Store. dotkit installs App Store apps with mas, which was not "
+                   "on this Mac, so the scan has no IDs. Run `dotkit add brew:mas`, then `mas list`, and "
+                   "`dotkit add mas:ID` for each app.",
+                   [f"{n}" for n in a.store_apps])

@@ -20,18 +20,6 @@ class ScanTests(unittest.TestCase):
         self.assertEqual((self.facts.identity.git_name, self.facts.identity.git_email),
                          ("Jane Appleseed", "jane@example.com"))
 
-    def test_app_store(self):
-        s = self.scan(fake.brew_runner(mas="497799835  Xcode       (16.0)\n  123   (1.0)\n409183694 Keynote (14.2)\n"))
-        self.assertTrue(s.mas)
-        self.assertEqual(s.mas_apps, [(497799835, "Xcode"), (409183694, "Keynote")])
-        receipt = self.h.apps / "Pages.app/Contents/_MASReceipt/receipt"
-        receipt.parent.mkdir(parents=True)
-        receipt.write_text("")
-        (self.h.apps / "Other.app/Contents").mkdir(parents=True)
-        s = self.scan()
-        self.assertFalse(s.mas)
-        self.assertEqual(s.store_apps, ["Pages"])
-
     def test_npm_pnpm_bun_volta(self):
         def pkg(root, name, version, bin=True):
             self.h.json(f"{root}/{name}/package.json",

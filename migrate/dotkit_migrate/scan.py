@@ -99,9 +99,6 @@ class OtherConfig:
 @dataclass
 class Scan:
     home: str
-    mas: bool = False
-    mas_apps: list[tuple[int, str]] = field(default_factory=list)
-    store_apps: list[str] = field(default_factory=list)  # App Store apps, without mas
     npm: list[Package] = field(default_factory=list)
     pipx: list[Package] = field(default_factory=list)
     cargo: list[Package] = field(default_factory=list)
@@ -146,7 +143,6 @@ class Scanner:
     def __init__(self, ctx: Context):
         self.home = ctx.home
         self.runner = ctx.runner
-        self.applications = ctx.applications
         self.base = ctx.base
         self.brew_prefix = ctx.brew_prefix
         self.env = ctx.env
@@ -161,27 +157,6 @@ class Scanner:
     def env_path(self, var: str, default: str) -> Path:
         v = self.env.get(var)
         return Path(v).expanduser() if v else self.h(default)
-
-    # --- App Store
-
-    def scan_app_store(self) -> None:
-        s = self.s
-        mas = self.runner.which("mas", ("/opt/homebrew/bin",))
-        if mas:
-            out = self.runner.run([mas, "list"], timeout=60)
-            if out is not None:
-                s.mas = True
-                for line in out.splitlines():
-                    m = re.match(r"^\s*(\d+)\s+(.+?)\s+\(([^)]*)\)\s*$", line)
-                    # An app without a name cannot go into nix/mas.txt.
-                    if m and m.group(2).strip():
-                        s.mas_apps.append((int(m.group(1)), m.group(2).strip()))
-                return
-        try:
-            apps = sorted(self.applications.glob("*.app/Contents/_MASReceipt/receipt"))
-        except OSError:
-            apps = []
-        s.store_apps = [p.parents[2].name.removesuffix(".app") for p in apps]
 
     # --- Global tools of other package managers
 
@@ -508,7 +483,7 @@ class Scanner:
     def run(self) -> Scan:
         self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_app_store, self.scan_npm, self.scan_python_tools,
+            self.scan_npm, self.scan_python_tools,
             self.scan_cargo, self.scan_go, self.scan_mise, self.scan_version_managers, self.scan_frameworks,
             self.scan_shell_files, self.scan_config_files, self.scan_other_config,
         ):

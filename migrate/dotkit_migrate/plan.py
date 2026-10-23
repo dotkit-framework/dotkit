@@ -17,7 +17,6 @@ from pathlib import Path
 from . import base as base_mod
 from . import catalog, rcparse, secrets
 from . import docs as docs_mod
-from .docs import mas_label, mas_problem
 from .model import Choices, Facts, Item, Page
 from .report import plural
 from .context import tilde
@@ -109,10 +108,6 @@ class Planner:
                 unique.setdefault(i.id, i)
             out.append(Page(key, title, dest, intro, "checklist", list(unique.values()), note))
 
-        checklist("mas", "App Store apps", "nix/mas.txt",
-                  "The apps that mas lists. The selected ones go to the list, and a new Mac installs them from "
-                  "the App Store.",
-                  [Item(f"mas:{i}", n.strip(), f"ID {i}") for i, n in s.mas_apps if mas_problem(i, n.strip()) is None])
         for key, title, pkgs, intro in (
             ("npm", "npm, pnpm, and bun tools", [p for p in s.npm if p.name not in catalog.NPM_NOT_IN_MISE],
              "Global tools of npm, pnpm, and bun. The selected ones move to mise; the old copies stay until you "
@@ -216,37 +211,6 @@ class Planner:
         _Build(self, facts, c, txn).run()
 
 
-def mas_lines(apps: list[tuple[int, str]], taken: dict[str, int],
-              declared: set[int]) -> tuple[list[tuple[int, str]], list[str], list[str]]:
-    """The App Store apps for nix/mas.txt as (ID, label), notes on the labels, and to-dos for the rest.
-
-    homebrew.masApps lists apps by name, and the name is only a label. An app
-    whose name is `taken` (in nix/mas.txt, by an earlier app, or by a name in
-    the configuration) gets the label `<name> (<ID>)`. An app whose ID is
-    `declared` already is left out.
-    """
-    out, notes, todos, taken = [], [], [], dict(taken)
-    for i, n in apps:
-        n = n.strip()
-        if i in declared:
-            continue
-        problem = mas_problem(i, n)
-        if problem:
-            todos.append(f"`{n}` (ID {i}): it cannot go into nix/mas.txt: {problem}.")
-            continue
-        label = mas_label(i, n, taken)
-        if label is None or label in taken:
-            label = f"{n} ({i})"
-            todos.append(f"`{n}` (ID {i}): other apps have this name and `{label}`, so it is not in nix/mas.txt. "
-                         f"Add it there under another name: `{i} <name>`.")
-            continue
-        if label != n:
-            notes.append(f"`{n}` (ID {i}): another app has this name, so nix/mas.txt lists it as `{label}`.")
-        taken[label] = i
-        out.append((i, label))
-    return out, notes, todos
-
-
 class _Build:
     def __init__(self, planner: Planner, facts: Facts, c: Choices, txn: docs_mod.Txn):
         self.p = planner
@@ -282,34 +246,12 @@ class _Build:
         # Your mise config first: the tools that it has are not added again.
         if self.mise_layered():
             self.txn.mise().set_base(self.s.mise_config.read_text(encoding="utf-8", errors="replace"))
-        self.app_store()
         self.tools()
         self.version_managers()
         self.shell()
         self.config_files()
         self.other_config()
         self.secret_files()
-
-    def app_store(self) -> None:
-        s, r = self.s, self.r
-        # The apps that cannot go into the list are not items; mas_lines() writes their to-dos.
-        chosen = [(i, n) for i, n in s.mas_apps
-                  if self.picked("mas", f"mas:{i}") or f"mas:{i}" not in self.items]
-        apps, notes, todos = mas_lines(chosen, {}, set())
-        for i, n in apps:
-            self.txn.list("nix/mas.txt").add(f"{i} {n}")
-        if apps:
-            r.carried(plural(len(apps), "App Store app"), "nix/mas.txt")
-        if notes or todos:
-            r.todo("App Store apps", "", notes + todos)
-        self.not_carried(NOT_CARRIED, [f"`{n.strip()}` (App Store app): `dotkit add mas:{i}`"
-                                       for i, n in s.mas_apps if (i, n) not in chosen and self.left_out(f"mas:{i}")])
-        if s.store_apps:
-            r.todo("App Store apps",
-                   "These apps came from the App Store. dotkit installs App Store apps with mas, which was not "
-                   "on this Mac, so the scan has no IDs. Run `dotkit add brew:mas`, then `mas list`, and "
-                   "`dotkit add mas:ID` for each app.",
-                   [f"{n}" for n in s.store_apps])
 
     # --- Tools of other package managers
 
