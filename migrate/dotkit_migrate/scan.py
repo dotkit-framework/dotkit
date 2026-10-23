@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
+from . import catalog
 from ._compat import tomllib
 from . import secrets
 from .context import Context, is_managed, read_json, read_text, version_key
@@ -43,32 +44,6 @@ HOME_DOTFILES = (
     ".bashrc", ".vimrc", ".tmux.conf", ".inputrc", ".ideavimrc", ".curlrc", ".wgetrc", ".psqlrc",
     ".irbrc", ".pryrc", ".gitignore_global", ".gitmessage", ".hushlogin",
 )
-
-VERSION_MANAGERS = {
-    # name: (directories, the mise tool, where the versions are)
-    "nvm": ((".nvm",), "node", "versions/node"),
-    "fnm": ((".local/share/fnm", "Library/Application Support/fnm", ".fnm"), "node", "node-versions"),
-    "volta": ((".volta",), "node", "tools/image/node"),
-    "pyenv": ((".pyenv",), "python", "versions"),
-    "rbenv": ((".rbenv",), "ruby", "versions"),
-    "asdf": ((".asdf",), "", "installs"),
-    "sdkman": ((".sdkman",), "java", "candidates/java"),
-    "jenv": ((".jenv",), "java", "versions"),
-}
-
-SHELL_FRAMEWORKS = {
-    "Oh My Zsh": (".oh-my-zsh",),
-    "Prezto": (".zprezto",),
-    "zinit": (".zinit", ".local/share/zinit"),
-    "Powerlevel10k": (".p10k.zsh", "powerlevel10k", ".powerlevel10k"),
-    "antigen": (".antigen", "antigen.zsh"),
-    "antidote": (".antidote", ".cache/antidote"),
-    "Zim": (".zim",),
-    "zplug": (".zplug",),
-}
-
-# asdf plugin names that mise names differently.
-ASDF_TOOLS = {"nodejs": "node", "golang": "go"}
 
 # The default taps of Homebrew. Other homebrew/* taps are old and merged.
 DEFAULT_TAPS = {"homebrew/core", "homebrew/cask"}
@@ -172,6 +147,17 @@ class Scan:
     warnings: list[str] = field(default_factory=list)
 
 
+def node_version_globs() -> list[tuple[str, str, int]]:
+    """The global npm packages of each Node version: (glob relative to the home, label, index of the version).
+
+    The version managers first, then mise. The order decides the label of a
+    directory that two globs find.
+    """
+    globs = [(pattern, spec.name, index) for spec in catalog.VERSION_MANAGERS for pattern, index in spec.npm_globs]
+    globs.append((".local/share/mise/installs/node/*/lib/node_modules", "mise node", -3))
+    return globs
+
+
 def _secrets_of(p: Path) -> list[secrets.Secret]:
     """The secrets of a file. A file that cannot be checked counts as one with a secret."""
     try:
@@ -265,16 +251,9 @@ class Scanner:
         if prefix and not is_managed(self.h(".npmrc")):
             p = prefix.group(1).replace("${HOME}", str(self.home)).replace("$HOME", str(self.home))
             roots.append((Path(p).expanduser() / "lib/node_modules", f"npm prefix {prefix.group(1)}"))
-        for pattern, label in (
-            (".nvm/versions/node/*/lib/node_modules", "nvm"),
-            (".local/share/fnm/node-versions/*/installation/lib/node_modules", "fnm"),
-            ("Library/Application Support/fnm/node-versions/*/installation/lib/node_modules", "fnm"),
-            (".asdf/installs/nodejs/*/lib/node_modules", "asdf"),
-            (".local/share/mise/installs/node/*/lib/node_modules", "mise node"),
-        ):
+        for pattern, label, index in node_version_globs():
             for p in sorted(self.home.glob(pattern)):
-                version = p.parts[-4] if label == "fnm" else p.parts[-3]
-                roots.append((p, f"{label} {version}"))
+                roots.append((p, f"{label} {p.parts[index]}"))
         # Keg-only Homebrew nodes, for example node@20.
         for p in sorted(self.brew_prefix.glob("opt/node@*/lib/node_modules")):
             roots.append((p, f"Homebrew {p.parts[-3]}"))
@@ -443,48 +422,36 @@ class Scanner:
                 self.s.mise_extra.append(str(q.relative_to(self.home)))
 
     def scan_version_managers(self) -> None:
-        for name, (dirs, tool, sub) in VERSION_MANAGERS.items():
-            root = next((self.h(d) for d in dirs if self.h(d).is_dir()), None)
+        for spec in catalog.VERSION_MANAGERS:
+            if not spec.detect:
+                continue
+            root = next((self.h(d) for d in spec.dirs if self.h(d).is_dir()), None)
             if root is None:
                 continue
-            vm = VersionManager(name, "~/" + str(root.relative_to(self.home)), tool)
-            if name == "asdf":
-                for plugin in sorted((root / sub).glob("*")):
-                    t = ASDF_TOOLS.get(plugin.name, plugin.name)
+            vm = VersionManager(spec.name, "~/" + str(root.relative_to(self.home)), spec.tool)
+            if not spec.tool:
+                for plugin in sorted((root / spec.versions).glob("*")):
+                    t = catalog.ASDF_TOOLS.get(plugin.name, plugin.name)
                     vm.versions[t] = sorted((v.name for v in plugin.iterdir() if v.is_dir()), key=version_key)
                 for line in read_text(self.h(".tool-versions")).splitlines():
                     parts = line.split("#")[0].split()
                     if len(parts) >= 2:
-                        vm.default[ASDF_TOOLS.get(parts[0], parts[0])] = parts[1]
+                        vm.default[catalog.ASDF_TOOLS.get(parts[0], parts[0])] = parts[1]
             else:
-                versions = [v.name for v in (root / sub).glob("*") if v.is_dir() and v.name != "current"]
+                versions = [v.name for v in (root / spec.versions).glob("*") if v.is_dir() and v.name != "current"]
                 if versions:
-                    vm.versions[tool] = sorted(versions, key=version_key)
-                default = ""
-                if name == "nvm":
-                    default = read_text(root / "alias/default").strip()
-                elif name in ("pyenv", "rbenv", "jenv"):
-                    default = read_text(root / "version").split("\n")[0].strip()
-                elif name == "sdkman":
-                    cur = root / sub / "current"
-                    default = os.readlink(cur) if cur.is_symlink() else ""
-                    default = default.rstrip("/").rsplit("/", 1)[-1]
-                elif name == "fnm":
-                    alias = root / "aliases/default"
-                    default = os.readlink(alias).rstrip("/").split("/")[-2] if alias.is_symlink() else ""
-                elif name == "volta":
-                    meta = read_json(root / "tools/user/platform.json") or {}
-                    default = ((meta.get("node") or {}).get("runtime")) or ""
+                    vm.versions[spec.tool] = sorted(versions, key=version_key)
+                default = spec.default(root) if spec.default else ""
                 if default and default != "system":
-                    vm.default[tool] = default
+                    vm.default[spec.tool] = default
             self.s.version_managers.append(vm)
 
     def scan_frameworks(self) -> None:
-        for name, rels in SHELL_FRAMEWORKS.items():
-            for rel in rels:
+        for spec in catalog.FRAMEWORKS:
+            for rel in spec.paths:
                 p = self.h(rel)
                 if p.exists() and not is_managed(p):
-                    self.s.frameworks[name] = "~/" + rel
+                    self.s.frameworks[spec.name] = "~/" + rel
                     break
 
     # --- Files in the home directory

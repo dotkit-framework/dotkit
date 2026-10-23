@@ -81,6 +81,45 @@ class ParserTests(unittest.TestCase):
         path = next(f for f in r.findings if f.where == "11")
         self.assertIn("$HOME/missing does not exist", path.note)
 
+    def test_finding_source(self):
+        """A finding names the framework or version manager of the catalog that the line uses."""
+        r = self.parse(
+            "ZSH_CUSTOM=$HOME/custom\n"                             # 1: a variable of Oh My Zsh
+            "source $ZSH/oh-my-zsh.sh\n"                            # 2: a word of Oh My Zsh
+            "zinit light romkatv/powerlevel10k\n"                   # 3: the first word wins
+            "[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh\n"        # 4
+            'export NVM_DIR="$HOME/.nvm"\n'                         # 5
+            "export RBENV_ROOT=/opt/rbenv-root\n"                   # 6
+            "export JENV_ROOT=/opt/j\n"                             # 7: a variable of jenv
+            'eval "$(pyenv init -)"\n'                              # 8
+            'export PATH="$HOME/miniconda3/bin:$PATH"\n'            # 9: a PATH marker of conda
+            'export PATH="$HOME/missing:$PATH"\n'                   # 10: not a version manager
+            "pyuse() { pyenv shell $1; }\n"                         # 11: a function
+            "setopt AUTO_CD\n"                                      # 12
+            'sdk() { source "$SDKMAN_DIR/bin/sdkman-init.sh"; }\n'  # 13
+            "export ZPLUG_X=1; zplug load\n"                        # 14
+            'export PATH="$ASDF_DATA_DIR/shims:$PATH"\n'             # 15: a variable of asdf
+            "export ZDOTDIR=~/.zsh\n"                               # 16: zsh's own, no framework
+        )
+        self.assertEqual([(f.where, f.category, f.source) for f in r.findings], [
+            ("1", rcparse.FRAMEWORK, "Oh My Zsh"),
+            ("2", rcparse.FRAMEWORK, "Oh My Zsh"),
+            ("3", rcparse.FRAMEWORK, "zinit"),
+            ("4", rcparse.FRAMEWORK, "Powerlevel10k"),
+            ("5", rcparse.VERSION_MANAGER, "nvm"),
+            ("6", rcparse.VERSION_MANAGER, "rbenv"),
+            ("7", rcparse.VERSION_MANAGER, "jenv"),
+            ("8", rcparse.VERSION_MANAGER, "pyenv"),
+            ("9", rcparse.PATHS, "conda"),
+            ("10", rcparse.PATHS, ""),
+            ("11", rcparse.VERSION_MANAGER, "pyenv"),
+            ("12", rcparse.OPTIONS, ""),
+            ("13", rcparse.VERSION_MANAGER, "sdkman"),
+            ("14", rcparse.FRAMEWORK, "zplug"),
+            ("15", rcparse.PATHS, "asdf"),
+            ("16", rcparse.FRAMEWORK, ""),
+        ])
+
     def test_every_line_is_carried_or_reported(self):
         r = self.parse(OLD_ZSHRC)
         seen = set()

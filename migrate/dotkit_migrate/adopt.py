@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
+from . import catalog
 from .plan import insert_tools, mas_lines, mask_lines, ruby_escape, tap_lines, toml_key
 from .scan import Scan
 
@@ -84,9 +85,9 @@ def missing(scan: Scan, repo: Path, base: base_mod.Base, declared: dict, all_too
     for backend, pkgs in (("npm", scan.npm), ("pipx", scan.pipx), ("cargo", scan.cargo), ("go", scan.go)):
         for p in pkgs:
             key = f"{backend}:{p.name}"
-            if not p.ok or p.name == "pnpm" or key in keys or has_tool(p.name):
+            if not p.ok or p.name in catalog.NPM_NOT_IN_MISE or key in keys or has_tool(p.name):
                 continue
-            if backend in ("cargo", "go") and not all_tools:
+            if backend in catalog.BUILT_FROM_SOURCE and not all_tools:
                 m.built.append((key, p.where))
             else:
                 m.mise.append((key, p.where))
@@ -107,7 +108,8 @@ def describe(m: Missing) -> list[str]:
     if m.mise:
         out += ["Tools -> config/mise.toml:"] + [f"  {k} (from {w})" for k, w in m.mise]
     if m.built:
-        out += ["cargo and Go tools, not added: mise builds them from source. Use --all to add them:"]
+        out += [" and ".join(catalog.BUILT_FROM_SOURCE.values())
+                + " tools, not added: mise builds them from source. Use --all to add them:"]
         out += [f"  {k} (from {w})" for k, w in m.built]
     if m.tap_todos:
         out += ["Homebrew taps, not added:"] + [f"  {t}" for t in m.tap_todos]

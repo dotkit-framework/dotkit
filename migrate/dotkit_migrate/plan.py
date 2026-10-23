@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import base as base_mod
 from ._compat import tomllib
-from . import rcparse, secrets
+from . import catalog, rcparse, secrets
 from .report import Report, plural
 from . import scan as scan_mod
 from .context import expand, is_managed, tilde
@@ -89,13 +89,13 @@ class Planner:
         return keep, redundant
 
     def npm_tools(self) -> list[str]:
-        return [p.name for p in self.scan.npm if p.ok and p.name != "pnpm"]
+        return [p.name for p in self.scan.npm if p.ok and p.name not in catalog.NPM_NOT_IN_MISE]
 
     def runtime_lines(self) -> dict[str, list[str]]:
         """mise tool -> versions, default first, for the version managers mise can replace."""
         out: dict[str, list[str]] = {}
         for vm in self.scan.version_managers:
-            if vm.name in ("sdkman", "jenv"):
+            if not catalog.version_manager(vm.name).mise_replaces:
                 continue
             for tool, versions in vm.versions.items():
                 vs = [v.lstrip("v") for v in versions if re.fullmatch(r"v?\d+(\.\d+)*", v)]
@@ -143,10 +143,8 @@ class Planner:
             Group("mas", "App Store apps", "nix/mas.txt", [n for _, n in s.mas_apps], True),
             Group("npm", "npm, pnpm, and bun tools", "config/mise.toml", self.npm_tools(), True),
             Group("pipx", "pipx and uv tools", "config/mise.toml", [p.name for p in s.pipx if p.ok], True),
-            Group("cargo", "cargo install tools", "config/mise.toml", [p.name for p in s.cargo if p.ok], False,
-                  "off: mise builds them from source with cargo"),
-            Group("go", "Go tools", "config/mise.toml", [p.name for p in s.go if p.ok], False,
-                  "off: mise builds them from source with go"),
+            Group("cargo", "cargo install tools", "config/mise.toml", [p.name for p in s.cargo if p.ok], True),
+            Group("go", "Go tools", "config/mise.toml", [p.name for p in s.go if p.ok], True),
             Group("runtimes", "Runtime versions of version managers", "config/mise.toml",
                   [f"{t} {', '.join(v)}" for t, v in self.runtime_lines().items()], False,
                   "off: mise installs them; the base has Node, Python, and Ruby"),
@@ -155,6 +153,10 @@ class Planner:
         ]
         if carried == 0:
             out[-1].items = []
+        # Off by default: the cargo and go groups above.
+        for g in out:
+            if g.key in catalog.BUILT_FROM_SOURCE:
+                g.default, g.note = False, f"off: mise builds them from source with {g.key}"
         return [g for g in out if g.items]
 
     def file_items(self) -> list[FileItem]:
@@ -491,9 +493,8 @@ class _Build:
         for key, pkgs, backend, comment, remove in groups:
             carried, manual, old = [], [], []
             for p in pkgs:
-                if key == "npm" and p.name == "pnpm":
-                    manual.append(f"`pnpm` ({p.where}): dotkit has no global pnpm; each project supplies its "
-                                  "own, with mise or corepack. `npm uninstall -g pnpm` when you no longer need it.")
+                if key == "npm" and p.name in catalog.NPM_NOT_IN_MISE:
+                    manual.append(f"`{p.name}` ({p.where}): {catalog.NPM_NOT_IN_MISE[p.name]}")
                     continue
                 if not p.ok:
                     manual.append(f"`{p.name}` ({p.where}): {p.note}. Add it to config/mise.toml by hand.")
@@ -516,10 +517,9 @@ class _Build:
                        "they can come first in PATH. Remove each one when the mise copy works.",
                        old)
             if manual:
-                why = {
-                    "cargo": "mise builds cargo tools from source, so they are off by default.",
-                    "go": "mise builds Go tools from source, so they are off by default.",
-                }.get(key, "")
+                why = ""
+                if key in catalog.BUILT_FROM_SOURCE:
+                    why = f"mise builds {catalog.BUILT_FROM_SOURCE[key]} tools from source, so they are off by default."
                 r.todo("Tools that are not in mise", (why + " " if why else "") +
                        "They stay where they are. To add one to config/mise.toml:", manual)
             if key == "cargo" and carried and not s.has_cargo:
@@ -549,7 +549,7 @@ class _Build:
                 parts.append(f"{tool} {', '.join(versions)}" + (f" (default {d})" if d else ""))
             what = "; ".join(parts) or "no versions"
             mise = ""
-            if vm.name in ("sdkman", "jenv"):
+            if not catalog.version_manager(vm.name).mise_replaces:
                 mise = ("dotkit has the Zulu 17 JDK (JAVA_HOME). For another JDK: `mise ls-remote java`, then "
                         "`mise use -g java@<version>`")
             else:
