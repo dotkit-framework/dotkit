@@ -1,10 +1,11 @@
 """Runs the wizard on a fake Mac, for test_wizard_pty.
 
-Usage: python3 wizard_child.py <result.json>
+Usage: python3 wizard_child.py <result.json> <root>
 Writes {"ok": bool, "mode": "curses" or "plain", "choices": Choices.to_json()},
 with the home directory as ~ in the repository path. With DOTKIT_TEST_CRASH=1,
 the scan of logins (which has no page) and the plan of shell raise, and the
-Session is not strict: the wizard must still finish.
+Session is not strict: the wizard must still finish. The fake Mac is made
+in <root>, a directory that the parent removes, also when it kills this child.
 """
 
 import json
@@ -23,7 +24,7 @@ from tests.test_session import used_mac  # noqa: E402
 
 def main() -> None:
     out = Path(sys.argv[1])
-    h = fake.Home()
+    h = fake.Home.at(Path(sys.argv[2]))
     crash = os.environ.get("DOTKIT_TEST_CRASH") == "1"
     if crash:
         for cls, phase in ((logins.Logins, "scan"), (shell.Shell, "plan")):

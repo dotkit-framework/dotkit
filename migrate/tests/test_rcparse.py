@@ -1,7 +1,6 @@
 import os
 import shutil
 import subprocess
-import tempfile
 import unittest
 
 from dotkit_migrate import rcparse
@@ -47,10 +46,10 @@ OLD_ZSHRC = fake.fill(OLD_ZSHRC)
 
 class ParserTests(unittest.TestCase):
     def setUp(self):
-        self.home = tempfile.mkdtemp()
+        self.home = str(fake.tempdir("rcparse"))
+        self.addCleanup(fake.remove, self.home)
         os.makedirs(f"{self.home}/bin")
         os.makedirs(f"{self.home}/go/bin")
-        self.addCleanup(shutil.rmtree, self.home)
 
     def parse(self, text, shell="zsh", name=".zshrc", known=None):
         return rcparse.Parser(self.home, shell).parse(name, text, known)

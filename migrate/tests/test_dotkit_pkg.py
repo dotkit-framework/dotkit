@@ -10,7 +10,6 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -35,8 +34,10 @@ exit 1
 @unittest.skipUnless(SCRIPT.is_file() and JQ and shutil.which("perl"), "no scripts/dotkit-pkg, jq, or perl")
 class DotkitPkgTests(unittest.TestCase):
     def setUp(self):
-        self.dir = Path(tempfile.mkdtemp(prefix="dotkit-migrate-test-"))
-        self.addCleanup(shutil.rmtree, self.dir)
+        self.dir = fake.tempdir()
+        self.addCleanup(fake.remove, self.dir)
+        self.tmp = self.dir / "tmp"  # the mktemp files of dotkit-pkg
+        self.tmp.mkdir()
         self.repo = self.dir / "repo"
         (self.repo / "nix").mkdir(parents=True)
         (self.repo / "config").mkdir()
@@ -49,7 +50,7 @@ class DotkitPkgTests(unittest.TestCase):
             (self.bin / name).chmod(0o755)
 
     def run_pkg(self, *args: str) -> subprocess.CompletedProcess:
-        env = {"HOME": str(self.dir), "DOTFILES": str(self.repo), "LC_ALL": "en_US.UTF-8",
+        env = {"HOME": str(self.dir), "TMPDIR": str(self.tmp), "DOTFILES": str(self.repo), "LC_ALL": "en_US.UTF-8",
                "PATH": f"{self.bin}:{os.path.dirname(JQ)}:/usr/bin:/bin"}
         return subprocess.run([BASH, str(SCRIPT), *args], capture_output=True, text=True, env=env,
                               stdin=subprocess.DEVNULL, timeout=60)

@@ -6,9 +6,10 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
+
+from tests import fake
 
 CHILD = Path(__file__).resolve().parent / "main_child.py"
 
@@ -23,7 +24,8 @@ def run(root: Path, *args: str, env: dict | None = None) -> subprocess.Completed
 
 class MainTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp(prefix="dotkit-migrate-main-"))
+        self.root = fake.tempdir("main")
+        self.addCleanup(fake.remove, self.root)
         self.home = self.root / "home"
 
     def test_a_locale_that_is_not_utf8(self):

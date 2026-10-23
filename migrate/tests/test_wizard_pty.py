@@ -8,7 +8,6 @@ import select
 import signal
 import struct
 import sys
-import tempfile
 import termios
 import time
 import unittest
@@ -27,8 +26,20 @@ def _size(fd: int, rows: int, cols: int) -> None:
 
 
 def drive(keys, term="xterm-256color", rows=30, cols=100, timeout=30.0, env=None):
-    """Runs the child in a pty and sends the keys: text, or ("resize", rows, cols). Returns its result and output."""
-    out = Path(tempfile.mkdtemp()) / "result.json"
+    """Runs the child in a pty and sends the keys: text, or ("resize", rows, cols). Returns its result and output.
+
+    The child's fake Mac and its result are in a temporary directory of this process, which removes it
+    also when the child is killed or the test fails.
+    """
+    tmp = fake.tempdir("pty")
+    try:
+        return _drive(tmp, keys, term, rows, cols, timeout, env)
+    finally:
+        fake.remove(tmp)
+
+
+def _drive(tmp, keys, term, rows, cols, timeout, env):
+    out = tmp / "result.json"
     extra = env or {}
     env = {k: v for k, v in os.environ.items() if k not in ("TERMINFO", "TERMINFO_DIRS", "DOTKIT_TEST_CRASH")}
     env.update(extra)
@@ -41,7 +52,7 @@ def drive(keys, term="xterm-256color", rows=30, cols=100, timeout=30.0, env=None
     if pid == 0:
         try:
             _size(0, rows, cols)
-            os.execve(sys.executable, [sys.executable, str(CHILD), str(out)], env)
+            os.execve(sys.executable, [sys.executable, str(CHILD), str(out), str(tmp / "mac")], env)
         finally:
             os._exit(127)
     screen = bytearray()
@@ -59,34 +70,38 @@ def drive(keys, term="xterm-256color", rows=30, cols=100, timeout=30.0, env=None
                     return
                 screen.extend(data)
 
-    drain(1.5)  # the scan and curses start
-    for key in keys:
-        if isinstance(key, tuple):
-            _size(fd, key[1], key[2])
-            os.kill(pid, signal.SIGWINCH)
+    done = 0
+    try:
+        drain(1.5)  # the scan and curses start
+        for key in keys:
+            if isinstance(key, tuple):
+                _size(fd, key[1], key[2])
+                os.kill(pid, signal.SIGWINCH)
+            else:
+                try:
+                    os.write(fd, key.encode())
+                except OSError:
+                    break  # the child has quit
+            drain(0.12)
+        deadline = time.time() + timeout
+        status = None
+        while time.time() < deadline:
+            drain(0.1)
+            done, status = os.waitpid(pid, os.WNOHANG)
+            if done:
+                break
         else:
-            try:
-                os.write(fd, key.encode())
-            except OSError:
-                break  # the child has quit
-        drain(0.12)
-    deadline = time.time() + timeout
-    status = None
-    while time.time() < deadline:
-        drain(0.1)
-        done, status = os.waitpid(pid, os.WNOHANG)
-        if done:
-            break
-    else:
-        os.kill(pid, signal.SIGKILL)
-        os.waitpid(pid, 0)
-        raise AssertionError("the wizard did not finish. Output:\n" + screen.decode(errors="replace")[-3000:])
-    drain(0.2)
-    os.close(fd)
-    text = screen.decode(errors="replace")
-    if not out.exists():
-        raise AssertionError(f"the child wrote no result (status {status}). Output:\n{text[-3000:]}")
-    return json.loads(out.read_text()), text
+            raise AssertionError("the wizard did not finish. Output:\n" + screen.decode(errors="replace")[-3000:])
+        drain(0.2)
+        text = screen.decode(errors="replace")
+        if not out.exists():
+            raise AssertionError(f"the child wrote no result (status {status}). Output:\n{text[-3000:]}")
+        return json.loads(out.read_text()), text
+    finally:
+        if not done:  # a failure or the timeout: the child must not outlive its directory
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+        os.close(fd)
 
 
 def pages():

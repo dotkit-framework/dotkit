@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import atexit
 import json
+import os
+import re
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -32,6 +36,102 @@ def fill(text: str) -> str:
     return text
 
 
+# Every temporary directory of the tests is made by tempdir(), named
+# dotkit-migrate-<kind>-<pid>-..., and removed by remove(). check_temp() (run
+# last by tests/__init__.py) finds the ones a test left behind.
+TMP_PREFIX = "dotkit-migrate-"
+_made: list[Path] = []
+
+
+def tempdir(kind: str = "test") -> Path:
+    """A new temporary directory. The caller removes it with remove(), usually with addCleanup."""
+    p = Path(tempfile.mkdtemp(prefix=f"{TMP_PREFIX}{kind}-{os.getpid()}-"))
+    _made.append(p)
+    return p
+
+
+def remove(path: Path) -> None:
+    """Removes a temporary directory, also when parts of it are read-only or unreadable. Raises when it stays."""
+    if not os.path.lexists(path):
+        return
+    if os.path.isdir(path) and not os.path.islink(path):
+        os.chmod(path, 0o700)
+        for root, dirs, _ in os.walk(path):
+            for d in dirs:
+                p = os.path.join(root, d)
+                if not os.path.islink(p):  # never change the mode of what a link points to
+                    os.chmod(p, 0o700)
+        shutil.rmtree(path)
+    else:
+        os.unlink(path)
+
+
+def temp_entries(tmp: str | None = None) -> set[str]:
+    """The dotkit-migrate-* names in the temporary directory."""
+    return {n for n in os.listdir(tmp or tempfile.gettempdir()) if n.startswith(TMP_PREFIX)}
+
+
+def _pid_of(name: str) -> int | None:
+    """The pid in a name of tempdir(), dotkit-migrate-<kind>-<pid>-...; None when it has none."""
+    m = re.match(re.escape(TMP_PREFIX) + r"[a-z]+-(\d+)-", name)
+    return int(m.group(1)) if m else None
+
+
+def _alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def check_temp(before: set[str], made: list[Path] | None = None,
+               tmp: str | None = None) -> tuple[list[str], list[str]]:
+    """What the tests left in the temporary directory since before: (removed, kept).
+
+    A leak is a directory of tempdir() that still exists, or an entry that is new since before and
+    has this process's pid or a dead one (this suite or one of its children): it is removed. A new
+    entry whose pid is alive belongs to a run at the same time and is ignored. A new entry without
+    a pid in its name is a leak too, but it is never removed, only counted (kept). An entry that was
+    there before with a dead pid gets a note on stderr.
+    """
+    tmp = tmp or tempfile.gettempdir()
+    made = _made if made is None else made
+    left = {p for p in made if os.path.lexists(p)}
+    kept = set()
+    now = temp_entries(tmp)
+    for name in now - before:
+        pid = _pid_of(name)
+        if pid is None:
+            kept.add(name)
+        elif pid == os.getpid() or not _alive(pid):
+            left.add(Path(tmp, name))
+    for path in left:
+        remove(path)
+    for name in sorted(now & before):
+        pid = _pid_of(name)
+        if pid is not None and pid != os.getpid() and not _alive(pid):
+            print(f"note: {Path(tmp, name)} is from an earlier run (pid {pid}); remove it by hand.",
+                  file=sys.stderr)
+    return sorted({p.name for p in left}), sorted(kept)
+
+
+def _remove_made() -> None:
+    """At exit, for a run that stopped before check_temp: remove what tempdir() made."""
+    for p in _made:
+        try:
+            remove(p)
+        except OSError:
+            pass
+
+
+atexit.register(_remove_made)
+
+
 class FakeRunner:
     """Answers commands by "name args", for example "brew leaves --installed-on-request"."""
 
@@ -55,7 +155,7 @@ class Home:
     """A temporary home directory. write() creates files in it."""
 
     def __init__(self) -> None:
-        self.root = Path(tempfile.mkdtemp(prefix="dotkit-migrate-test-"))
+        self.root = tempdir()
         self.home = self.root / "home"
         self.home.mkdir()
         self.apps = self.root / "Applications"
@@ -90,7 +190,7 @@ class Home:
         return p
 
     def cleanup(self) -> None:
-        shutil.rmtree(self.root, ignore_errors=True)
+        remove(self.root)
 
 
 BREW = "/opt/homebrew/bin/brew"

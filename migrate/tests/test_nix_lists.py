@@ -12,7 +12,6 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -71,8 +70,8 @@ def eval_mac(module: str, attr: str, *args: str) -> subprocess.CompletedProcess:
 @unittest.skipUnless(NIX, "no nix")
 class NixListTests(unittest.TestCase):
     def setUp(self):
-        self.dir = Path(tempfile.mkdtemp(prefix="dotkit-migrate-test-"))
-        self.addCleanup(shutil.rmtree, self.dir)
+        self.dir = fake.tempdir()
+        self.addCleanup(fake.remove, self.dir)
 
     def write(self, name: str, text: str) -> Path:
         p = self.dir / name

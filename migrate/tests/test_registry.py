@@ -105,10 +105,11 @@ def write_findings(source: str, filename: str) -> list[str]:
     return out
 
 
-def _sessions():
-    """Sessions of the fake Macs with the most pages, after the scan."""
+def _sessions(test: unittest.TestCase):
+    """Sessions of the fake Macs with the most pages, after the scan. test removes their homes."""
     for make in (kitchen_sink, lambda h: (used_mac(h), {})):
         h = fake.Home()
+        test.addCleanup(h.cleanup)
         runner, env = make(h)
         yield h, fake.session(h, runner, env, check=check_syntax)
 
@@ -127,8 +128,7 @@ class RegistryTests(unittest.TestCase):
         self.assertNotIn("core", keys)  # the Txn owner of the Session's own entries
 
     def test_page_keys_and_item_id_prefixes_are_unique(self):
-        for h, s in _sessions():
-            self.addCleanup(h.cleanup)
+        for h, s in _sessions(self):
             pages = s.pages()
             self.assertGreaterEqual(len(pages), 10)
             keys = [p.key for p in pages]
@@ -180,8 +180,7 @@ class RegistryTests(unittest.TestCase):
             return todo(doc, txn, title, intro, items)
 
         with mock.patch.object(docs.ReportDoc, "todo", record):
-            for h, s in _sessions():
-                self.addCleanup(h.cleanup)
+            for h, s in _sessions(self):
                 c = s.defaults(str(h.home / ".dotfiles"))
                 s.build(c)
                 c.picked = {p.key: {i.id for i in p.items} for p in s.pages() if p.kind == "checklist"}
