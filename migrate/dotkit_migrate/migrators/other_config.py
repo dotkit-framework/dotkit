@@ -58,6 +58,11 @@ def facts_of(f: Facts) -> Optional[OtherFacts]:
     return f.get(OtherConfig.key)
 
 
+def adopted(f: Facts, c: Choices, rel: str) -> bool:
+    """Whether other config carries ~/<rel> into the repository: no when its facts are missing (section 7.3)."""
+    return facts_of(f) is not None and c.selected("other", f"other:{rel}")
+
+
 def _assess(ctx: Context, rel: str) -> Entry:
     p = ctx.home / rel
     is_dir = p.is_dir()
@@ -121,6 +126,13 @@ class OtherConfig(Migrator):
     key = "other_config"
     title = "Other config"
     sections = ("Other config", "Other config that stays out of the repository")
+
+    def manual_steps(self, ctx: Context) -> str:
+        return ("None of your other config in ~/.config and of your dotfiles in the home directory (such as "
+                "~/.vimrc) is in the repository, and MIGRATION.md does not list them. They stay in place and keep "
+                "working. To keep one in the repository, copy it to config/ and link it in nix/home.nix, for "
+                "example `dotkit.links.\".config/nvim\" = \"config/nvim\";`. Keep files with secrets, state, "
+                "or caches out of it.")
 
     def scan(self, ctx: Context) -> OtherFacts:
         out = OtherFacts()

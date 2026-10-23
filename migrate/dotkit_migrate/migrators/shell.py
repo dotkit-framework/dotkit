@@ -18,7 +18,7 @@ from ..context import Context, is_managed, read_text
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
 from ..report import plural
-from . import NOT_CARRIED, Migrator, left_out
+from . import NOT_CARRIED, Migrator, and_list, left_out, other_config
 
 # Shell files that the base links, and the layer files of yours that the
 # base reads after them, in the order zsh and bash read them.
@@ -91,6 +91,24 @@ class Shell(Migrator):
     key = "shell"
     title = "Shell lines"
     sections = ("Secrets", "Shell lines", "Other shell files", "Not carried, by your choice")
+
+    def manual_steps(self, ctx: Context) -> str:
+        """Section 7.5: what the template does without this migrator, from base.SHELL_LAYERS."""
+        layers = base_mod.SHELL_LAYERS
+        zshrc_layer, zshrc_file = layers[".zshrc"]
+        others = [f"~/{layer}" for main, (layer, _) in layers.items() if main != ".zshrc"]
+        dirs: List[str] = []
+        for _, repo_file in layers.values():
+            d = str(Path(repo_file).parent) + "/"
+            if d not in dirs:
+                dirs.append(d)
+        return (f"Nothing of your shell files is carried. dotkit links its own "
+                f"{and_list([f'~/{main}' for main in layers])}, and the template's {zshrc_file} as "
+                f"~/{zshrc_layer}. The first apply renames your files at these paths to <name>.before-dotkit. "
+                f"Your {and_list(others)} stay in place if they exist, and dotkit's files source them, also if "
+                "your old files did not. Check what they run (a framework, a version manager, PATH changes). They "
+                f"stay outside the repository. Copy the lines you need from the .before-dotkit files to "
+                f"{and_list(dirs)} of this repository, and keep lines with secrets out of files that Git tracks.")
 
     def scan(self, ctx: Context) -> ShellFacts:
         sh = ShellFacts(str(ctx.home))
@@ -208,7 +226,7 @@ class Shell(Migrator):
                                        f"of it is carried. dotkit links its own ~/{x.name} and renames yours to "
                                        f"~/{x.name}.before-dotkit. Copy what you need."])
         for name in sh.other_files:
-            if c.selected("other", f"other:{name}"):
+            if other_config.adopted(f, c, name):
                 continue
             note = {
                 ".bashrc": "It stays in place. dotkit's ~/.bash_profile reads it in an interactive bash.",

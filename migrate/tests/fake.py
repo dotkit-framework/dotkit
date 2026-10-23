@@ -118,6 +118,10 @@ def context_of(h: Home, runner: FakeRunner, env: dict[str, str] | None = None) -
     return context.Context(h.home, env or {}, runner, base.Base(ROOT), h.apps, h.prefix)
 
 
-def session(h: Home, runner: FakeRunner, env: dict[str, str] | None = None, check=None) -> registry.Session:
-    """The Session of a fake Mac. check is the check_syntax of the shell lines; None: no check."""
-    return registry.Session(context_of(h, runner, env), check_syntax=check)
+def session(h: Home, runner: FakeRunner, env: dict[str, str] | None = None, check=None,
+            strict: bool = True) -> registry.Session:
+    """The Session of a fake Mac. check is the check_syntax of the shell lines; None: no check.
+
+    Strict by default: a crash or a conflict raises where it happens. The isolation tests turn it off.
+    """
+    return registry.Session(context_of(h, runner, env), strict=strict, check_syntax=check)

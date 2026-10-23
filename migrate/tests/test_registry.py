@@ -153,6 +153,21 @@ class RegistryTests(unittest.TestCase):
                 self.assertTrue(m.sections, "a migrator names the report sections it writes")
                 self.assertLessEqual(set(m.sections), set(report.SECTIONS))
 
+    def test_every_migrator_has_a_title_and_manual_steps(self):
+        """The text of a failure (section 7.5): a person can do by hand what the migrator did not."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        ctx = fake.context_of(h, fake.FakeRunner())
+        keys = {m.key for m in registry.MIGRATORS}
+        for m in (registry.IDENTITY, *registry.MIGRATORS):
+            with self.subTest(migrator=m.key):
+                self.assertTrue(m.title)
+                text = m.manual_steps(ctx)
+                self.assertTrue(text, "manual_steps is empty")
+                self.assertTrue(text.endswith("."), text)
+                self.assertIsNone(secrets.line_secret(text))
+                self.assertLessEqual(set(getattr(m, "needs", ())), keys)
+
     def test_a_migrator_writes_only_its_sections(self):
         """Every section a migrator writes in the fake Macs' plans is one of its `sections`."""
         sections = {m.key: set(m.sections) for m in registry.MIGRATORS}
@@ -189,6 +204,7 @@ class RegistryTests(unittest.TestCase):
             self.assertIsNotNone(facts.get(m.key), m.key)
         self.assertEqual(s.pages(), [])
         plan = s.build(s.defaults(str(h.home / ".dotfiles")))
+        self.assertEqual((s.failures, plan.failures), ([], []))
         self.assertEqual(sorted(plan.files), ["MIGRATION.md", "nix/user.nix"])
         self.assertEqual((plan.copies, plan.local, plan.links, plan.move_links, plan.blockers), ({}, {}, {}, [], []))
         self.assertIn("## Carried over\n\nNothing.\n\n## To do\n\nNothing.\n", plan.report)
@@ -228,7 +244,7 @@ NOT_STATIC = {
     # ReportView.todo hands its arguments on to ReportDoc.todo: the intro is whatever its caller gave.
     "dotkit_migrate/docs.py:992",
     # rcparse.hint(...): test_rcparse_hints_have_no_secret checks every hint with both file names.
-    "dotkit_migrate/migrators/shell.py:240",
+    "dotkit_migrate/migrators/shell.py:258",
 }
 
 

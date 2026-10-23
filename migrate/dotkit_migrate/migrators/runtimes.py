@@ -123,6 +123,14 @@ class Runtimes(Migrator):
     title = "Runtime versions of version managers"
     sections = ("Version managers", "mise")
 
+    def manual_steps(self, ctx: Context) -> str:
+        return ("No version of your version managers (nvm, pyenv, asdf, and the others) is in config/mise.toml, "
+                "and MIGRATION.md does not list the version managers. The base has "
+                f"{base_runtimes(ctx.base)}. Add the versions you need with `mise use -g <tool>@<version>`. "
+                "dotkit's shell does not load the version managers: remove their lines from your shell files, "
+                "and their directories when you no longer need them. mise still reads ~/.tool-versions and "
+                "~/.config/mise/conf.d/*.toml if they exist; check them.")
+
     def scan(self, ctx: Context) -> RuntimeFacts:
         return RuntimeFacts(_managers(ctx), _mise_extra(ctx))
 

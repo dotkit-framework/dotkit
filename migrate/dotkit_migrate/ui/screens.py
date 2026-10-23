@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..context import expand, repo_error, tilde
-from ..model import Choices, Page
+from ..model import PHASE_TEXT, Choices, Failure, Page, Plan
 from ..registry import Session
 
 KEYMAPS = (("emacs", "Ctrl+A, Ctrl+E, Ctrl+R, as in most terminals"),
@@ -50,6 +50,9 @@ class Screen:
     note: str = ""  # a page note, for example why its items are off
     dest: str = ""  # where the selected items go
     lines: Callable[[], list[str]] | None = None  # review: the plan, built when the screen opens
+    # review: the Problems block of the plan that lines() built last, in the warning color, above the lines.
+    problems: Callable[[], list[str]] | None = None
+    warning: str = ""  # the first screen: the parts of the scan that failed and have no screen
 
 
 class Frontend:
@@ -75,13 +78,36 @@ def not_carried(pages: list[Page], c: Choices) -> list[tuple[Page, int]]:
     return out
 
 
-def review_lines(session: Session, pages: list[Page], c: Choices) -> list[str]:
-    """The text of the plan screen: the summary of a fresh plan, then what you left out, per page."""
-    lines = list(session.build(c).summary)
+def review_lines(plan: Plan, pages: list[Page], c: Choices) -> list[str]:
+    """The text of the plan screen: the summary of the plan, then what you left out, per page."""
+    lines = list(plan.summary)
     left = not_carried(pages, c)
     if left:
         lines += ["", "Not carried, by your choice:"] + [f"  {page.title}: {n}" for page, n in left]
     return lines
+
+
+def problem_lines(failures: list[Failure]) -> list[str]:
+    """The Problems block of the plan screen: each part that failed, its phase, and that its choices do nothing.
+
+    A plan that failed can depend on a choice: b goes back, and the plan is
+    built again when this screen opens.
+    """
+    if not failures:
+        return []
+    out = ["Problems:"]
+    for f in failures:
+        if f.phase == "skipped":
+            what = f"skipped, because {f.reason}"
+        elif f.phase == "conflict":
+            what = (f"{f.where}: two parts wanted different values for {f.reason}; the value of {f.title} is "
+                    f"left out ({f.error})")
+        else:
+            what = f"failed while {PHASE_TEXT[f.phase]}: {f.error}"
+        out.append(f"  {f.title}: {what}.")
+    out += ["  Their part is left out, so its choices have no effect. MIGRATION.md says what to do by hand.",
+            "  b goes back: a changed choice builds the plan again.", ""]
+    return out
 
 
 def toggle_all(screen: Screen) -> None:
@@ -111,15 +137,22 @@ def build(session: Session, c: Choices, home: str) -> list[Screen]:
         Screen("text", "repo", "Where the dotfiles repository goes",
                "Setup creates a new Git repository with your settings, lists, and a report of what needs your "
                "attention. Nothing on this Mac changes before the last screen.",
-               [], lambda _id: tilde(c.repo, home), set_repo, lambda _id: ""),
+               [], lambda _id: tilde(c.repo, home), set_repo, lambda _id: "", warning=session.scan_warning()),
         Screen("radio", "keymap", "The zsh keymap",
                "How the command line edits text. nix/shell.nix has it, and you can change it later.",
                [Row(name, desc) for name, desc in KEYMAPS], lambda row: c.keymap == row, set_keymap,
                lambda _id: ""),
     ]
     out += [_page_screen(page, c) for page in pages if page.items]
+    built: list[Plan] = []
+
+    def lines() -> list[str]:
+        built[:] = [session.build(c)]
+        return review_lines(built[0], pages, c)
+
     out.append(Screen("review", "review", "The plan", "", [], lambda _id: None, lambda _id, _v: "",
-                      lambda _id: "", lines=lambda: review_lines(session, pages, c)))
+                      lambda _id: "", lines=lines,
+                      problems=lambda: problem_lines(built[0].failures) if built else []))
     return out
 
 

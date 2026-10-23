@@ -13,6 +13,7 @@ from . import base as base_mod
 from .context import is_managed, tilde
 from .docs import Docs, ReportDoc
 from .model import Plan
+from .report import problems_lines
 
 # Directories that hold much more than dotkit's files. A link there is not
 # moved aside: links_in_the_way stops instead.
@@ -116,6 +117,8 @@ def summary(plan: Plan, report: ReportDoc, git_name: str = "", git_email: str = 
     p = plan
     repo_rel = tilde(p.repo, p.home)
     out = []
+    if p.failures:
+        out += problems_lines(p.failures) + [""]
     if p.blockers:
         out += ["Setup cannot continue:"] + [f"  {b}" for b in p.blockers] + [""]
     out += [f"Repository: {repo_rel} (new)", f"zsh keymap: {p.keymap}", ""]

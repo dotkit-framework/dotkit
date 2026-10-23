@@ -18,7 +18,7 @@ from .._compat import tomllib
 from ..context import Context, is_managed, read_text, tilde
 from ..docs import Txn, toml_value
 from ..model import Choices, Facts, Item, Page
-from . import Migrator
+from . import Migrator, and_list
 
 OPTION_TEXT = {
     "layer": "yours, read after the dotkit file",
@@ -234,6 +234,18 @@ class ConfigFiles(Migrator):
     key = "config_files"
     title = "Config files"
     sections = ("Config files", "mise")
+
+    def manual_steps(self, ctx: Context) -> str:
+        """Section 7.5: what the template does without this migrator, from base.LINKS."""
+        git = next(link for link in base_mod.LINKS if link.target == ".config/git/config")
+        return ("None of your config files is carried or kept in place. dotkit links its own files at "
+                f"{and_list([f'~/{link.target}' for link in base_mod.LINKS])}, and links config/mise.toml of "
+                f"this repository as ~/{MISE_CONFIG}. The first apply renames your files at these paths to "
+                "<name>.before-dotkit. They stay on disk, outside the repository, and the tools no longer read "
+                "them. The tools of your old mise config are not in config/mise.toml. If a file with a login, "
+                "such as ~/.npmrc with a token, was renamed, log in again or copy the token by hand; do not put "
+                f"it into Git. ~/{git.layer} stays in place, and Git still reads it after the dotkit settings. "
+                "Copy the settings you need from the .before-dotkit files.")
 
     def scan(self, ctx: Context) -> ConfigFacts:
         cf = ConfigFacts()

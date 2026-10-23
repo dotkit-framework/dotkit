@@ -26,10 +26,12 @@ def _size(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
-def drive(keys, term="xterm-256color", rows=30, cols=100, timeout=30.0):
+def drive(keys, term="xterm-256color", rows=30, cols=100, timeout=30.0, env=None):
     """Runs the child in a pty and sends the keys: text, or ("resize", rows, cols). Returns its result and output."""
     out = Path(tempfile.mkdtemp()) / "result.json"
-    env = {k: v for k, v in os.environ.items() if k not in ("TERMINFO", "TERMINFO_DIRS")}
+    extra = env or {}
+    env = {k: v for k, v in os.environ.items() if k not in ("TERMINFO", "TERMINFO_DIRS", "DOTKIT_TEST_CRASH")}
+    env.update(extra)
     env.update({"TERM": term, "ESCDELAY": "25", "LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8",
                 "PYTHONDONTWRITEBYTECODE": "1"})
     try:
@@ -227,6 +229,22 @@ class WizardPtyTests(unittest.TestCase):
         self.assertEqual(c["options"]["file:.npmrc"], "keep")
         self.assertIn("The plan:", screen)
         self.assertIn("Not carried, by your choice:", screen)
+
+    def test_a_crash_and_the_wizard_finishes(self):
+        """A scan and a plan that raise: the warning line, the Problems block, and the defaults are written."""
+        crash = {"DOTKIT_TEST_CRASH": "1"}
+        result, screen = self.run_wizard([ENTER] * self.total, rows=40, env=crash)
+        self.assertEqual(result["mode"], "curses", screen[-2000:])
+        self.assertTrue(result["ok"], screen[-2000:])
+        self.assertEqual(result["choices"], self.defaults)
+        self.assertIn("1 part of the scan failed: Logins.", screen)
+        self.assertIn("Problems:", screen)
+        lines = ["", "", *self.plain_answers({}), "y"]
+        result, screen = self.run_wizard([line + "\r" for line in lines], term="dumb", env=crash)
+        self.assertEqual(result["mode"], "plain")
+        self.assertTrue(result["ok"], screen[-3000:])
+        self.assertLess(screen.index("1 part of the scan failed: Logins."), screen.index("Where the dotfiles"))
+        self.assertIn("  Shell lines: failed while planning: RuntimeError: boom.", screen)
 
     def test_plain_prompts_no_at_the_end(self):
         lines = ["", "", *self.plain_answers({}), "n"]

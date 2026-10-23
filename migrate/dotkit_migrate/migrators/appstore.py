@@ -64,6 +64,11 @@ class AppStore(Migrator):
     title = "App Store apps"
     sections = ("App Store apps", "Not carried, by your choice")
 
+    def manual_steps(self, ctx: Context) -> str:
+        return ("None of your App Store apps is in nix/mas.txt. They stay installed, and a new Mac does not get "
+                "them. `mas list` lists them (without mas, run `dotkit add brew:mas` first). Add the ones you "
+                "want with `dotkit add mas:<ID>`.")
+
     def scan(self, ctx: Context) -> AppStoreFacts:
         a = AppStoreFacts()
         mas = ctx.runner.which("mas", ("/opt/homebrew/bin",))

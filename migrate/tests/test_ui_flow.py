@@ -6,6 +6,7 @@ import io
 import unittest
 from unittest import mock
 
+from dotkit_migrate import registry
 from dotkit_migrate.ui import plain, screens
 from tests import fake
 from tests.test_session import used_mac
@@ -28,10 +29,14 @@ class ScriptedFrontend(screens.Frontend):
         self.steps: list[tuple[int, int]] = []
         self.errors: dict[str, str] = {}
         self.review: list[str] = []
+        self.problems: list[str] = []
+        self.warnings: dict[str, str] = {}  # screen id -> its warning line
 
     def show(self, screen: screens.Screen, step: int, total: int) -> int:
         self.shown.append(screen.id)
         self.steps.append((step, total))
+        if screen.warning:
+            self.warnings[screen.id] = screen.warning
         if screen.id == self.quit_at:
             raise screens.Quit()
         answer = self.answers.get(screen.id)
@@ -45,6 +50,7 @@ class ScriptedFrontend(screens.Frontend):
                 self.errors[row] = screen.set(row, value)
         if screen.kind == "review":
             self.review = screen.lines()
+            self.problems = screen.problems()
         moves = self.moves.get(screen.id)
         return moves.pop(0) if moves else 1
 
@@ -180,6 +186,93 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(npmrc.options, ("keep", "dotkit"))
         self.assertEqual(set(npmrc.option_text), {"keep", "dotkit"})
         self.assertEqual(files.get("file:.npmrc"), "keep")
+
+
+class ProblemTests(unittest.TestCase):
+    """Section 8: the warning line of the first screen, and the Problems block of the plan screen."""
+
+    def setUp(self):
+        self.h = fake.Home()
+        self.addCleanup(self.h.cleanup)
+
+    def migrator(self, key: str):
+        return next(m for m in registry.MIGRATORS if m.key == key)
+
+    def run_flow(self, **kw):
+        p = fake.session(self.h, used_mac(self.h), strict=False)
+        c = p.defaults(str(self.h.home / ".dotfiles"))
+        ui = ScriptedFrontend(**kw)
+        self.assertTrue(screens.run(ui, screens.build(p, c, str(self.h.home))))
+        return p, c, ui
+
+    def test_no_problems(self):
+        _, _, ui = self.run_flow()
+        self.assertEqual((ui.warnings, ui.problems), ({}, []))
+
+    def test_the_warning_line(self):
+        """A scan or pages that failed: no screen, and one line under the intro of the first screen."""
+        with mock.patch.object(type(self.migrator("runtimes")), "scan", side_effect=RuntimeError("boom")):
+            _, _, ui = self.run_flow()
+        self.assertEqual(ui.warnings, {"repo": "1 part of the scan failed: Runtime versions of version managers. "
+                                               "It is left out; the plan screen and MIGRATION.md say more."})
+        self.assertNotIn("runtimes", ui.shown)
+        self.assertEqual(ui.problems[:2], ["Problems:", "  Runtime versions of version managers: failed while "
+                                                        "scanning: RuntimeError: boom."])
+        with mock.patch.object(type(self.migrator("runtimes")), "scan", side_effect=RuntimeError("boom")), \
+                mock.patch.object(type(self.migrator("other_config")), "pages", side_effect=KeyError("x")):
+            _, _, ui = self.run_flow()
+        self.assertEqual(ui.warnings["repo"], "2 parts of the scan failed: Runtime versions of version managers, "
+                                              "Other config. They are left out; the plan screen and MIGRATION.md "
+                                              "say more.")
+        self.assertNotIn("other", ui.shown)
+
+    def test_the_problems_block(self):
+        """A plan that failed: its page is there, and the plan screen says that its choices have no effect."""
+        shell = self.migrator("shell")
+        with mock.patch.object(type(shell), "plan", side_effect=RuntimeError("boom")):
+            p, c, ui = self.run_flow()
+        self.assertIn("shell", ui.shown)
+        self.assertEqual(ui.warnings, {}, "the scan worked")
+        self.assertEqual(ui.problems, [
+            "Problems:",
+            "  Shell lines: failed while planning: RuntimeError: boom.",
+            "  Their part is left out, so its choices have no effect. MIGRATION.md says what to do by hand.",
+            "  b goes back: a changed choice builds the plan again.",
+            "",
+        ])
+        self.assertEqual(ui.review[0], "Problems: 1 part of the migration failed: shell (planning). It is left "
+                                       "out; MIGRATION.md says what to do.")
+
+    def test_back_after_a_crash_that_depends_on_a_choice(self):
+        shell = self.migrator("shell")
+        original = type(shell).plan
+
+        def plan(self, facts, choices, txn):
+            if choices.selected("shell", "shell:.zshrc"):
+                raise RuntimeError("boom")
+            original(self, facts, choices, txn)
+
+        with mock.patch.object(type(shell), "plan", plan):
+            p, c, ui = self.run_flow(moves={"review": [-1]})
+            self.assertEqual(ui.shown[-3:], ["review", "other", "review"])
+            self.assertEqual(ui.problems[1], "  Shell lines: failed while planning: RuntimeError: boom.")
+            # Back on the shell page, ~/.zshrc off: the plan screen builds the plan again, without the problem.
+            by_id = {x.id: x for x in screens.build(p, c, str(self.h.home))}
+            by_id["shell"].set("shell:.zshrc", False)
+            review = by_id["review"]
+            self.assertIn("1 line of ~/.zprofile -> config/zsh/zprofile (~/.zprofile.local)", review.lines())
+            self.assertEqual(review.problems(), [])
+
+    def test_plain_prints_the_warning_line_first(self):
+        with mock.patch.object(type(self.migrator("runtimes")), "scan", side_effect=RuntimeError("boom")):
+            p = fake.session(self.h, used_mac(self.h), strict=False)
+            c = p.defaults(str(self.h.home / ".dotfiles"))
+            first = screens.build(p, c, str(self.h.home))[0]
+        stdin, stdout = io.StringIO("\n"), io.StringIO()
+        with mock.patch("sys.stdin", stdin), mock.patch("sys.stdout", stdout):
+            plain.Plain(False).show(first, 1, 1)
+        self.assertTrue(stdout.getvalue().startswith("1 part of the scan failed: Runtime versions of version "
+                                                     "managers. It is left out;"), stdout.getvalue())
 
 
 class PlainTests(unittest.TestCase):

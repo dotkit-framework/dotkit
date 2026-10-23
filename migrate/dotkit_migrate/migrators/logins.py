@@ -13,7 +13,7 @@ from .. import secrets
 from ..context import Context
 from ..docs import Txn
 from ..model import Choices, Facts
-from . import Migrator
+from . import Migrator, and_list
 
 # How to get each login back on a new Mac.
 STEPS = {
@@ -43,6 +43,12 @@ class Logins(Migrator):
     key = "logins"
     title = "Logins"
     sections = ("Logins",)
+
+    def manual_steps(self, ctx: Context) -> str:
+        files = and_list([f"~/{rel}" for rel in secrets.SECRET_FILES])
+        return ("MIGRATION.md does not list your files with logins. They stay in place, and none of them is in "
+                f"the repository: {files}. On a new Mac, log in again, or copy them by hand; do not put them "
+                "into Git.")
 
     def scan(self, ctx: Context) -> LoginFacts:
         return LoginFacts([rel for rel in secrets.SECRET_FILES if (ctx.home / rel).exists()])

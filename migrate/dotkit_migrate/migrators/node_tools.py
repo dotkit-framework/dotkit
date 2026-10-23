@@ -86,6 +86,11 @@ class NodeTools(Migrator):
     title = "npm, pnpm, and bun tools"
     sections = ("Tools that moved to mise", "Tools that are not in mise", "mise", "Not carried, by your choice")
 
+    def manual_steps(self, ctx: Context) -> str:
+        return ("None of your global npm, pnpm, bun, and Volta tools is in config/mise.toml. They stay where "
+                "they are, and mise does not install them. Add the ones you want with "
+                "`mise use -g npm:<package>`.")
+
     def scan(self, ctx: Context) -> NodeFacts:
         found: Dict[str, Package] = {}
 

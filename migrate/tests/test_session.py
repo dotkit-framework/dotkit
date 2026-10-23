@@ -99,20 +99,23 @@ class SessionTests(unittest.TestCase):
         self.assertIs(facts.base, p.ctx.base)
         self.assertIs(facts.check_syntax, check)
 
-    def test_a_failed_scan_is_a_warning(self):
+    def test_a_failed_scan_is_a_failure(self):
         """The identity first, then in MIGRATORS order; the failed migrator has no facts."""
         class Broken(fake.FakeRunner):
             def run(self, argv, timeout=120, env=None):
                 raise RuntimeError("boom")
 
-        p = fake.session(self.h, Broken(paths={"brew": fake.BREW}))
+        p = fake.session(self.h, Broken(paths={"brew": fake.BREW}), {"USER": "jo"}, strict=False)
         facts = p.scan()
-        self.assertEqual(facts.warnings, ["identity: RuntimeError: boom", "homebrew: RuntimeError: boom"])
+        self.assertEqual(facts.warnings, [])
+        self.assertEqual([(f.migrator, f.phase) for f in p.failures], [("identity", "scan"), ("homebrew", "scan")])
+        self.assertEqual((facts.identity.user, facts.identity.hostname), ("jo", ""), "the defaults")
         self.assertIsNone(facts.get("homebrew"))
         self.assertIsNotNone(facts.get("appstore"))
         report = p.build(p.defaults(str(self.h.home / ".dotfiles"))).report
-        self.assertIn("### Scan errors\n\nPart of the scan failed. Check these by hand.\n\n"
-                      "- identity: RuntimeError: boom\n- homebrew: RuntimeError: boom\n", report)
+        self.assertIn("### Problems during the migration\n\n- **Your account and Git identity**: failed while "
+                      "scanning: `RuntimeError: boom`", report)
+        self.assertIn("- **Homebrew packages and taps**: failed while scanning: `RuntimeError: boom`", report)
 
 
 class PlanTests(unittest.TestCase):
@@ -358,9 +361,10 @@ class SkipTests(unittest.TestCase):
         self.addCleanup(h.cleanup)
         p = registry.Session(fake.context_of(h, fake.brew_runner(formulae=["wget"])),
                              migrators=(Broken(), *registry.MIGRATORS))
-        self.assertEqual(p.scan().warnings, ["broken: RuntimeError: boom"])
+        self.assertEqual(p.scan().warnings, [])
+        self.assertEqual([(f.migrator, f.phase) for f in p.failures], [("broken", "scan")])
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
-        self.assertIn("- broken: RuntimeError: boom\n", result.report)
+        self.assertIn("failed while scanning: `RuntimeError: boom`", result.report)
         self.assertIn("\nwget\n", result.files["nix/brews.txt"])
 
 

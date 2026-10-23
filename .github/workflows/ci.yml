@@ -105,6 +105,9 @@ jobs:
       # GitHub downloads of Nix and mise, without the anonymous rate limit.
       NIX_CONFIG: access-tokens = github.com=${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
+      # The migration wizard raises on a crash or a conflict of one of its
+      # parts, instead of leaving the part out (tests and CI only).
+      DOTKIT_MIGRATE_STRICT: "1"
     steps:
       - uses: actions/checkout@v7
         with:

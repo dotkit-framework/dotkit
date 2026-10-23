@@ -158,6 +158,8 @@ class UI(screens_mod.Frontend):
                 size = self.frame(step, total, screen.title, "type a path   enter next   esc quit")
                 if size:
                     y = self.para(4, screen.intro)
+                    if screen.warning:
+                        y = self.para(y + 1, screen.warning, self.warn)
                     self.put(y + 1, 4, "Path: ", curses.A_BOLD)
                     self.put(y + 1, 10, value + " ", curses.A_UNDERLINE)
                     if error:
@@ -307,17 +309,19 @@ class UI(screens_mod.Frontend):
         top = 0
         action = "print the plan" if self.dry_run else "create the repository"
         text = screen.lines() if screen.lines else []
+        # The Problems block of this plan comes first, in the warning color.
+        problems = screen.problems() if screen.problems else []
         while True:
             size = self.frame(step, total, screen.title, f"enter {action}   ↑↓ scroll   b back   q quit")
             if size:
                 h, w = size
-                lines: list[str] = []
-                for line in text:
-                    lines += textwrap.wrap(line, w - 6, subsequent_indent="    ") or [""]
+                lines: list[tuple[str, int]] = []
+                for line, attr in [(x, self.warn) for x in problems] + [(x, 0) for x in text]:
+                    lines += [(part, attr) for part in textwrap.wrap(line, w - 6, subsequent_indent="    ") or [""]]
                 view = max(1, h - 6)
                 top = max(0, min(top, len(lines) - view))
-                for i, line in enumerate(lines[top: top + view]):
-                    self.put(4 + i, 2, line)
+                for i, (line, attr) in enumerate(lines[top: top + view]):
+                    self.put(4 + i, 2, line, attr)
                 self.scr.refresh()
             k = self.key()
             if k is None or not size:

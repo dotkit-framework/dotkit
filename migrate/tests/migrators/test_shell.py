@@ -128,7 +128,7 @@ class ShellTests(unittest.TestCase):
         self.assertIn("- ~/.zshenv: 1 line that could be carried to config/zsh/zshenv. Copy the ones you need.\n",
                       result.report)
         self.assertEqual(screens.not_carried(p.pages(), c), [(shell, 2)])
-        lines = screens.review_lines(p, p.pages(), c)
+        lines = screens.review_lines(p.build(c), p.pages(), c)
         self.assertEqual(lines[lines.index("Not carried, by your choice:") + 1:], ["  Shell lines: 2"])
         for rel, text in result.files.items():
             if rel.startswith("config/zsh/"):
@@ -155,17 +155,17 @@ class ShellTests(unittest.TestCase):
         self.assertIn("zsh -n could not check it", p.report)
 
     def test_a_failed_scan(self):
-        """No shell page and nothing of your files, the warning, and the core "Login shell" to-do."""
+        """No shell page and nothing of your files, the problem, and the core "Login shell" to-do."""
         self.h.write(".zshrc", "export EDITOR=vim\n")
         with mock.patch.object(shell.Shell, "scan", side_effect=RuntimeError("boom")):
-            p = fake.session(self.h, fake.brew_runner(), {"SHELL": "/bin/bash"})
+            p = fake.session(self.h, fake.brew_runner(), {"SHELL": "/bin/bash"}, strict=False)
             facts = p.scan()
-        self.assertEqual(facts.warnings, ["shell: RuntimeError: boom"])
+        self.assertEqual([(f.migrator, f.phase) for f in p.failures], [("shell", "scan")])
         self.assertNotIn("shell", [page.key for page in p.pages()])
         result = p.build(p.defaults(self.repo))
         self.assertFalse([rel for rel in result.files if rel.startswith(("config/zsh/", "config/bash/"))])
         self.assertNotIn("EDITOR", "".join(result.files.values()))
-        self.assertIn("- shell: RuntimeError: boom\n", result.report)
+        self.assertIn("- **Shell lines**: failed while scanning: `RuntimeError: boom`", result.report)
         self.assertIn("### Login shell\n\nYour login shell is /bin/bash. dotkit makes the zsh of Nix the login "
                       "shell, so the config of bash is not used in new terminals.\n", result.report)
 

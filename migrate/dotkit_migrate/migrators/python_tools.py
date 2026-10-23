@@ -28,6 +28,10 @@ class PythonTools(Migrator):
     title = "pipx and uv tools"
     sections = ("Tools that moved to mise", "Tools that are not in mise", "mise", "Not carried, by your choice")
 
+    def manual_steps(self, ctx: Context) -> str:
+        return ("None of your pipx and uv tools is in config/mise.toml. They stay where they are, and mise does "
+                "not install them. Add the ones you want with `mise use -g pipx:<package>`.")
+
     def scan(self, ctx: Context) -> PythonFacts:
         found: Dict[str, Package] = {}
         homes = [env_path(ctx, "PIPX_HOME", ".local/pipx"), ctx.home / "Library/Application Support/pipx"]

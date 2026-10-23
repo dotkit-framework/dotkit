@@ -13,7 +13,7 @@ from .. import catalog
 from ..context import Context, is_managed, shell_path
 from ..docs import Txn
 from ..model import Choices, Facts
-from . import Migrator
+from . import Migrator, and_list
 
 
 @dataclass
@@ -29,6 +29,11 @@ class Frameworks(Migrator):
     key = "frameworks"
     title = "Shell frameworks"
     sections = ("Shell frameworks",)
+
+    def manual_steps(self, ctx: Context) -> str:
+        names = and_list([spec.name for spec in catalog.FRAMEWORKS])
+        return (f"MIGRATION.md does not list your shell frameworks. dotkit's zsh does not load {names}. Their "
+                "directories stay on disk; remove them when you no longer need them.")
 
     def scan(self, ctx: Context) -> FrameworkFacts:
         fw = FrameworkFacts()

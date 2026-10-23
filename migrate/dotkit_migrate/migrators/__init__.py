@@ -35,6 +35,13 @@ def left_out(pages: List[Page], choices: Choices, item_id: str) -> bool:
     return False
 
 
+def and_list(names: List[str]) -> str:
+    """Names in a sentence: "a", "a and b", "a, b, and c"."""
+    if len(names) <= 2:
+        return " and ".join(names)
+    return ", ".join(names[:-1]) + ", and " + names[-1]
+
+
 def unique_items(items: List[Item]) -> List[Item]:
     """The items without repeats: a package in two places is one item."""
     out: Dict[str, Item] = {}
@@ -44,9 +51,9 @@ def unique_items(items: List[Item]) -> List[Item]:
 
 
 class Migrator:
-    key: str = ""  # stable id: the facts key, the Txn owner, the test name
+    key: str = ""  # stable id: the facts key, the Txn owner, the test name, Failure.migrator
     title: str = ""  # human name for problems and warnings
-    needs: Tuple[str, ...] = ()  # facts it cannot work without
+    needs: Tuple[str, ...] = ()  # keys of the migrators it cannot work without: it is skipped when one failed
     sections: Tuple[str, ...] = ()  # the report sections it writes, each in report.SECTIONS
 
     def scan(self, ctx: Context) -> object:
@@ -59,3 +66,11 @@ class Migrator:
 
     def plan(self, facts: Facts, choices: Choices, txn: Txn) -> None:
         """Add to the documents and the report through txn. Runs no command but facts.check_syntax."""
+
+    def manual_steps(self, ctx: Context) -> str:
+        """What a person does by hand when this migrator failed: what happens without it, and what to do.
+
+        It describes the plain template, as the run has nothing of this
+        migrator. tests/test_registry.py checks that every migrator has one.
+        """
+        return ""

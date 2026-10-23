@@ -93,6 +93,14 @@ class Homebrew(Migrator):
     title = "Homebrew packages and taps"
     sections = ("Homebrew copies of dotkit tools", "Not carried, by your choice", "Homebrew taps")
 
+    def manual_steps(self, ctx: Context) -> str:
+        return ("None of your Homebrew formulae, casks, and taps is in nix/brews.txt, nix/casks.txt, or "
+                "nix/taps.txt. They stay installed, and dotkit does not manage them. With "
+                "`homebrew.onActivation.cleanup = \"uninstall\"` in nix/darwin.nix, activation would uninstall "
+                "them. `brew leaves --installed-on-request`, `brew list --cask`, and `brew tap` list them. Add the "
+                "ones you want with `dotkit add brew:<name>` and `dotkit add cask:<name>`, and the taps to "
+                "nix/taps.txt.")
+
     def scan(self, ctx: Context) -> BrewFacts:
         b = BrewFacts()
         b.brew = ctx.runner.which("brew", ("/opt/homebrew/bin",)) or ""

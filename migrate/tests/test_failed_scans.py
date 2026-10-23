@@ -1,8 +1,9 @@
 """A migrator whose scan fails: setup and `dotkit migrate` go on without it.
 
-For each of the sources that adopt reads, its scan raises: the scan has one
-warning, setup has no page of it and the warning in the report, and
-`dotkit migrate` adds what the other sources found.
+For each of the sources that adopt reads, its scan raises: the Session has
+one Failure, setup has no page of it and the problem in the report, and
+`dotkit migrate` adds what the other sources found and says what it could
+not check. tests/test_isolation.py covers every migrator and every phase.
 """
 
 from __future__ import annotations
@@ -45,15 +46,18 @@ class FailedScanTests(unittest.TestCase):
         for key, (pages, _) in SOURCES.items():
             with self.subTest(key=key), self.broken(key):
                 h, runner = self.mac()
-                p = fake.session(h, runner)
+                p = fake.session(h, runner, strict=False)
                 facts = p.scan()
-                self.assertEqual(facts.warnings, [f"{key}: RuntimeError: boom"])
+                self.assertEqual(facts.warnings, [])
+                self.assertEqual([(f.migrator, f.phase, f.error) for f in p.failures],
+                                 [(key, "scan", "RuntimeError: boom")])
                 self.assertIsNone(facts.get(key))
                 keys = [page.key for page in p.pages()]
                 self.assertFalse(set(pages) & set(keys), keys)
                 self.assertIn("files", keys, "the other pages are there")
                 result = p.build(p.defaults(str(h.home / ".dotfiles")))
-                self.assertIn(f"- {key}: RuntimeError: boom\n", result.report)
+                title = next(m.title for m in registry.MIGRATORS if m.key == key)
+                self.assertIn(f"- **{title}**: failed while scanning: `RuntimeError: boom`", result.report)
 
     def test_adopt(self):
         for key in SOURCES:
@@ -67,6 +71,8 @@ class FailedScanTests(unittest.TestCase):
                     code = cli.main(["adopt", "--repo", str(repo), "--all", "-y"],
                                     make_context=lambda _home, _base: fake.context_of(h, runner))
                 self.assertEqual(code, 0, err.getvalue())
+                self.assertIn(f"Could not check: {key} (RuntimeError: boom); nothing of it was added.\n",
+                              err.getvalue())
                 for other, (_, (rel, marker)) in SOURCES.items():
                     text = (repo / rel).read_text()
                     if other == key:

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import adopt as adopt_mod
 from . import base as base_mod
-from . import context, registry, writer
+from . import context, registry, report, writer
 from .ui import curses_ui, plain
 
 # make_context(home, base) -> the Context that the scan reads. Tests give a fake Mac.
@@ -35,6 +35,45 @@ def info(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
+def debug_on(a: argparse.Namespace) -> bool:
+    return a.debug or os.environ.get("DOTKIT_MIGRATE_DEBUG") == "1"
+
+
+def strict_on(a: argparse.Namespace) -> bool:
+    """Tests and CI only: a crash, a conflict, or an unknown report section raises."""
+    return a.strict or os.environ.get("DOTKIT_MIGRATE_STRICT") == "1"
+
+
+class Problems:
+    """The failures on stderr: the short line, and with --debug the masked tracebacks, each once."""
+
+    def __init__(self, session: registry.Session, debug: bool):
+        self.session, self.debug = session, debug
+        self.shown: set = set()
+
+    def show(self, failures: list) -> None:
+        if not failures:
+            return
+        for line in report.problems_lines(failures):
+            info(line)
+        for f in failures:
+            self.trace(f)
+
+    def trace(self, f) -> None:
+        key = (f.migrator, f.phase)
+        text = self.session.trace(f)
+        if self.debug and text and key not in self.shown:
+            self.shown.add(key)
+            info(f"{f.migrator} ({f.phase}):\n{text}")
+
+
+def secret_stop(cmd: str, e: Exception, a: argparse.Namespace, home: str) -> int:
+    info(f"dotkit {cmd}: {e}. Nothing was written.")
+    if debug_on(a):
+        info(registry.trace_text(e, home))
+    return 2
+
+
 def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
     b = base_mod.Base(Path(a.base)) if a.base else base_mod.Base()
     # One home for the repository path and the scan.
@@ -53,9 +92,11 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
             info(f"dotkit setup: {error}")
             return 2
     info("Scanning this Mac. This reads files and runs brew and mas; it changes nothing.")
-    session = registry.Session(ctx, check_syntax=check_syntax)
+    session = registry.Session(ctx, strict=strict_on(a), check_syntax=check_syntax)
+    problems = Problems(session, debug_on(a))
     session.scan()
     c = session.defaults(repo)
+    problems.show(session.failures)
     blockers = session.build(c).blockers
     if blockers and not a.dry_run:
         info("dotkit setup: " + "\n".join(blockers))
@@ -67,6 +108,7 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
             info("Stopped. Nothing changed.")
             return 1
     result = session.build(c)
+    problems.show(result.failures)
     if result.blockers and not a.dry_run:
         info("dotkit setup: " + "\n".join(result.blockers))
         return 2
@@ -80,8 +122,7 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
     try:
         writer.write_new(result, b.template)
     except writer.SecretInRepository as e:
-        info(f"dotkit setup: {e}. Nothing was written.")
-        return 2
+        return secret_stop("setup", e, a, home)
     if a.result:
         Path(a.result).write_text(f"{result.repo}\n", encoding="utf-8")
     info(f"Created {context.tilde(result.repo, home)}. MIGRATION.md there lists what needs your attention.")
@@ -94,7 +135,12 @@ def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
     repo = Path(a.repo)
     declared = json.loads(a.declared) if a.declared else {}
     info("Scanning this Mac. It changes nothing.")
-    facts = registry.Session(ctx).scan()
+    session = registry.Session(ctx, strict=strict_on(a))
+    facts = session.scan()
+    problems = Problems(session, debug_on(a))
+    for f in session.failures:
+        info(f"Could not check: {f.migrator} ({f.error}); nothing of it was added.")
+        problems.trace(f)
     m = adopt_mod.missing(facts, repo, b, declared, a.all)
     if m.empty:
         print("The lists have everything that this Mac has.", flush=True)
@@ -118,8 +164,7 @@ def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
     try:
         adopt_mod.apply(m, repo)
     except writer.SecretInRepository as e:
-        info(f"dotkit migrate: {e}. Nothing was written.")
-        return 2
+        return secret_stop("migrate", e, a, str(ctx.home))
     info("Added. They are installed already; dotkit apply records them, and mise install gets the mise copies.")
     return 0
 
@@ -140,6 +185,9 @@ def main(argv: list[str] | None = None, make_context: MakeContext | None = None)
     s.add_argument("-n", "--dry-run", action="store_true", help="print the plan and the report, write nothing")
     s.add_argument("--plain", action="store_true", help="plain prompts instead of the full-screen wizard")
     s.add_argument("--result", help="write the path of the new repository to this file")
+    s.add_argument("--debug", action="store_true",
+                   help="print the traceback of each part that failed (also DOTKIT_MIGRATE_DEBUG=1)")
+    s.add_argument("--strict", action="store_true", help=argparse.SUPPRESS)
     s.add_argument("--base", help=argparse.SUPPRESS)
     s.set_defaults(func=cmd_setup)
     d = sub.add_parser("adopt", help="add what was installed by hand to the lists of a repository")
@@ -148,6 +196,9 @@ def main(argv: list[str] | None = None, make_context: MakeContext | None = None)
     d.add_argument("-n", "--dry-run", action="store_true")
     d.add_argument("--declared", help="JSON with the taps and masApps of the configuration")
     d.add_argument("--all", action="store_true", help="also cargo and Go tools, which mise builds from source")
+    d.add_argument("--debug", action="store_true",
+                   help="print the traceback of each part that failed (also DOTKIT_MIGRATE_DEBUG=1)")
+    d.add_argument("--strict", action="store_true", help=argparse.SUPPRESS)
     d.add_argument("--base", help=argparse.SUPPRESS)
     d.set_defaults(func=cmd_adopt)
     a = ap.parse_args(argv)

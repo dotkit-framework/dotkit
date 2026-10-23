@@ -54,6 +54,8 @@ class Plain(screens_mod.Frontend):
 
     def show(self, screen: Screen, step: int, total: int) -> int:
         del step, total
+        if screen.warning:
+            print(screen.warning + "\n")
         try:
             {"text": self.text, "radio": self.radio, "checklist": self.checklist, "choices": self.choices,
              "review": self.review}[screen.kind](screen)
@@ -121,7 +123,8 @@ class Plain(screens_mod.Frontend):
 
     def review(self, screen: Screen) -> None:
         print("\nThe plan:")
-        for line in screen.lines() if screen.lines else []:
+        lines = screen.lines() if screen.lines else []
+        for line in (screen.problems() if screen.problems else []) + lines:
             print("  " + line)
         print()
         if not _yes("Print the plan" if self.dry_run else "Create the repository", True):

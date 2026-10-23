@@ -94,6 +94,11 @@ class BuiltTools(Migrator):
     title = "cargo and Go tools"
     sections = ("Tools that moved to mise", "Tools that are not in mise", "mise", "Not carried, by your choice")
 
+    def manual_steps(self, ctx: Context) -> str:
+        return ("None of your cargo install and Go tools is in config/mise.toml. They stay where they are, and "
+                "mise does not install them. Add the ones you want with `mise use -g cargo:<crate>` or "
+                "`mise use -g go:<module>`; mise builds them from source.")
+
     def scan(self, ctx: Context) -> BuiltFacts:
         b = BuiltFacts()
         _cargo(ctx, b)
