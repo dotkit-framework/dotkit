@@ -84,7 +84,7 @@ def _node_module_roots(ctx: Context) -> List[Tuple[Path, str]]:
 class NodeTools(Migrator):
     key = "node_tools"
     title = "npm, pnpm, and bun tools"
-    sections = ("Tools that moved to mise", "Tools that are not in mise", "Not carried, by your choice")
+    sections = ("Tools that moved to mise", "Tools that are not in mise", "mise", "Not carried, by your choice")
 
     def scan(self, ctx: Context) -> NodeFacts:
         found: Dict[str, Package] = {}

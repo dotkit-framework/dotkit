@@ -107,8 +107,12 @@ def _others(link: Path, rel: str, targets: list[str]) -> list[str]:
     return sorted(out)
 
 
-def summary(plan: Plan, report: ReportDoc, git_name: str = "", git_email: str = "") -> list[str]:
-    """What the review screen, --dry-run, and the plain prompts show. writer.mask_lines masks it."""
+def summary(plan: Plan, report: ReportDoc, git_name: str = "", git_email: str = "",
+            mise_dest: str = "config/mise.toml") -> list[str]:
+    """What the review screen, --dry-run, and the plain prompts show. writer.mask_lines masks it.
+
+    mise_dest is the mise config that mise reads (config_files.mise_dest).
+    """
     p = plan
     repo_rel = tilde(p.repo, p.home)
     out = []
@@ -129,8 +133,12 @@ def summary(plan: Plan, report: ReportDoc, git_name: str = "", git_email: str = 
                    ", ".join(f"~/{t}" for t in p.move_links))
     out += ["", f"MIGRATION.md: {report.count} items to check by hand.", "",
             "Nothing is installed or uninstalled now: Homebrew packages stay as they are.",
-            "Setup then builds and applies the configuration. Files in the way of a dotkit",
-            "link are renamed to <name>.before-dotkit. mise installs the tools of config/mise.toml."]
+            "Setup then builds and applies the configuration. Files in the way of a dotkit"]
+    if mise_dest == "config/mise.toml":
+        out.append("link are renamed to <name>.before-dotkit. mise installs the tools of config/mise.toml.")
+    else:
+        out += [f"link are renamed to <name>.before-dotkit. mise reads your {mise_dest},",
+                "which stays in place; config/mise.toml of this repository is not read."]
     if git_name or git_email:
         out.append(f"Git identity: {git_name} <{git_email}>, in ~/.gitconfig.user.")
     return out

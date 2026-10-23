@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from .. import catalog
 from ..context import Context, shell_path
@@ -51,26 +51,43 @@ def page(key: str, title: str, intro: str, pkgs: List[Package]) -> Page:
 
 def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs: Optional[List[Package]],
                comment: str, remove: str) -> List[Package]:
-    """The selected tools of one package manager to config/mise.toml, and the report. Returns the carried ones.
+    """The selected tools of one package manager to config/mise.toml, and the report.
+
+    Returns the selected tools that go to mise: carried, or a to-do when your
+    mise config is kept in place.
 
     A tool that your mise config has, when it is carried as "layer", is not
     added again: config_files sets that file as the base of config/mise.toml.
+    When your mise config is kept in place, mise does not read
+    config/mise.toml: nothing is added, and each selected tool that your
+    config does not have is a to-do of the "mise" section.
     """
     r = txn.report
     mise = txn.mise()
     user = config_files.layered_mise(f, c)
-    carried, manual, old, left = [], [], [], []
+    kept = config_files.mise_target(f, c) == "kept"
+    yours = config_files.user_mise_tools(f) if kept else {}
+    dest = config_files.mise_dest(f, c)
+    carried, manual, old, left, todo, to_mise = [], [], [], [], [], []
+    seen: Set[str] = set()
     for p in pkgs or []:
         if key == "npm" and p.name in catalog.NPM_NOT_IN_MISE:
             manual.append(f"`{p.name}` ({p.where}): {catalog.NPM_NOT_IN_MISE[p.name]}")
             continue
         if not p.ok:
-            manual.append(f"`{p.name}` ({p.where}): {p.note}. Add it to config/mise.toml by hand.")
+            manual.append(f"`{p.name}` ({p.where}): {p.note}. Add it to {dest} by hand.")
             continue
         spec = f"{key}:{p.name}"
         if c.selected(key, f"{key}:{p.name}"):
-            if not (user is not None and spec in user.tools) and mise.add_tool(spec, "latest", comment):
+            if kept:
+                # One item per spec: two Go binaries can have one module.
+                if spec not in yours and spec not in seen:
+                    seen.add(spec)
+                    todo.append(f"`{p.name}` ({p.where}): `mise use -g {spec}`")
+                    to_mise.append(p)
+            elif not (user is not None and spec in user.tools) and mise.add_tool(spec, "latest", comment):
                 carried.append(p)
+                to_mise.append(p)
                 rm = remove.format(name=p.name, path=shell_path(p.where),
                                    remove=("pipx uninstall " if p.where == "pipx" else "uv tool uninstall ")
                                    + p.name)
@@ -80,6 +97,8 @@ def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs
             left.append(f"`{p.name}` ({p.where}): `mise use -g {spec}`")
         else:
             manual.append(f"`{p.name}` ({p.where}): `mise use -g {spec}`")
+    if todo:
+        r.todo("mise", config_files.KEPT_INTRO, todo)
     if left:
         r.todo("Not carried, by your choice", NOT_CARRIED, left)
     if carried:
@@ -93,5 +112,5 @@ def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs
         if key in catalog.BUILT_FROM_SOURCE:
             why = f"mise builds {catalog.BUILT_FROM_SOURCE[key]} tools from source, so they are off by default."
         r.todo("Tools that are not in mise", (why + " " if why else "") +
-               "They stay where they are. To add one to config/mise.toml:", manual)
-    return carried
+               f"They stay where they are. To add one to {dest}:", manual)
+    return to_mise

@@ -1,10 +1,12 @@
 """The config_files migrator: your files where dotkit links its own, ~/.gitconfig, and your mise config."""
 
+import os
 import unittest
 
 from dotkit_migrate import registry
 from dotkit_migrate._compat import tomllib
 from dotkit_migrate.migrators import config_files
+from dotkit_migrate.model import Facts
 from tests import fake
 from tests.test_session import used_mac
 
@@ -83,21 +85,66 @@ class ConfigFilesTests(unittest.TestCase):
         self.assertEqual(config_files.merged_sources(p.scan(), c), {})
 
     def test_a_mise_config_that_is_not_carried_does_not_hide_tools(self):
-        """A mise config with a secret stays in place, also when the choice says layer, so its tools are added."""
+        """A mise config with a secret stays in place, also when the choice says layer.
+
+        mise then does not read config/mise.toml, so it stays the template, and
+        the selected tools are to-dos; the token is nowhere in the plan.
+        """
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        h.write(".config/mise/config.toml",
-                fake.fill('[tools]\n"npm:typescript" = "latest"\n\n[env]\nGITHUB_TOKEN = "@GH@"\n'))
+        h.write(".config/mise/config.toml", fake.fill('[tools]\njq = "latest"\n\n[env]\nGITHUB_TOKEN = "@GH@"\n'))
         h.json(".nvm/versions/node/v20.11.0/lib/node_modules/typescript/package.json",
                {"name": "typescript", "version": "5.4.0", "bin": {"tsc": "bin/tsc"}})
         p = fake.session(h, fake.brew_runner())
         c = p.defaults(str(h.home / ".dotfiles"))
         self.assertEqual(c.option("file:.config/mise/config.toml"), "keep")
         c.options["file:.config/mise/config.toml"] = "layer"
+        self.assertEqual(config_files.mise_target(p.scan(), c), "kept")
         result = p.build(c)
-        self.assertEqual(tomllib.loads(result.files["config/mise.toml"])["tools"], {"npm:typescript": "latest"})
+        self.assertNotIn("config/mise.toml", result.files, "the template's file, unchanged")
         self.assertIsNone(result.links[".config/mise/config.toml"])
-        self.assertNotIn(fake.TOKENS["@GH@"], result.files["config/mise.toml"])
+        self.assertIn(config_files.KEPT_INTRO + "\n\n- `typescript` (nvm v20.11.0): `mise use -g npm:typescript`\n",
+                      result.report)
+        token = fake.TOKENS["@GH@"]
+        for text in [result.report, *result.summary, *result.files.values(), *result.local.values()]:
+            self.assertNotIn(token, text)
+
+    def test_an_unreadable_mise_config(self):
+        """A mise config that cannot be read counts as one with a secret: kept, and the plan has no tools of it."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        p = h.write(".config/mise/config.toml", '[tools]\njq = "latest"\n\n[settings]\n'
+                    'idiomatic_version_file_enable_tools = ["rust"]\n')
+        os.chmod(p, 0)
+        self.addCleanup(os.chmod, p, 0o644)
+        s = fake.session(h, fake.brew_runner())
+        c = s.defaults(str(h.home / ".dotfiles"))
+        c.options["file:.config/mise/config.toml"] = "keep"
+        facts = s.scan()
+        self.assertEqual(config_files.mise_target(facts, c), "kept")
+        self.assertEqual(config_files.user_mise_tools(facts), {})
+        result = s.build(c)
+        self.assertIsNone(result.links[".config/mise/config.toml"])
+        self.assertNotIn("config/mise.toml", result.files)
+
+    def test_mise_target(self):
+        """Layered is "repository", kept is "kept", and without a config of yours None."""
+        facts = self.p.scan()
+        c = self.p.defaults(self.repo)
+        self.assertEqual(config_files.mise_target(facts, c), "repository")
+        self.assertEqual(config_files.user_mise_tools(facts), {"jq": "latest"})
+        c.options["file:.config/mise/config.toml"] = "keep"
+        self.assertEqual(config_files.mise_target(facts, c), "kept")
+        self.assertEqual(config_files.user_mise_tools(facts), {"jq": "latest"})
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        empty = fake.session(h, fake.brew_runner()).scan()
+        self.assertIsNone(config_files.mise_target(empty, c))
+        self.assertEqual(config_files.user_mise_tools(empty), {})
+        # Without the facts of config_files (its scan failed), too.
+        none = Facts(facts.identity, facts.base)
+        self.assertIsNone(config_files.mise_target(none, c))
+        self.assertEqual(config_files.user_mise_tools(none), {})
 
     def test_file_choices(self):
         p = self.build(options={"file:.config/ghostty/config": "replace", "file:.config/starship.toml": "dotkit",

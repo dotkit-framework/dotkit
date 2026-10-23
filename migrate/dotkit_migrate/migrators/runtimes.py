@@ -148,16 +148,27 @@ class Runtimes(Migrator):
             return
         # Your mise config, carried as "layer", has its own versions: they stay.
         user = config_files.layered_mise(f, c)
+        # Kept in place, mise does not read config/mise.toml: the selected tools are to-dos.
+        kept = config_files.mise_target(f, c) == "kept"
         lines = runtime_lines(rt)
         picked = {t for t in lines if c.selected("runtimes", f"runtime:{t}")}
         added, yours = set(), set()
+        todo = []
         for tool, versions in lines.items():
             if tool not in picked:
                 continue
-            if user is not None and tool in user.tools:
+            if kept:
+                if tool not in config_files.user_mise_tools(f):
+                    where = ", ".join(vm.name for vm in rt.managers if tool in vm.versions and
+                                      catalog.version_manager(vm.name).mise_replaces)
+                    also = f" (also installed: {', '.join(versions[1:])})" if len(versions) > 1 else ""
+                    todo.append(f"`{tool}` ({where}): `mise use -g {tool}@{versions[0]}`{also}")
+            elif user is not None and tool in user.tools:
                 yours.add(tool)
             elif txn.mise().add_tool(tool, versions[0] if len(versions) == 1 else versions):
                 added.add(tool)
+        if todo:
+            r.todo("mise", config_files.KEPT_INTRO, todo)
         if added:
             r.carried("runtime versions of " + ", ".join(
                 vm.name for vm in rt.managers
@@ -177,7 +188,8 @@ class Runtimes(Migrator):
             else:
                 tools = [t for t in vm.versions if t]
                 done = [t for t in tools if t in added]
-                rest = [t for t in tools if t not in added and t not in yours]
+                # Kept in place, a selected tool is in the "mise" to-do (or in your config) instead.
+                rest = [t for t in tools if t not in added and t not in yours and not (kept and t in picked)]
                 if done and len(done) == len(tools):
                     steps.append("config/mise.toml has these versions now")
                 elif done:
@@ -197,5 +209,5 @@ class Runtimes(Migrator):
                    "A project pins its own versions with `mise use` or a .nvmrc, .python-version, .ruby-version, "
                    "or .tool-versions file.", items)
         for extra in rt.mise_extra:
-            r.todo("mise", "mise still reads these files. Move their tools to config/mise.toml.",
+            r.todo("mise", f"mise still reads these files. Move their tools to {config_files.mise_dest(f, c)}.",
                    [f"~/{extra}"])

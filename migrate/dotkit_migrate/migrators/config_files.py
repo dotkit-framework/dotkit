@@ -46,6 +46,7 @@ class ConfigFacts:
     files: List[ConfigFile] = field(default_factory=list)  # at the targets of base.LINKS
     gitconfig: Optional[ConfigFile] = None
     mise_config: Optional[ConfigFile] = None  # ~/.config/mise/config.toml
+    mise_tools: Dict[str, object] = field(default_factory=dict)  # its [tools], parsed
     ghostty_app_support: bool = False
 
 
@@ -74,6 +75,37 @@ def _mise_layered(cf: Optional[ConfigFacts], c: Choices) -> bool:
     return bool(cf and cf.mise_config and c.option(f"file:{MISE_CONFIG}") == "layer" and not cf.mise_config.secrets)
 
 
+# The intro of the "mise" block that lists the selected tools when your mise config is kept in place.
+KEPT_INTRO = ("Your ~/.config/mise/config.toml stays in place, so mise does not read config/mise.toml of this "
+              "repository. To get these tools from mise, add them to your config:")
+
+
+def mise_target(f: Facts, c: Choices) -> Optional[str]:
+    """Where the tools of the tool migrators go, or None without a mise config of yours.
+
+    "repository": yours is carried as "layer", so it is config/mise.toml,
+    which mise reads. "kept": your ~/.config/mise/config.toml stays
+    in place, config/mise.toml is not linked, and mise never reads it, so the
+    tools are to-dos. None: you have no mise config; the tools go to
+    config/mise.toml.
+    """
+    cf = facts_of(f)
+    if cf is None or cf.mise_config is None:
+        return None
+    return "repository" if _mise_layered(cf, c) else "kept"
+
+
+def mise_dest(f: Facts, c: Choices) -> str:
+    """The mise config that mise reads, for report text: yours when it is kept in place."""
+    return "~/.config/mise/config.toml" if mise_target(f, c) == "kept" else "config/mise.toml"
+
+
+def user_mise_tools(f: Facts) -> Dict[str, object]:
+    """The [tools] of your mise config, carried or kept; empty without one."""
+    cf = facts_of(f)
+    return dict(cf.mise_tools) if cf is not None and cf.mise_config is not None else {}
+
+
 def layered_mise(f: Facts, c: Choices) -> Optional[LayeredMise]:
     """Your mise config, if it is carried as "layer", or None.
 
@@ -88,9 +120,10 @@ def layered_mise(f: Facts, c: Choices) -> Optional[LayeredMise]:
 
 
 def _read_mise(path: Path) -> LayeredMise:
+    """Your mise config, parsed; empty when it cannot be read or parsed."""
     try:
         data = tomllib.loads(_text(path))
-    except tomllib.TOMLDecodeError:
+    except (OSError, tomllib.TOMLDecodeError):
         data = {}
     tools, settings = data.get("tools"), data.get("settings")
     return LayeredMise(tools if isinstance(tools, dict) else {}, settings if isinstance(settings, dict) else {})
@@ -218,6 +251,7 @@ class ConfigFiles(Migrator):
         p = ctx.home / MISE_CONFIG
         if p.is_file() and not is_managed(p):
             cf.mise_config = ConfigFile(MISE_CONFIG, p, _secrets_of(p))
+            cf.mise_tools = _read_mise(p).tools
         cf.ghostty_app_support = (ctx.home / "Library/Application Support/com.mitchellh.ghostty/config").is_file()
         return cf
 

@@ -16,7 +16,7 @@ from .._compat import tomllib
 from ..context import Context, read_json
 from ..docs import Txn
 from ..model import Choices, Facts, Page
-from . import Migrator
+from . import Migrator, config_files
 from .tools import Package, env_path, page, plan_tools, tilde_path
 
 
@@ -92,7 +92,7 @@ def _go_module(ctx: Context, p: Path, go: Optional[str]) -> Tuple[str, str]:
 class BuiltTools(Migrator):
     key = "built_tools"
     title = "cargo and Go tools"
-    sections = ("Tools that moved to mise", "Tools that are not in mise", "Not carried, by your choice")
+    sections = ("Tools that moved to mise", "Tools that are not in mise", "mise", "Not carried, by your choice")
 
     def scan(self, ctx: Context) -> BuiltFacts:
         b = BuiltFacts()
@@ -118,9 +118,12 @@ class BuiltTools(Migrator):
         if b is None:
             return
         pages = self.pages(f)
+        # Next to the tools: in the "mise" block when your mise config is kept in place.
+        where = ("mise", config_files.KEPT_INTRO) if config_files.mise_target(f, c) == "kept" else \
+            ("Tools that moved to mise", "")
         if plan_tools(f, c, txn, pages, "cargo", b.cargo, "# From cargo install, see MIGRATION.md.",
                       "cargo uninstall {name}") and not b.has_cargo:
-            txn.report.todo("Tools that moved to mise", "", ["mise needs cargo for these: `mise use -g rust`."])
+            txn.report.todo(*where, ["mise needs cargo for these: `mise use -g rust`."])
         if plan_tools(f, c, txn, pages, "go", b.go, "# From ~/go/bin, see MIGRATION.md.",
                       "rm {path}") and not b.has_go:
-            txn.report.todo("Tools that moved to mise", "", ["mise needs go for these: `mise use -g go`."])
+            txn.report.todo(*where, ["mise needs go for these: `mise use -g go`."])

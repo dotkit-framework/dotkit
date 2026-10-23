@@ -141,6 +141,7 @@ class Session:
         report = report_mod.render(docs.report, ident.hostname, repo_rel)
         plan.report = "".join(writer.mask_lines(report.splitlines(keepends=True)))
         plan.files["MIGRATION.md"] = plan.report
-        plan.summary = writer.mask_lines(checks.summary(plan, docs.report, ident.git_name, ident.git_email))
+        plan.summary = writer.mask_lines(checks.summary(plan, docs.report, ident.git_name, ident.git_email,
+                                                           config_files.mise_dest(facts, choices)))
         return plan
 

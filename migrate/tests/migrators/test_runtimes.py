@@ -244,6 +244,25 @@ class RuntimesTests(unittest.TestCase):
                       "`mise use -g ruby@<version>` for one you need. Then remove", result.report)
         self.assertIn("runtime versions of asdf -> config/mise.toml", result.summary)
 
+    def test_a_runtime_that_your_kept_mise_config_has(self):
+        """Kept in place with node in it: runtime:node gets nothing; ruby, not selected, keeps "With mise"."""
+        self.h.mkdir(".asdf/installs/nodejs/20.11.0")
+        self.h.mkdir(".asdf/installs/ruby/3.3.0")
+        self.h.write(".config/mise/config.toml", '[tools]\nnode = "20"\n')
+        p = fake.session(self.h, fake.brew_runner())
+        c = p.defaults(self.repo)
+        c.options["file:.config/mise/config.toml"] = "keep"
+        c.picked["runtimes"] = {"runtime:node"}
+        result = p.build(c)
+        self.assertNotIn("config/mise.toml", result.files, "the template's file, unchanged")
+        self.assertNotIn("`node` (", result.report)
+        self.assertNotIn("Your ~/.config/mise/config.toml stays in place", result.report)
+        self.assertNotIn("versions now", result.report)
+        self.assertNotIn("mise use -g node@", result.report)
+        self.assertFalse(any(line.startswith("runtime versions") for line in result.summary))
+        self.assertIn("asdf (~/.asdf): node 20.11.0; ruby 3.3.0. With mise: `mise use -g ruby@3.3.0`. Then remove",
+                      result.report)
+
 
 if __name__ == "__main__":
     unittest.main()

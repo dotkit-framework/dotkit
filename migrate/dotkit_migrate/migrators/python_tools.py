@@ -26,7 +26,7 @@ def facts_of(f: Facts) -> Optional[PythonFacts]:
 class PythonTools(Migrator):
     key = "python_tools"
     title = "pipx and uv tools"
-    sections = ("Tools that moved to mise", "Tools that are not in mise", "Not carried, by your choice")
+    sections = ("Tools that moved to mise", "Tools that are not in mise", "mise", "Not carried, by your choice")
 
     def scan(self, ctx: Context) -> PythonFacts:
         found: Dict[str, Package] = {}
