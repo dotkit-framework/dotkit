@@ -36,6 +36,11 @@ Hard constraints:
 - **Dry run:** `--dry-run` shows exactly the plan that a real run would write.
 - **Partial failure:** a bug in one migrator does not stop the migration
   (section 7).
+- **No compatibility with earlier dotkit versions:** the new wizard,
+  `dotkit migrate`, the template, and the nix modules work only with
+  repositories in the layout described here. Nothing reads or converts older
+  formats, for example `homebrew.taps` and `homebrew.masApps` entries that an
+  earlier wizard wrote into `nix/darwin.nix`.
 
 ## 2. Current state, and what moves where
 
@@ -59,6 +64,7 @@ choices.
 | `Group`, `FileItem`, `Choices` (`plan.py:28-66`) | `Page`, `Item`, `Choices` (`model.py`) |
 | `_Build.homebrew/app_store/tools/version_managers/shell/config_files/other_config/secret_files/misc` (`plan.py:339-764`) | `plan()` of `homebrew`, `appstore`, `node_tools`, `python_tools`, `built_tools`, `runtimes`, `shell`, `frameworks`, `config_files`, `other_config`, `logins` |
 | shared state `self.brews`, `self.casks`, `self.mise_lines`, `self.mise_text` (`plan.py:314-316`, `717`) and `render()` (`plan.py:768-848`); `insert_tools`, `nix_string`, `nix_name`, `toml_key`, `_merge_mise` (`plan.py:274-299`, `1014-1017`) | typed documents (`docs.py`) |
+| the `homebrew.taps` and `homebrew.masApps` anchors that `render()` fills in `nix/darwin.nix` (`plan.py:792-809`), and adopt's "add them by hand" lines (`adopt.py:88-93`) | `nix/taps.txt` and `nix/mas.txt`, read by the nix module, written through `ListDoc` |
 | `guard_copies`, `guard_files`, report masking (`plan.py:844-898`) | `writer.py` |
 | `link_targets`, `moved_aside`, `links_in_the_way`, `summary` (`plan.py:900-1002`) | `checks.py` |
 | `write.write` (`write.py:25-65`) | `writer.write_new` |
@@ -121,6 +127,11 @@ MIGRATORS = (
 Core, not migrators: the repository path, the zsh keymap (written by the
 Session to `ShellNixDoc`), `nix/user.nix`, the identity scan (section 4.2),
 `checks.py`, and the writer.
+
+These modules of today do not exist in the target, and nothing keeps their
+names alive: `plan.py`, `scan.py`, `adopt.py`, `write.py`, `wizard.py`,
+`prompts.py`. Their code moves to the modules above, and their tests move
+with it (section 13).
 
 ## 4. Contracts
 
@@ -367,7 +378,9 @@ class Declared:
 - **`for_repo` only:** the repository's `nix/packages.txt`, `nix/brews.txt`,
   `nix/casks.txt`, `nix/taps.txt`, `nix/mas.txt` and `config/mise.toml`, plus
   the `taps` and `masApps` that `dotkit` evaluates from the configuration
-  (`dotkit:308-310`).
+  (`dotkit:308-310`). The evaluated values already include `nix/taps.txt`
+  and `nix/mas.txt`, and any entries that someone wrote into `homebrew.*` by
+  hand. Adopt only ever writes to the two list files.
 
 A Homebrew formula is skipped when `brew()` returns something. The report
 says what provides it and how to remove the Homebrew copy. This replaces
@@ -974,40 +987,64 @@ class AppStore(Migrator):
 `nix/mas.txt` format: one app per line, `<id> <name>`, where the name is the
 rest of the line, trimmed (it can contain spaces, `#`, and Unicode). A line
 whose first non-blank character is `#` is a comment, and blank lines are
-ignored. `nix/taps.txt` format: `<owner/repo>` or `<owner/repo> <clone URL>`,
-with the comments of `nix/read-list.nix`.
+ignored. If two lines have the same name, the first one wins (as
+`plan.py:803-805` does today). `nix/taps.txt` format: `<owner/repo>` or
+`<owner/repo> <clone URL>`, with the comments of `nix/read-list.nix`; a line
+with a URL becomes `{ name; clone_target; }`.
+
+The nix module reads both files through two options, `dotkit.lists.taps` and
+`dotkit.lists.masApps` (lists of files, default `[ ]`), and sets
+`homebrew.taps` and `homebrew.masApps` from them. The template has the two
+files and lists them in its `nix/darwin.nix`, which no longer has the
+`homebrew.taps = [ ];` and `homebrew.masApps = { };` lines.
+`dotkit add mas:ID` and `dotkit remove mas:ID` (`scripts/dotkit-pkg`) edit
+`nix/mas.txt`. The name comes from `mas`; without `mas`, the command says to
+run `dotkit add brew:mas` first.
 
 ## 13. Refactor steps
 
 The base fix for mise's idiomatic version files is already done
-(`config/mise.toml`), and the existing project-file hints are correct.
+(`config/mise.toml`), and the existing project-file hints are correct. The
+code in `migrate/` is unchanged since `d91296a`, so the line references hold.
 
-Each step is one commit, or a short series of commits, and must pass STD.
-"No behavior change" means the goldens from step 1 stay byte-identical and
-the PTY key sequences stay unchanged. A step that changes behavior updates
-the goldens on purpose, and the diff is reviewed.
+Rules for every step:
+
+- **No compatibility code.** When code moves, every caller and every test
+  moves with it in the same commit. No re-exported old names, no
+  compatibility properties, no wrappers that keep an old module or function
+  alive, no transitional document types.
+- **Scaffolding never outlives its step.** A step that spans several commits
+  (step 8) may have code in its old and its new place between commits. At
+  the end of the step, the old place is gone.
+- **No compatibility with repositories from earlier dotkit versions**
+  (section 1). No step converts old formats.
+- **Goldens.** Each step is one commit, or a short series of commits, and
+  must pass STD. "No behavior change" means the goldens from step 1 stay
+  byte-identical and the PTY key sequences stay unchanged. A step that
+  changes behavior updates the goldens on purpose, in its own commit, and
+  the reviewer checks that diff.
 
 | # | Step | Behavior | Needs | Done when |
 |---|---|---|---|---|
-| 1 | **Golden plans.** `tests/test_golden.py` and `tests/golden/`: the empty Mac, `used_mac`, and a kitchen-sink Mac (nvm, pyenv, asdf, sdkman; Oh My Zsh; cargo, go, uv tools; a Stow-linked `~/.config/ghostty`; a secret in a function; vi keymap; every group on). Serialize the whole `Plan`, normalized. Also goldens for the adopt output and the files it edits | no change | — | STD; changing one report string in `plan.py` fails a golden (check once by hand); `/tmp/dk-before.txt` taken |
-| 2 | **Context and the CLI seam.** `context.py` with the file and path helpers (re-exported from the old names); `main(argv, make_context=None)`; `tests/main_child.py` uses the seam instead of patching `cli.scan.Scanner` | no change | 1 | STD; no test patches `scan.Scanner` |
-| 3 | **Catalog.** `catalog.py` with `VersionManagerSpec` (incl. line-only specs and `default` readers replacing `scan.py:493-506`; `mise_replaces` replacing `plan.py:127`, `476`), `FrameworkSpec`, the pnpm and built-from-source rules; rcparse builds `_RULES` FRAMEWORK/VERSION_MANAGER, the `SKIP_VARS` entries, and `_PATH_VERSION_MANAGERS` from it; `Finding.source` | no change | 1 | STD; a corpus test checks that the generated regexes match the words and variables of the old literals (kept in the test), and nothing else |
-| 4 | **Documents and transactions.** `docs.py` with every type of section 4.4 (and a transitional `DarwinDoc` for the `homebrew.taps`/`homebrew.masApps` anchors, `plan.py:792-809`, removed in step 12); `MiseDoc` settings API; `Base.mise_settings`; `_Build` writes through one `Txn` instead of `self.brews`, `self.mise_lines`, `self.plan`; `render()` becomes document renders | no change | 3 | STD; `tests/test_docs.py` (load/add/render, conflicts, add-time checks, `replace_setting` refusals and undo, commit/rollback) |
-| 5 | **Writer and checks.** `writer.py` (render, plan-time guard, `write_new` with write-time verification); `checks.py` (links, moved aside, blockers, summary) | no change (the verification never fires on the goldens) | 4 | STD; a test that stages a secret past the guard aborts with no directory left |
-| 6 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session` (replaces `Planner`; the wizard, prompts, and `__main__` use it). Move one migrator per commit, in `MIGRATORS` order: its scan step, its `_Build` part, its pages, its tests (into `tests/migrators/`). rcparse parsing moves into the `shell` scan. `Facts.get`, `needs`. `Scan` keeps compatibility properties until `test_scan.py` is ported, then they go | no change (scan warnings now come in `MIGRATORS` order; only visible when several steps fail) | 5 | STD per commit; at the end `plan.py`, `scan.Scanner`, and `_Build` are gone |
-| 7 | **Runtimes rules.** The union rule for both idiomatic settings (section 12.1); runtime versions in report text and page note from `Base.mise` (replaces `plan.py:181`, `490-493`); `.tool-versions` in the hint | changes report text and possibly `config/mise.toml` | 6 | goldens updated and reviewed; tests: your config without the keys writes nothing; a single-line key gets the union and parses; a multi-line or dotted key gives the to-do; base values come from the base file |
-| 8 | **Registry invariants.** Unique page keys and item-id prefixes; `sections` ⊆ `SECTIONS` (turn `ORDER` into `SECTIONS`); the empty home; the AST no-write test; the secret property test | no change | 6 | the tests pass; a migrator that writes a file, or copies a token file, fails them |
-| 9 | **Crash isolation.** One transaction per migrator; isolated `scan` and `pages`; `Failure`; the identity pseudo-migrator; `manual_steps` for every migrator (section 7.5 texts for `shell` and `config_files`); "Problems during the migration"; summary and stderr lines; `--debug`; masking; strict mode (`fake.session` default, `DOTKIT_MIGRATE_STRICT=1` in the e2e job, hidden `--strict`); exit code 0 with failures | the scan catch-all (`scan.py:648-651`) becomes isolation; plan crashes are newly isolated | 6, 8 | `tests/test_isolation.py`; goldens unchanged (no faults in the fixtures) |
-| 10 | **Adopt unification.** `Declared` (section 4.5); `adopt()` for homebrew, node_tools, python_tools, built_tools; `Session.adopt`; `writer.apply_edits`; adopt output from the documents' `added()` and the report. Setup now also skips a formula that your mise config provides | de-duplication change | 9 | goldens updated and reviewed; tests: your mise config has `jq` and brew has `jq` → skipped in setup and adopt; apply twice → the second run adds nothing; a fault in the second replace restores the first file |
-| 11 | **Pages and per-item choices.** `Page`/`Item`/`Choices` of section 4.3 (Homebrew as three pages; one shell item per file); `ui/screens.py`, `ui/curses_ui.py`, `ui/plain.py`; `ScriptedFrontend`; the warning line and the review Problems block; "Not carried, by your choice"; `wizard_child.py` writes the new `Choices` JSON; PTY tests updated once, plain-prompt counts taken from the Session; `wizard.py`/`prompts.py` removed | UI and Choices change; default-choice goldens unchanged | 9 | STD; new goldens with deselected items; UI flow tests |
-| 12 | **mas and taps as data files.** A nix reader for `nix/mas.txt` (`id name`, section 12.3) and `nix/taps.txt`; `dotkit.lists.masApps` and `dotkit.lists.taps` options (default `[ ]`) merged into `homebrew.masApps` and `homebrew.taps`; the template gets empty `nix/mas.txt` and `nix/taps.txt` and the list entries in `nix/darwin.nix` (keep its `homebrew.taps = [ ];` and `homebrew.masApps = { };` for hand entries); `appstore` and `homebrew` write `ListDoc`s; `DarwinDoc` removed; adopt applies apps and taps; `dotkit add mas:ID` in `scripts/dotkit-pkg` (and its help text, `dotkit-pkg:67`); README | new files; `dotkit migrate` now applies apps and taps | 10 | `nix flake check`; `nix build .#checks.aarch64-darwin.example`; a fixture with a custom tap and an app name with spaces, `#`, and Unicode evaluates to the same `homebrew.masApps`/`taps` as today's anchors; `migrated.sh` checks `nix/mas.txt` when the runner has apps |
-| 13 | **Leftovers report** (section 11). `Package.commands`; executable listings in the `shell` and `leftovers` scans; `base.TOOL_PATH` checked against `nix/home.nix`; report-only parsing of `~/.bashrc`, `~/.zlogin`, `~/.zlogout`, `~/.profile`; the shadowing warnings with their context and fixes; the Homebrew stale/cleanup warning; the reference check next to every removal | new report text | 6, 11 | goldens updated and reviewed; fixtures: `~/.npm-global/bin` with `tsc` carried from `~/.zshrc` while `npm:typescript` moves to mise → "interactive shells" warning with file and line; `~/.local/bin/ruff` while `pipx:ruff` moves → "GUI apps" warning; `source ~/.nvm/nvm.sh` in `~/.bashrc` → "still runs"; a carried line that re-adds `/opt/homebrew/bin` → no warning |
+| 1 | **Golden plans.** `tests/test_golden.py` and `tests/golden/`: the empty Mac, `used_mac`, and a kitchen-sink Mac (nvm, pyenv, asdf, sdkman; Oh My Zsh; cargo, go, uv tools; a Stow-linked `~/.config/ghostty`; a secret in a function; vi keymap; every group on; a custom tap; App Store apps with spaces, `#`, and Unicode in their names). Serialize the whole `Plan`, normalized (home as `~`, fixed date and hostname, `check_syntax` passed in). Also goldens for the adopt output and the files it edits | no change | — | STD; changing one report string in `plan.py` fails a golden (check once by hand); `/tmp/dk-before.txt` taken |
+| 2 | **Taps and App Store apps as data files.** The nix readers and the `dotkit.lists.taps` and `dotkit.lists.masApps` options (section 12.3) in `nix/`; the template gets `nix/taps.txt` and `nix/mas.txt` and lists them in its `nix/darwin.nix`, which drops the `homebrew.taps`/`homebrew.masApps` lines; today's planner writes the two files instead of filling the anchors (`plan.py:792-809`), with the report texts updated (`plan.py:361-386`); adopt appends to them instead of "add them by hand" (`adopt.py:88-93`, `97-110`); `dotkit add mas:ID` and `dotkit remove mas:ID` in `scripts/dotkit-pkg` (help text `dotkit-pkg:67`, completion `nix/completions/_dotkit`); README tables; `tests/e2e/migrated.sh`; `test_template_anchors` and `test_nix_files_parse` updated | changes the repository layout; `dotkit migrate` now adds apps and taps | 1 | goldens updated and reviewed; `nix flake check`; `nix build .#checks.aarch64-darwin.example`; a test evaluates the readers on fixture files (a custom tap with a URL; app names with spaces, `#`, and Unicode; a duplicate name) and gets the expected `homebrew.taps` and `homebrew.masApps` |
+| 3 | **Context and the CLI seam.** `context.py` with the file and path helpers of section 2; every caller and test imports them from there; `main(argv, make_context=None)`; `tests/main_child.py` uses the seam instead of patching `cli.scan.Scanner` | no change | 1 | STD; the old helper names no longer exist; no test patches `scan.Scanner` |
+| 4 | **Catalog.** `catalog.py` with `VersionManagerSpec` (incl. line-only specs and `default` readers replacing `scan.py:493-506`; `mise_replaces` replacing `plan.py:127`, `476`), `FrameworkSpec`, the pnpm and built-from-source rules; rcparse builds `_RULES` FRAMEWORK/VERSION_MANAGER, the `SKIP_VARS` entries, and `_PATH_VERSION_MANAGERS` from it; `Finding.source` | no change | 1 | STD; a corpus test checks that the generated regexes match the words and variables of the old literals (kept in the test), and nothing else |
+| 5 | **Documents and transactions.** `docs.py` with every type of section 4.4 (`ListDoc` covers brews, casks, taps, and mas); `MiseDoc` settings API; `Base.mise_settings`; `_Build` writes through one `Txn` instead of `self.brews`, `self.mise_lines`, `self.plan`; its `render()` becomes document renders | no change | 2, 4 | STD; `tests/test_docs.py` (load/add/render, conflicts, add-time checks, `replace_setting` refusals and undo, commit/rollback) |
+| 6 | **Writer and checks.** `writer.py` (render, plan-time guard, `write_new` with write-time verification) replaces `write.py`; `checks.py` (links, moved aside, blockers, summary) | no change (the verification never fires on the goldens) | 5 | STD; `write.py` is gone; a test that stages a secret past the guard aborts with no directory left |
+| 7 | **Pages, per-item choices, and the new UI.** `Page`/`Item`/`Choices` of section 4.3 (Homebrew as three pages; one shell item per file); the planner returns pages instead of `groups`/`file_items`/`adoptable`, and `_Build` reads `Choices.picked`/`options`; "Not carried, by your choice"; `ui/screens.py`, `ui/curses_ui.py`, `ui/plain.py` replace `wizard.py` and `prompts.py`; `ScriptedFrontend`; `wizard_child.py` writes the new `Choices` JSON; PTY tests rewritten for the new screens, plain-prompt counts taken from the planner | UI and Choices change; default-choice goldens unchanged | 6 | STD; `wizard.py` and `prompts.py` are gone; new goldens with deselected items; UI flow tests |
+| 8 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session`. The first commit replaces `Planner` with `Session` and switches `ui/`, `__main__`, and the tests to it; the code that is not yet split runs as a private last entry of the registry. Then one migrator per commit, in `MIGRATORS` order: its scan step and its `Scan` fields, its `_Build` part, its pages, and its tests (into `tests/migrators/`) move together. rcparse parsing moves into the `shell` scan. `Facts.get`, `needs` | no change (scan warnings now come in `MIGRATORS` order; only visible when several steps fail) | 7 | STD per commit; at the end `plan.py`, `scan.py`, the `Scan` dataclass, `_Build`, and the private registry entry are gone |
+| 9 | **Runtimes rules.** The union rule for both idiomatic settings (section 12.1); runtime versions in report text and page note from `Base.mise` (replaces `plan.py:181`, `490-493`); `.tool-versions` in the hint | changes report text and possibly `config/mise.toml` | 8 | goldens updated and reviewed; tests: your config without the keys writes nothing; a single-line key gets the union and parses; a multi-line or dotted key gives the to-do; base values come from the base file |
+| 10 | **Registry invariants.** Unique page keys and item-id prefixes; `sections` ⊆ `SECTIONS` (`ORDER` becomes `SECTIONS`); the empty home; the AST no-write test; the secret property test | no change | 8 | the tests pass; a migrator that writes a file, or copies a token file, fails them |
+| 11 | **Crash isolation.** One transaction per migrator; isolated `scan` and `pages`; `Failure`; the identity pseudo-migrator; `manual_steps` for every migrator (section 7.5 texts for `shell` and `config_files`); "Problems during the migration"; summary and stderr lines; `--debug`; masking; strict mode (`fake.session` default, `DOTKIT_MIGRATE_STRICT=1` in the e2e job, hidden `--strict`); exit code 0 with failures; in the UI, the warning line and the review Problems block (section 8) | the scan catch-all (`scan.py:648-651`, by then inside the migrators) becomes isolation; plan crashes are newly isolated | 10 | `tests/test_isolation.py`; UI flow tests for the warning line and the Problems block; goldens unchanged (no faults in the fixtures) |
+| 12 | **Adopt unification.** `Declared` (section 4.5); `adopt()` for homebrew, appstore, node_tools, python_tools, built_tools; `Session.adopt`; `writer.apply_edits`; adopt output from the documents' `added()` and the report; `adopt.py` removed. Setup now also skips a formula that your mise config provides | de-duplication change | 11 | goldens updated and reviewed; `adopt.py` is gone; tests: your mise config has `jq` and brew has `jq` → skipped in setup and adopt; apply twice → the second run adds nothing; a fault in the second replace restores the first file |
+| 13 | **Leftovers report** (section 11). `Package.commands`; executable listings in the `shell` and `leftovers` scans; `base.TOOL_PATH` checked against `nix/home.nix`; report-only parsing of `~/.bashrc`, `~/.zlogin`, `~/.zlogout`, `~/.profile`; the shadowing warnings with their context and fixes; the Homebrew stale/cleanup warning, including deselected items; the reference check next to every removal | new report text | 8 | goldens updated and reviewed; fixtures: `~/.npm-global/bin` with `tsc` carried from `~/.zshrc` while `npm:typescript` moves to mise → "interactive shells" warning with file and line; `~/.local/bin/ruff` while `pipx:ruff` moves → "GUI apps" warning; `source ~/.nvm/nvm.sh` in `~/.bashrc` → "still runs"; a carried line that re-adds `/opt/homebrew/bin` → no warning |
 | 14 | **Package docstring.** `dotkit_migrate/__init__.py` points to this file and keeps the Python 3.9 rules; README "Work on dotkit" mentions it | no change | all | review |
 
-Order: 1 → 2 and 3 (in either order) → 4 → 5 → 6. After 6: 7, 8, and 13
-(13 also needs 11); 9 needs 8; 10 needs 9; 11 needs 9; 12 needs 10. Land 7,
-9, 10, 11, 12, and 13 one at a time, so that each golden diff can be
-reviewed on its own.
+Order: 1 → 2 → 3 and 4 (in either order) → 5 → 6 → 7 → 8. After 8: 9, 10,
+and 13 in any order; 11 needs 10; 12 needs 11. Land each step that changes
+behavior (2, 7, 9, 11, 12, 13) on its own, so that each golden diff can be
+reviewed by itself.
 
 ## 14. Open items
 
