@@ -20,6 +20,7 @@ from ._compat import tomllib
 from . import rcparse, secrets
 from .report import Report, plural
 from . import scan as scan_mod
+from .context import expand, is_managed, tilde
 from .scan import Scan, ShellFile
 
 # --- The choices
@@ -64,36 +65,6 @@ class Choices:
     groups: dict[str, bool] = field(default_factory=dict)
     files: dict[str, str] = field(default_factory=dict)
     adopt: set[str] = field(default_factory=set)
-
-
-def tilde(path: str | Path, home: str) -> str:
-    p = str(path)
-    if p == home:
-        return "~"
-    return "~/" + p[len(home) + 1:] if p.startswith(home + "/") else p
-
-
-def expand(path: str, home: str) -> str:
-    """An absolute path, with ~ for the home directory of the scan."""
-    path = path.strip()
-    if path == "~" or path.startswith("~/"):
-        path = home + path[1:]
-    return os.path.abspath(path)
-
-
-def repo_error(repo: str, home: str) -> str | None:
-    """Why a path cannot be the new repository, or None."""
-    p = expand(repo, home)
-    if not p.startswith(home + "/"):
-        return f"Use a directory in {home}."
-    # The path goes into nix/user.nix and into zsh lines in double quotes.
-    if re.search(r'["$`\\\n]', p):
-        return "Use a path without \", $, `, \\, or a line break."
-    if os.path.lexists(p):
-        return f"{tilde(p, home)} exists. Choose a new directory."
-    if not os.path.isdir(os.path.dirname(p)):
-        return f"{tilde(os.path.dirname(p), home)} does not exist."
-    return None
 
 
 class Planner:
@@ -1002,7 +973,7 @@ class _Build:
             path = Path(self.home, t)
             if any(t == m or t.startswith(m + "/") for m in moved):
                 continue
-            if (path.exists() or path.is_symlink()) and not scan_mod.is_managed(path):
+            if (path.exists() or path.is_symlink()) and not is_managed(path):
                 out.append(f"~/{t}")
         return out
 
@@ -1026,7 +997,7 @@ class _Build:
                     if not path.is_dir():
                         break
                     continue
-                if scan_mod.is_managed(path):
+                if is_managed(path):
                     break
                 if i < len(parts) and rel in SHARED_DIRS:
                     msg = (f"~/{rel} is a link to {self.t(os.readlink(path))}. dotkit links files inside it, "

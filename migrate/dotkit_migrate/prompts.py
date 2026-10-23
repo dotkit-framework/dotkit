@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sys
 
-from .plan import OPTION_TEXT, Choices, Planner, expand, repo_error, tilde
+from .context import expand, repo_error, tilde
+from .plan import OPTION_TEXT, Choices, Planner
 
 
 def _ask(question: str, default: str = "") -> str:

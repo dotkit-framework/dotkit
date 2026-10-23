@@ -11,7 +11,8 @@ import curses
 import os
 import textwrap
 
-from .plan import OPTION_TEXT, Choices, Planner, expand, repo_error, tilde
+from .context import expand, repo_error, tilde
+from .plan import OPTION_TEXT, Choices, Planner
 
 MIN_H, MIN_W = 16, 60
 

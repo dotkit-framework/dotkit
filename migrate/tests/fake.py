@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from dotkit_migrate import base, plan, scan
+from dotkit_migrate import base, context, plan, scan
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -114,9 +114,12 @@ def brew_runner(formulae=(), casks=(), taps=None, mas=None, extra=None) -> FakeR
     return FakeRunner(commands, paths)
 
 
+def context_of(h: Home, runner: FakeRunner, env: dict[str, str] | None = None) -> context.Context:
+    return context.Context(h.home, env or {}, runner, base.Base(ROOT), h.apps, h.prefix)
+
+
 def scanner(h: Home, runner: FakeRunner, env: dict[str, str] | None = None) -> scan.Scanner:
-    return scan.Scanner(h.home, runner, applications=h.apps, base=base.Base(ROOT), brew_prefix=h.prefix,
-                        env=env or {})
+    return scan.Scanner(context_of(h, runner, env))
 
 
 def planner(s: scan.Scan, check=None) -> plan.Planner:

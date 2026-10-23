@@ -1,7 +1,7 @@
 """Runs dotkit-migrate on a fake Mac, for test_main.
 
 Usage: python3 main_child.py <home> <args>...
-The scan of the fake Mac replaces the real one; the arguments go to main().
+main() scans the fake Mac instead of this one; the arguments go to main().
 """
 
 import os
@@ -11,7 +11,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dotkit_migrate import __main__ as cli  # noqa: E402
-from dotkit_migrate import scan  # noqa: E402
 from tests import fake  # noqa: E402
 from tests.test_plan import used_mac  # noqa: E402
 
@@ -21,17 +20,7 @@ def main() -> int:
     runner = used_mac(h)
     runner.commands["mas list"] = os.environ.get("DOTKIT_TEST_MAS_LIST",
                                                  "409183694 Keynote (14.2)\n1274495053 Notes \u270f\ufe0f (2.0)\n")
-    real = scan.Scanner
-
-    def fake_scanner(*_args, **_kwargs):
-        return real(h.home, runner, applications=h.apps, base=fake.base.Base(fake.ROOT), brew_prefix=h.prefix,
-                    env={})
-
-    cli.scan.Scanner = fake_scanner
-    try:
-        return cli.main(sys.argv[2:])
-    finally:
-        cli.scan.Scanner = real
+    return cli.main(sys.argv[2:], make_context=lambda _home, _base: fake.context_of(h, runner))
 
 
 if __name__ == "__main__":

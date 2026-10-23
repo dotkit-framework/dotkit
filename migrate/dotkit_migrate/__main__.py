@@ -7,12 +7,17 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from . import adopt as adopt_mod
 from . import base as base_mod
+from . import context
 from . import plan as plan_mod
 from . import prompts, scan, wizard, write
+
+# make_context(home, base) -> the Context that the scan reads. Tests give a fake Mac.
+MakeContext = Callable[[Path, base_mod.Base], context.Context]
 
 
 def check_syntax(shell: str, text: str) -> bool:
@@ -31,10 +36,10 @@ def info(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
-def cmd_setup(a: argparse.Namespace) -> int:
+def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
     home = os.environ.get("HOME") or str(Path.home())
     b = base_mod.Base(Path(a.base)) if a.base else base_mod.Base()
-    repo = plan_mod.expand(a.repo or os.environ.get("DOTFILES") or "~/.dotfiles", home)
+    repo = context.expand(a.repo or os.environ.get("DOTFILES") or "~/.dotfiles", home)
     # The full-screen wizard needs a terminal on both sides; the plain
     # prompts only need one for the answers.
     interactive = not a.yes and sys.stdin.isatty()
@@ -42,12 +47,12 @@ def cmd_setup(a: argparse.Namespace) -> int:
         info("dotkit setup: the migration asks questions and needs a terminal. Use --yes for the defaults.")
         return 2
     if not interactive:
-        error = plan_mod.repo_error(repo, home)
+        error = context.repo_error(repo, home)
         if error:
             info(f"dotkit setup: {error}")
             return 2
     info("Scanning this Mac. This reads files and runs brew and mas; it changes nothing.")
-    s = scan.Scanner(Path(home), base=b).run()
+    s = scan.Scanner(make_context(Path(home), b)).run()
     p = plan_mod.Planner(s, b, check_syntax)
     c = p.defaults(repo)
     blockers = p.build(c).blockers
@@ -73,17 +78,17 @@ def cmd_setup(a: argparse.Namespace) -> int:
     write.write(result, b.template)
     if a.result:
         Path(a.result).write_text(f"{result.repo}\n", encoding="utf-8")
-    info(f"Created {plan_mod.tilde(result.repo, home)}. MIGRATION.md there lists what needs your attention.")
+    info(f"Created {context.tilde(result.repo, home)}. MIGRATION.md there lists what needs your attention.")
     return 0
 
 
-def cmd_adopt(a: argparse.Namespace) -> int:
+def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
     home = os.environ.get("HOME") or str(Path.home())
     b = base_mod.Base(Path(a.base)) if a.base else base_mod.Base()
     repo = Path(a.repo)
     declared = json.loads(a.declared) if a.declared else {}
     info("Scanning this Mac. It changes nothing.")
-    s = scan.Scanner(Path(home), base=b).run()
+    s = scan.Scanner(make_context(Path(home), b)).run()
     m = adopt_mod.missing(s, repo, b, declared, a.all)
     if m.empty:
         print("The lists have everything that this Mac has.", flush=True)
@@ -109,7 +114,7 @@ def cmd_adopt(a: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, make_context: MakeContext | None = None) -> int:
     # Names and files are UTF-8; a terminal with another locale gets ? for
     # what it cannot show, not an error.
     for stream in (sys.stdout, sys.stderr):
@@ -136,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--base", help=argparse.SUPPRESS)
     d.set_defaults(func=cmd_adopt)
     a = ap.parse_args(argv)
-    return a.func(a)
+    return a.func(a, make_context or context.this_mac)
 
 
 if __name__ == "__main__":

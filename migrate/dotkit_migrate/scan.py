@@ -18,7 +18,8 @@ from pathlib import Path
 from . import base as base_mod
 from ._compat import tomllib
 from . import secrets
-from .proc import BREW_ENV, Runner
+from .context import Context, is_managed, read_json, read_text, version_key
+from .proc import BREW_ENV
 
 # Shell files that the base links, and the layer files of yours that the
 # base reads after them, in the order zsh and bash read them.
@@ -171,24 +172,6 @@ class Scan:
     warnings: list[str] = field(default_factory=list)
 
 
-def is_managed(p: Path) -> bool:
-    """A link that Home Manager made: it points into the Nix store."""
-    try:
-        return p.is_symlink() and os.readlink(p).startswith("/nix/store/")
-    except OSError:
-        return False
-
-
-def _read(p: Path, limit: int = 4_000_000) -> str:
-    """The text of a regular file, or "": never opens a FIFO or a device."""
-    try:
-        if not stat.S_ISREG(os.stat(p).st_mode) or os.stat(p).st_size > limit:
-            return ""
-        return p.read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
-        return ""
-
-
 def _secrets_of(p: Path) -> list[secrets.Secret]:
     """The secrets of a file. A file that cannot be checked counts as one with a secret."""
     try:
@@ -197,27 +180,14 @@ def _secrets_of(p: Path) -> list[secrets.Secret]:
         return [secrets.Secret(0, f"a file that cannot be checked ({e})")]
 
 
-def _json(p: Path):
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
-def _version_key(v: str) -> list:
-    return [int(x) if x.isdigit() else x for x in re.split(r"[.\-_+]", v.lstrip("v"))]
-
-
 class Scanner:
-    def __init__(self, home: Path | None = None, runner: Runner | None = None,
-                 applications: Path = Path("/Applications"), base: base_mod.Base | None = None,
-                 brew_prefix: Path = Path("/opt/homebrew"), env: dict[str, str] | None = None):
-        self.home = Path(home or os.environ.get("HOME") or Path.home())
-        self.runner = runner or Runner()
-        self.applications = applications
-        self.base = base or base_mod.Base()
-        self.brew_prefix = brew_prefix
-        self.env = os.environ if env is None else env
+    def __init__(self, ctx: Context):
+        self.home = ctx.home
+        self.runner = ctx.runner
+        self.applications = ctx.applications
+        self.base = ctx.base
+        self.brew_prefix = ctx.brew_prefix
+        self.env = ctx.env
 
     def _tilde(self, p: Path) -> str:
         s = str(p)
@@ -291,7 +261,7 @@ class Scanner:
             (self.h(".npm-global/lib/node_modules"), "~/.npm-global"),
             (self.h(".local/lib/node_modules"), "~/.local"),
         ]
-        prefix = re.search(r"(?m)^\s*prefix\s*=\s*(.+?)\s*$", _read(self.h(".npmrc")))
+        prefix = re.search(r"(?m)^\s*prefix\s*=\s*(.+?)\s*$", read_text(self.h(".npmrc")))
         if prefix and not is_managed(self.h(".npmrc")):
             p = prefix.group(1).replace("${HOME}", str(self.home)).replace("$HOME", str(self.home))
             roots.append((Path(p).expanduser() / "lib/node_modules", f"npm prefix {prefix.group(1)}"))
@@ -343,7 +313,7 @@ class Scanner:
                 elif not p.name.startswith("."):
                     entries.append(p)
             for p in entries:
-                meta = _json(p / "package.json")
+                meta = read_json(p / "package.json")
                 if not isinstance(meta, dict) or not meta.get("bin"):
                     continue
                 name = meta.get("name") or p.name
@@ -353,14 +323,14 @@ class Scanner:
                 add(name, str(meta.get("version", "")), label)
         pnpm_home = self.env_path("PNPM_HOME", "Library/pnpm")
         for manifest in sorted(pnpm_home.glob("global/*/package.json")):
-            deps = (_json(manifest) or {}).get("dependencies") or {}
+            deps = (read_json(manifest) or {}).get("dependencies") or {}
             for name, version in sorted(deps.items()):
                 add(name, str(version).lstrip("^~"), "pnpm")
         bun = self.env_path("BUN_INSTALL", ".bun") / "install/global/package.json"
-        for name, version in sorted(((_json(bun) or {}).get("dependencies") or {}).items()):
+        for name, version in sorted(((read_json(bun) or {}).get("dependencies") or {}).items()):
             add(name, str(version).lstrip("^~"), "bun")
         for p in sorted(self.h(".volta/tools/user/packages").glob("*.json")):
-            meta = _json(p) or {}
+            meta = read_json(p) or {}
             if meta.get("name"):
                 add(meta["name"], str(meta.get("version", "")), "volta")
         self.s.npm = sorted(found.values(), key=lambda p: p.name)
@@ -370,7 +340,7 @@ class Scanner:
         homes = [self.env_path("PIPX_HOME", ".local/pipx"), self.h("Library/Application Support/pipx")]
         for home in homes:
             for meta_path in sorted(home.glob("venvs/*/pipx_metadata.json")):
-                meta = _json(meta_path) or {}
+                meta = read_json(meta_path) or {}
                 main = meta.get("main_package") or {}
                 name = main.get("package") or meta_path.parent.name
                 spec = main.get("package_or_url") or name
@@ -404,7 +374,7 @@ class Scanner:
         cargo_home = self.env_path("CARGO_HOME", ".cargo")
         self.s.has_cargo = (cargo_home / "bin/cargo").exists() or bool(self.runner.which("cargo"))
         installs: dict[str, object] = {}
-        data = _json(cargo_home / ".crates2.json")
+        data = read_json(cargo_home / ".crates2.json")
         if isinstance(data, dict):
             installs = data.get("installs") or {}
         else:
@@ -481,20 +451,20 @@ class Scanner:
             if name == "asdf":
                 for plugin in sorted((root / sub).glob("*")):
                     t = ASDF_TOOLS.get(plugin.name, plugin.name)
-                    vm.versions[t] = sorted((v.name for v in plugin.iterdir() if v.is_dir()), key=_version_key)
-                for line in _read(self.h(".tool-versions")).splitlines():
+                    vm.versions[t] = sorted((v.name for v in plugin.iterdir() if v.is_dir()), key=version_key)
+                for line in read_text(self.h(".tool-versions")).splitlines():
                     parts = line.split("#")[0].split()
                     if len(parts) >= 2:
                         vm.default[ASDF_TOOLS.get(parts[0], parts[0])] = parts[1]
             else:
                 versions = [v.name for v in (root / sub).glob("*") if v.is_dir() and v.name != "current"]
                 if versions:
-                    vm.versions[tool] = sorted(versions, key=_version_key)
+                    vm.versions[tool] = sorted(versions, key=version_key)
                 default = ""
                 if name == "nvm":
-                    default = _read(root / "alias/default").strip()
+                    default = read_text(root / "alias/default").strip()
                 elif name in ("pyenv", "rbenv", "jenv"):
-                    default = _read(root / "version").split("\n")[0].strip()
+                    default = read_text(root / "version").split("\n")[0].strip()
                 elif name == "sdkman":
                     cur = root / sub / "current"
                     default = os.readlink(cur) if cur.is_symlink() else ""
@@ -503,7 +473,7 @@ class Scanner:
                     alias = root / "aliases/default"
                     default = os.readlink(alias).rstrip("/").split("/")[-2] if alias.is_symlink() else ""
                 elif name == "volta":
-                    meta = _json(root / "tools/user/platform.json") or {}
+                    meta = read_json(root / "tools/user/platform.json") or {}
                     default = ((meta.get("node") or {}).get("runtime")) or ""
                 if default and default != "system":
                     vm.default[tool] = default
@@ -526,7 +496,7 @@ class Scanner:
             if not (p.is_file() or p.is_symlink()):
                 continue
             managed = is_managed(p)
-            text = "" if managed else _read(p)
+            text = "" if managed else read_text(p)
             texts[name] = text
             self.s.shell_files.append(ShellFile(name, p, text, managed))
         for f in self.s.shell_files:
@@ -545,7 +515,7 @@ class Scanner:
             if not p.is_file() or is_managed(p):
                 continue
             base_file = self.base.file(link.source)
-            same = _read(p) == _read(base_file) if base_file.is_file() else False
+            same = read_text(p) == read_text(base_file) if base_file.is_file() else False
             self.s.config_files.append(ConfigFile(link.target, p, _secrets_of(p), same))
         p = self.h(".gitconfig")
         if p.is_file() and not is_managed(p):
@@ -639,7 +609,7 @@ class Scanner:
         try:
             user = getpass.getuser()
         except (KeyError, OSError):
-            user = os.environ.get("USER", "")
+            user = self.env.get("USER", "")
         self.s = Scan(home=str(self.home), user=user, hostname=socket.gethostname().split(".")[0])
         for step in (
             self.scan_identity, self.scan_brew, self.scan_app_store, self.scan_npm, self.scan_python_tools,

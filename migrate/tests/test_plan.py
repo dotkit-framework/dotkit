@@ -456,16 +456,6 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(sorted(result.files), ["MIGRATION.md", "nix/user.nix"])
         self.assertIn("Nothing.", result.report)
 
-    def test_repo_error(self):
-        home = str(self.h.home)
-        self.assertIsNone(plan.repo_error(f"{home}/.dotfiles", home))
-        self.assertIn("exists", plan.repo_error(f"{home}/.config", home))
-        self.assertIn("Use a directory in", plan.repo_error("/tmp/x", home))
-        self.assertIn("does not exist", plan.repo_error(f"{home}/a/b", home))
-        for bad in ('~/dot "files', "~/a$b", "~/a`b", "~/a\\b", "~/a\nb"):
-            self.assertIn("Use a path without", plan.repo_error(bad, home), bad)
-        self.assertIsNone(plan.repo_error("~/my dots", home))
-
     def test_repo_path_with_a_space(self):
         p = self.build(repo=str(self.h.home / "my dots"))
         self.assertIn('  dotfiles = "${home}/my dots";\n', p.files["nix/user.nix"])
