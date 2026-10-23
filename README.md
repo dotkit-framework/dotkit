@@ -70,8 +70,8 @@ dotkit also has, other config to copy into the repository, and the plan.
 | On the Mac | In the repository, by default |
 |---|---|
 | Homebrew formulae and casks that you installed | `nix/brews.txt`, `nix/casks.txt`. They stay installed. Tools that the base has are not repeated; the report says how to remove the Homebrew copy |
-| Homebrew taps | `homebrew.taps` in `nix/darwin.nix` |
-| App Store apps, with `mas` | `homebrew.masApps` in `nix/darwin.nix` |
+| Homebrew taps | `nix/taps.txt`, with the clone URL of a tap that is not on GitHub |
+| App Store apps, with `mas` | `nix/mas.txt` |
 | Global npm, pnpm, bun, pipx, and `uv tool` tools | `config/mise.toml`, as `npm:` and `pipx:` tools. cargo and Go tools are off: mise builds them from source |
 | `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
 | Ghostty, Git, and mise config | Yours, read after the dotkit file |
@@ -101,10 +101,11 @@ continue with it. `setup --dry-run` prints the plan and the report and
 changes nothing. It needs only the Command Line Tools. On a Mac with Nix,
 `nix run github:podkovyrin/dotkit#migrate -- setup --dry-run` does the same.
 
-Later, `dotkit migrate` finds Homebrew packages and global tools that were
-installed by hand and that the lists do not have, and adds them. It skips the
-Homebrew copy of a tool that the lists have from Nix or mise. cargo and Go
-tools only with `--all`, because mise builds them from source.
+Later, `dotkit migrate` finds Homebrew packages and taps, App Store apps, and
+global tools that were installed by hand and that the lists do not have, and
+adds them. It skips the Homebrew copy of a tool that the lists have from Nix
+or mise. cargo and Go tools only with `--all`, because mise builds them from
+source.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
@@ -117,8 +118,10 @@ dotfiles repository does the same.
 | `nix/flake.nix` | the dotkit input |
 | `nix/user.nix` | your macOS account and the path of the repository |
 | `nix/packages.txt`, `nix/brews.txt`, `nix/casks.txt` | your tools, after the base lists. `dotkit add` edits them |
+| `nix/taps.txt` | Homebrew taps: `owner/repo`, and the clone URL after it for a tap that is not on GitHub |
+| `nix/mas.txt` | App Store apps: the ID, then the name. `dotkit add mas:ID` edits it |
 | `config/mise.toml` | your runtimes and mise tools (`~/.config/mise/config.toml`) |
-| `nix/darwin.nix` | nix-darwin settings: macOS defaults, Homebrew taps, App Store apps, fonts |
+| `nix/darwin.nix` | nix-darwin settings: macOS defaults, fonts |
 | `nix/home.nix` | Home Manager settings: your config files (`dotkit.links`), variables |
 | `nix/shell.nix` | the zsh keymap, the terminal title, and abbreviations |
 | `config/zsh/zshrc` | your zsh lines (`~/.zshrc.local`) |
