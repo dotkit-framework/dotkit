@@ -12,6 +12,7 @@ import sys
 import textwrap
 
 from ..model import Choices
+from ..registry import Session
 from . import screens as screens_mod
 from .screens import Quit, Screen
 
@@ -331,9 +332,9 @@ class UI(screens_mod.Frontend):
                 return -1
 
 
-def run(planner, c: Choices, home: str, dry_run: bool = False) -> bool:
+def run(session: Session, c: Choices, home: str, dry_run: bool = False) -> bool:
     """Shows the wizard. False when the person quits."""
-    screens = screens_mod.build(planner, c, home)
+    screens = screens_mod.build(session, c, home)
 
     def main(scr) -> bool:
         return screens_mod.run(UI(scr, dry_run), screens)

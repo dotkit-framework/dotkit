@@ -88,10 +88,10 @@ def drive(keys, term="xterm-256color", rows=30, cols=100, timeout=30.0):
 
 
 def pages():
-    """The pages of the fake Mac of wizard_child.py, from the planner: the key sequences follow them."""
+    """The pages of the fake Mac of wizard_child.py, from the Session: the key sequences follow them."""
     h = fake.Home()
     try:
-        p = fake.planner(fake.scanner(h, used_mac(h)).run())
+        p = fake.session(h, used_mac(h))
         return p.pages(), p.defaults("~/.dotfiles").to_json()
     finally:
         h.cleanup()
@@ -189,7 +189,7 @@ class WizardPtyTests(unittest.TestCase):
         self.assertEqual(result["choices"]["picked"]["formulae"], ["brew:wget"])
 
     def plain_answers(self, per_page):
-        """One answer per checklist page, one per item of a choices page: the counts come from the planner."""
+        """One answer per checklist page, one per item of a choices page: the counts come from the Session."""
         out = []
         for page in self.pages:
             if page.kind == "checklist":

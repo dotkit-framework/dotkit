@@ -16,8 +16,7 @@ class LinkTests(unittest.TestCase):
         target = h.write("old-dotfiles/zshrc", "export STOW=1\n")
         os.symlink(target, h.home / ".zshrc")
         os.symlink("/nix/store/abc-home-manager-files/.zprofile", h.home / ".zprofile")
-        s = fake.scanner(h, fake.brew_runner()).run()
-        p = fake.planner(s)
+        p = fake.session(h, fake.brew_runner())
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertEqual(result.move_links, [".zshrc"])
         self.assertIn("export STOW=1", result.files["config/zsh/zshrc"])
@@ -36,8 +35,7 @@ class LinkTests(unittest.TestCase):
         git = h.write("dotfiles/git/config", "[core]\n\teditor = vim\n").parent
         h.write("dotfiles/git/ignore", ".DS_Store\n")
         os.symlink(git, h.home / ".config/git")
-        s = fake.scanner(h, fake.brew_runner()).run()
-        p = fake.planner(s)
+        p = fake.session(h, fake.brew_runner())
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertEqual(result.move_links, [".config/ghostty", ".config/git"])
         self.assertEqual(result.blockers, [])
@@ -54,8 +52,7 @@ class LinkTests(unittest.TestCase):
         self.addCleanup(h.cleanup)
         target = h.mkdir("dotfiles/config")
         os.symlink(target, h.home / ".config")
-        s = fake.scanner(h, fake.brew_runner()).run()
-        p = fake.planner(s)
+        p = fake.session(h, fake.brew_runner())
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertEqual(len(result.blockers), 1)
         self.assertIn("~/.config is a link to ~/dotfiles/config", result.blockers[0])
@@ -67,7 +64,7 @@ class SummaryTests(unittest.TestCase):
     def build(self, runner_of=used_mac):
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        p = fake.planner(fake.scanner(h, runner_of(h)).run())
+        p = fake.session(h, runner_of(h))
         return h, p.build(p.defaults(str(h.home / ".dotfiles")))
 
     def test_summary(self):

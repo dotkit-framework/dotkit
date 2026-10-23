@@ -11,9 +11,9 @@ class ScanTests(unittest.TestCase):
         self.addCleanup(self.h.cleanup)
 
     def scan(self, runner=None, env=None):
-        s = fake.scanner(self.h, runner or fake.brew_runner(), env).run()
-        self.assertEqual(s.warnings, [])
-        return s
+        self.facts = fake.session(self.h, runner or fake.brew_runner(), env).scan()
+        self.assertEqual(self.facts.warnings, [])
+        return self.facts.get("_rest")
 
     def test_homebrew(self):
         r = fake.brew_runner(
@@ -31,7 +31,8 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(s.casks, ["ghostty", "raycast", "homebrew/cask-fonts/font-fira-code"])
         self.assertEqual([(t.name, t.custom) for t in s.taps], [("hashicorp/tap", False), ("acme/tools", True)])
         self.assertEqual(s.old_taps, ["homebrew/cask-fonts"])
-        self.assertEqual((s.git_name, s.git_email), ("Jane Appleseed", "jane@example.com"))
+        self.assertEqual((self.facts.identity.git_name, self.facts.identity.git_email),
+                         ("Jane Appleseed", "jane@example.com"))
 
     def test_no_homebrew(self):
         s = self.scan(fake.FakeRunner())
@@ -251,7 +252,7 @@ class ScanTests(unittest.TestCase):
             def run(self, argv, timeout=120, env=None):
                 raise RuntimeError("boom")
 
-        s = fake.scanner(self.h, Broken(paths={"brew": fake.BREW})).run()
+        s = fake.session(self.h, Broken(paths={"brew": fake.BREW})).scan()
         self.assertTrue(any(w.startswith("brew: RuntimeError") for w in s.warnings), s.warnings)
 
 

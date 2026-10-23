@@ -125,7 +125,7 @@ class NixListTests(unittest.TestCase):
         h = fake.Home()
         self.addCleanup(h.cleanup)
         runner, env = test_golden.kitchen_sink(h)
-        p = fake.planner(fake.scanner(h, runner, env).run(), test_golden.check_syntax)
+        p = fake.session(h, runner, env, check=test_golden.check_syntax)
         files = p.build(test_golden.kitchen_sink_choices(p, str(h.home / ".dotfiles"))).files
         taps = self.write("taps.txt", files["nix/taps.txt"])
         mas = self.write("mas.txt", files["nix/mas.txt"])
@@ -155,7 +155,7 @@ class NixListTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         declared = {"masApps": json.loads(out.stdout)}
         self.assertEqual(declared["masApps"], {"Keynote": 1})
-        scan = fake.scanner(h, fake.brew_runner(mas="409183694 Keynote (14.2)\n")).run()
+        scan = fake.session(h, fake.brew_runner(mas="409183694 Keynote (14.2)\n")).scan()
         m = adopt.missing(scan, repo, base.Base(fake.ROOT), declared)
         self.assertEqual(m.mas, [(409183694, "Keynote (409183694)")])
         adopt.apply(m, repo)

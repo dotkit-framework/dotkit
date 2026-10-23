@@ -49,7 +49,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from dotkit_migrate import adopt, base, plan
+from dotkit_migrate import adopt, base, registry
 from dotkit_migrate.model import Choices
 from tests import fake
 from tests.test_plan import used_mac
@@ -222,7 +222,7 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     return runner, {"SHELL": "/bin/bash"}
 
 
-def kitchen_sink_choices(p: plan.Planner, repo: str) -> Choices:
+def kitchen_sink_choices(p: registry.Session, repo: str) -> Choices:
     """Every item of every checklist page selected, and two file choices that are not the defaults."""
     c = p.defaults(repo)
     c.keymap = "vi"
@@ -231,7 +231,7 @@ def kitchen_sink_choices(p: plan.Planner, repo: str) -> Choices:
     return c
 
 
-def used_mac_deselected(p: plan.Planner, repo: str) -> Choices:
+def used_mac_deselected(p: registry.Session, repo: str) -> Choices:
     """The defaults with single items deselected on the pages that are on, and selected on the pages that are off."""
     c = p.defaults(repo)
     c.picked["formulae"].discard("brew:hashicorp/tap/terraform")
@@ -246,7 +246,7 @@ def used_mac_deselected(p: plan.Planner, repo: str) -> Choices:
     return c
 
 
-def kitchen_sink_deselected(p: plan.Planner, repo: str) -> Choices:
+def kitchen_sink_deselected(p: registry.Session, repo: str) -> Choices:
     """Every item selected, then some left out: part of a version manager, one of two apps with one name, and more."""
     c = kitchen_sink_choices(p, repo)
     for page, item in (("runtimes", "runtime:go"), ("mas", "mas:409183694"), ("formulae", "brew:wget"),
@@ -339,14 +339,15 @@ class GoldenTests(unittest.TestCase):
             self.addCleanup(patch.stop)
 
     def mac(self, make):
-        """A new fake Mac and its scan."""
+        """A new fake Mac and its Session, after the scan."""
         h = fake.Home()
         self.addCleanup(h.cleanup)
         runner, env = make(h)
-        s = fake.scanner(h, runner, env).run()
-        self.assertEqual(s.warnings, [])
-        self.assertEqual((s.user, s.hostname), (USER, HOSTNAME))
-        return h, s
+        p = fake.session(h, runner, env, check=check_syntax)
+        facts = p.scan()
+        self.assertEqual(facts.warnings, [])
+        self.assertEqual((facts.identity.user, facts.identity.hostname), (USER, HOSTNAME))
+        return h, p
 
     def check(self, name: str, data) -> None:
         text = dump(data)
@@ -369,8 +370,7 @@ class GoldenTests(unittest.TestCase):
     def test_plans(self):
         for name, (make, choose) in PLANS.items():
             with self.subTest(name=name):
-                h, s = self.mac(make)
-                p = fake.planner(s, check_syntax)
+                h, p = self.mac(make)
                 repo = str(h.home / ".dotfiles")
                 c = choose(p, repo) if choose else p.defaults(repo)
                 dates = [datetime.date.today().isoformat()]
@@ -381,11 +381,11 @@ class GoldenTests(unittest.TestCase):
     def test_adopt(self):
         for name, all_tools in ADOPTS.items():
             with self.subTest(name=name):
-                h, s = self.mac(kitchen_sink)
+                h, p = self.mac(kitchen_sink)
                 repo = h.home / ".dotfiles"
                 for rel, text in ADOPT_REPO.items():
                     h.write(f".dotfiles/{rel}", text)
-                m = adopt.missing(s, repo, base.Base(fake.ROOT), ADOPT_DECLARED, all_tools)
+                m = adopt.missing(p.scan(), repo, base.Base(fake.ROOT), ADOPT_DECLARED, all_tools)
                 before = self.files(repo)
                 adopt.apply(m, repo)
                 after = self.files(repo)

@@ -2,8 +2,9 @@ import shutil
 import subprocess
 import unittest
 
-from dotkit_migrate import adopt, plan, scan, secrets, writer
+from dotkit_migrate import adopt, plan, registry, scan, secrets, writer
 from dotkit_migrate._compat import tomllib
+from dotkit_migrate.migrators import Migrator
 from dotkit_migrate.ui import screens
 from tests import fake
 
@@ -76,9 +77,8 @@ class PlanTests(unittest.TestCase):
         self.h = fake.Home()
         self.addCleanup(self.h.cleanup)
         runner = used_mac(self.h)
-        self.scan = fake.scanner(self.h, runner).run()
-        self.assertEqual(self.scan.warnings, [])
-        self.p = fake.planner(self.scan)
+        self.p = fake.session(self.h, runner)
+        self.assertEqual(self.p.scan().warnings, [])
         self.repo = str(self.h.home / ".dotfiles")
 
     def build(self, picked=None, options=None, **changes):
@@ -186,7 +186,7 @@ class PlanTests(unittest.TestCase):
             {"name": "acme/tools", "remote": "git@gitlab.com:acme/homebrew-tools.git"},
             {"name": "homebrew/cask-fonts"},
         ])
-        p = fake.planner(fake.scanner(self.h, runner).run())
+        p = fake.session(self.h, runner)
         r = p.build(p.defaults(self.repo)).report
         custom = r.index("These taps are not on GitHub, so the list has their URL. Check it.")
         merged = r.index("Homebrew merged these taps into its own. Remove them.")
@@ -225,7 +225,7 @@ class PlanTests(unittest.TestCase):
         self.h.write(".zshrc", "\n".join((alias, pwd, function, continued_alias, heredoc,
                                          'export AWS_PROFILE=MyCompanyProd2024Admin')) + "\n")
         self.h.write(".config/msmtp/config", "account default\npassword hunter2hunter2\n")
-        p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
+        p = fake.session(self.h, fake.brew_runner())
         self.assertNotIn(".config/msmtp", other_config(p))
         c = p.defaults(self.repo)
         pick(c, "other:.config/msmtp")
@@ -248,7 +248,7 @@ class PlanTests(unittest.TestCase):
             with self.subTest(calls=calls):
                 function = 'deploy() { ' + ' && '.join(calls) + '; }'
                 self.h.write(".zshrc", function + "\nexport EDITOR=vim\n")
-                p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
+                p = fake.session(self.h, fake.brew_runner())
                 c = p.defaults(str(self.h.home / f"repo-{i}"))
                 result = p.build(c)
                 self.assertIn("local/zshrc.zsh", result.local)
@@ -274,7 +274,7 @@ class PlanTests(unittest.TestCase):
         for name, text in configs.items():
             self.h.write(f".config/{name}/config.json", fake.fill(text) + "\n")
         self.h.write(".config/clean/lazy-lock.json", fake.fill('{"lazy.nvim":{"commit":"@HEX40@"}}\n'))
-        p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
+        p = fake.session(self.h, fake.brew_runner())
         for name in configs:
             with self.subTest(name=name):
                 self.assertNotIn(f".config/{name}", other_config(p))
@@ -298,7 +298,7 @@ class PlanTests(unittest.TestCase):
     def test_cargo_git_revision_report_survives(self):
         source = fake.fill("git+https://github.com/x/tool#@HEX40@")
         self.h.json(".cargo/.crates2.json", {"installs": {f"tool 0.1.0 ({source})": {}}})
-        p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
+        p = fake.session(self.h, fake.brew_runner())
         result = p.build(p.defaults(self.repo))
         self.assertIn(source, result.report)
 
@@ -345,7 +345,7 @@ class PlanTests(unittest.TestCase):
         self.h.write(".zshrc", f"export GITHUB_TOKEN={TOKEN}\n")
         for name in (".zprofile", ".bash_profile"):
             (self.h.home / name).unlink()
-        p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
+        p = fake.session(self.h, fake.brew_runner())
         shell = next(page for page in p.pages() if page.key == "shell")
         self.assertEqual([(i.id, i.label, i.default) for i in shell.items],
                          [("shell:.zshrc", "~/.zshrc: 1 line with a secret", True)])
@@ -368,7 +368,7 @@ class PlanTests(unittest.TestCase):
         h.write(".zshenv", "export DEV=~/dev\n")
         h.write(".zprofile", "export WORK=~/work\n")
         h.write(".zshrc", 'export GOPATH="$DEV/go"\nalias g="cd $DEV"\nexport TOOLS="$WORK/tools"\n')
-        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        p = fake.session(h, fake.brew_runner())
         repo = str(h.home / ".dotfiles")
         # The page counts from the full chain.
         shell = next(page for page in p.pages() if page.key == "shell")
@@ -400,7 +400,7 @@ class PlanTests(unittest.TestCase):
         self.addCleanup(h.cleanup)
         h.write(".zshenv", "export DEV=~/dev\n")
         h.write(".zshrc", 'export GOPATH="$DEV/go"\n')
-        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        p = fake.session(h, fake.brew_runner())
         c = p.defaults(str(h.home / ".dotfiles"))
         shell = next(page for page in p.pages() if page.key == "shell")
         self.assertEqual([i.label for i in shell.items], ["~/.zshenv: 1 line", "~/.zshrc: 1 line"])
@@ -420,9 +420,8 @@ class PlanTests(unittest.TestCase):
 
     def test_one_item_for_a_package_in_two_places(self):
         """A package twice in the scan (the npm scan keeps the first; pages() does not rely on it): one row."""
-        s = fake.scanner(self.h, used_mac(self.h)).run()
-        s.npm.append(scan.Package("typescript", "5.5.0", "nvm v22.1.0"))
-        p = fake.planner(s)
+        p = fake.session(self.h, used_mac(self.h))
+        p.scan().get("_rest").npm.append(scan.Package("typescript", "5.5.0", "nvm v22.1.0"))
         npm = next(page for page in p.pages() if page.key == "npm")
         self.assertEqual([i.id for i in npm.items], ["npm:typescript"])
         result = p.build(p.defaults(self.repo))
@@ -436,7 +435,7 @@ class PlanTests(unittest.TestCase):
         self.h.mkdir(".pyenv/versions/3.12.2")
         self.h.write(".pyenv/version", "3.12.2\n")
         self.h.mkdir(".asdf/installs/ruby/3.3.0")
-        p = fake.planner(fake.scanner(self.h, used_mac(self.h)).run())
+        p = fake.session(self.h, used_mac(self.h))
         runtimes = next(page for page in p.pages() if page.key == "runtimes")
         self.assertEqual({i.id for i in runtimes.items}, {"runtime:node", "runtime:python", "runtime:ruby"})
         c = p.defaults(self.repo)
@@ -487,7 +486,7 @@ class PlanTests(unittest.TestCase):
         ], mas="409183694 Keynote (14.2)\n1234 Keynote (1.0)\n497799835 Xcode (16.0)\n")
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        p = fake.planner(fake.scanner(h, runner).run())
+        p = fake.session(h, runner)
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertTrue(result.files["nix/taps.txt"].endswith(", see MIGRATION.md.\nok/tap\n"))
         self.assertNotIn("acme/", result.files["nix/taps.txt"])
@@ -509,8 +508,8 @@ class PlanTests(unittest.TestCase):
         runner = fake.brew_runner(taps=[{"name": "corp/tap", "remote": url}])
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        s = fake.scanner(h, runner).run()
-        p = fake.planner(s)
+        p = fake.session(h, runner)
+        s = p.scan()
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertNotIn("nix/taps.txt", result.files)
         self.assertIn("- `corp/tap`: its URL has a secret (", result.report)
@@ -530,9 +529,9 @@ class PlanTests(unittest.TestCase):
         self.addCleanup(h.cleanup)
         runner = fake.brew_runner(taps=[{"name": "a/b c"},
                                         {"name": "ok/tap", "remote": "https://github.com/ok/homebrew-tap"}])
-        s = fake.scanner(h, runner).run()
-        self.assertFalse(s.taps[0].custom)
-        p = fake.planner(s)
+        p = fake.session(h, runner)
+        s = p.scan()
+        self.assertFalse(s.get("_rest").taps[0].custom)
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertTrue(result.files["nix/taps.txt"].endswith(", see MIGRATION.md.\nok/tap\n"))
         self.assertIn("- `a/b c`: it cannot go into nix/taps.txt: its name is not owner/repo of letters, digits, "
@@ -548,7 +547,7 @@ class PlanTests(unittest.TestCase):
                 fake.fill('[tools]\n"npm:typescript" = "latest"\n\n[env]\nGITHUB_TOKEN = "@GH@"\n'))
         h.json(".nvm/versions/node/v20.11.0/lib/node_modules/typescript/package.json",
                {"name": "typescript", "version": "5.4.0", "bin": {"tsc": "bin/tsc"}})
-        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        p = fake.session(h, fake.brew_runner())
         c = p.defaults(str(h.home / ".dotfiles"))
         self.assertEqual(c.option("file:.config/mise/config.toml"), "keep")
         c.options["file:.config/mise/config.toml"] = "layer"
@@ -572,7 +571,7 @@ class PlanTests(unittest.TestCase):
                 self.addCleanup(h.cleanup)
                 for name, text in files.items():
                     h.write(name, text)
-                p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+                p = fake.session(h, fake.brew_runner())
                 self.assertIn(rel, other_config(p))
                 c = p.defaults(str(h.home / ".dotfiles"))
                 c.options.update(choices)
@@ -598,7 +597,7 @@ class PlanTests(unittest.TestCase):
         h.write(".bash_profile", "export BASH_THING=1\n")
         h.write(".config/bash/aliases", "alias ll='ls -la'\n")
         h.write(".config/bash2/aliases", "alias la='ls -A'\n")
-        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        p = fake.session(h, fake.brew_runner())
         self.assertIn(".config/bash", other_config(p))
         c = p.defaults(str(h.home / ".dotfiles"))
         pick(c, "other:.config/bash", "other:.config/bash2")
@@ -620,7 +619,7 @@ class PlanTests(unittest.TestCase):
         self.addCleanup(h.cleanup)
         h.write(".config/home/settings", "x = 1\n")
         h.write(".vimrc", "set number\n")
-        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        p = fake.session(h, fake.brew_runner())
         self.assertEqual(other_config(p), [".config/home", ".vimrc"])
         c = p.defaults(str(h.home / ".dotfiles"))
         pick(c, "other:.config/home", "other:.vimrc")
@@ -638,7 +637,7 @@ class PlanTests(unittest.TestCase):
         h.write(".config/Zsh/aliases.zsh", "alias ll='ls -la'\n")
         h.write(".config/Home/settings", "x = 1\n")
         h.write(".vimrc", "set number\n")
-        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        p = fake.session(h, fake.brew_runner())
         self.assertEqual(other_config(p), [".config/Home", ".config/Zsh", ".vimrc"])
         c = p.defaults(str(h.home / ".dotfiles"))
         pick(c, *[f"other:{rel}" for rel in other_config(p)])
@@ -695,9 +694,8 @@ class PlanTests(unittest.TestCase):
 
     def test_failed_syntax_check_reports_the_lines(self):
         self.h.write(".zshrc", "f() {\n  echo hi\n}\nexport A=1\n")
-        s = fake.scanner(self.h, fake.brew_runner()).run()
-        p = fake.planner(s, lambda shell, text: "f()" not in text).build(
-            fake.planner(s).defaults(self.repo))
+        s = fake.session(self.h, fake.brew_runner(), check=lambda shell, text: "f()" not in text)
+        p = s.build(s.defaults(self.repo))
         self.assertIn("export A=1", p.files["config/zsh/zshrc"])
         self.assertNotIn("echo hi", p.files["config/zsh/zshrc"])
         self.assertIn("zsh -n could not check it", p.report)
@@ -705,8 +703,7 @@ class PlanTests(unittest.TestCase):
     def test_empty_mac(self):
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        s = fake.scanner(h, fake.FakeRunner()).run()
-        p = fake.planner(s)
+        p = fake.session(h, fake.FakeRunner())
         self.assertEqual(p.pages(), [])
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertEqual(sorted(result.files), ["MIGRATION.md", "nix/user.nix"])
@@ -718,13 +715,37 @@ class PlanTests(unittest.TestCase):
         self.assertIn('source "$HOME/my dots/local/zshrc.zsh"', p.files["config/zsh/zshrc"])
 
 
+class SkipTests(unittest.TestCase):
+    def test_a_migrator_whose_scan_failed_has_no_pages_and_no_plan(self):
+        """The Session does not ask it: its pages and its plan would raise."""
+        class Broken(Migrator):
+            key = "broken"
+
+            def scan(self, ctx):
+                raise RuntimeError("boom")
+
+            def pages(self, facts):
+                raise AssertionError("pages of a migrator without facts")
+
+            def plan(self, facts, choices, txn):
+                raise AssertionError("plan of a migrator without facts")
+
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        p = registry.Session(fake.context_of(h, fake.brew_runner(formulae=["wget"])),
+                             migrators=(Broken(), *registry.MIGRATORS))
+        self.assertEqual(p.scan().warnings, ["broken: RuntimeError: boom"])
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertIn("- broken: RuntimeError: boom\n", result.report)
+        self.assertIn("\nwget\n", result.files["nix/brews.txt"])
+
+
 class NixFileTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("nix-instantiate"), "no nix-instantiate")
     def test_nix_files_parse(self):
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        s = fake.scanner(h, used_mac(h)).run()
-        p = fake.planner(s)
+        p = fake.session(h, used_mac(h))
         result = p.build(p.defaults(str(h.home / "my dots")))
         for rel in ("nix/home.nix", "nix/user.nix"):
             out = subprocess.run(["nix-instantiate", "--parse", "-E", result.files[rel]], capture_output=True,

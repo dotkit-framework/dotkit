@@ -12,7 +12,7 @@ from . import catalog
 from .docs import insert_tools, ruby_escape, toml_key
 from .plan import mas_lines, tap_lines
 from .writer import mask_lines
-from .scan import Scan
+from .model import Facts
 
 
 @dataclass
@@ -37,13 +37,14 @@ class Missing:
                     or self.tap_todos or self.mas_todos)
 
 
-def missing(scan: Scan, repo: Path, base: base_mod.Base, declared: dict, all_tools: bool = False) -> Missing:
+def missing(facts: Facts, repo: Path, base: base_mod.Base, declared: dict, all_tools: bool = False) -> Missing:
     """What is on the Mac and not in the lists of the base or of the repository.
 
     A Homebrew copy of a tool that the base or the repository has from Nix or
     mise is not missing: the lists have the tool already.
     """
     m = Missing()
+    scan = facts.get("_rest")
     repo_packages = set(base_mod.read_list(repo / "nix/packages.txt"))
     repo_mise = base_mod.mise_tools(repo / "config/mise.toml")
     declared_tools = repo_packages | set(base.packages) | {base_mod.mise_short(k) for k in (*repo_mise, *base.mise)}

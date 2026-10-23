@@ -19,7 +19,7 @@ class AdoptTests(unittest.TestCase):
         h.json(".nvm/versions/node/v20.0.0/lib/node_modules/@biomejs/biome/package.json",
                {"name": "@biomejs/biome", "bin": "x"})
         runner = fake.brew_runner(formulae=["dust", "tokei", "hyperfine", "wget", "gpg"])
-        s = fake.scanner(h, runner).run()
+        s = fake.session(h, runner).scan()
         b = base.Base(fake.ROOT)
         m = adopt.missing(s, repo, b, {})
         self.assertEqual(m.formulae, ["wget"])
@@ -50,7 +50,7 @@ class AdoptTests(unittest.TestCase):
             taps=[{"name": "acme/tools", "remote": "https://github.com/acme/homebrew-tools"},
                   {"name": "corp/tap", "remote": "git@git.example.com:corp/homebrew-tap.git"}],
             mas="497799835 Xcode (16.0)\n409183694 Keynote (14)\n1234567890 C# Toolkit (1.0)\n")
-        s = fake.scanner(h, runner).run()
+        s = fake.session(h, runner).scan()
         b = base.Base(fake.ROOT)
         m = adopt.missing(s, repo, b, {"taps": [], "masApps": {"Keynote": 409183694}})
         self.assertEqual(m.formulae, ["acme/tools/thing"])
@@ -84,7 +84,7 @@ class AdoptTests(unittest.TestCase):
         runner = fake.brew_runner(
             taps=[{"name": "corp/tap", "remote": "git@git.example.com:corp/homebrew-tap.git"}],
             mas="409183694 Keynote (14.2)\n1234 Keynote (1.0)\n1234567890 C# Toolkit (1.0)\n")
-        s = fake.scanner(h, runner).run()
+        s = fake.session(h, runner).scan()
         b = base.Base(fake.ROOT)
         m = adopt.missing(s, repo, b, {})
         self.assertEqual(m.taps, ["corp/tap git@git.example.com:corp/homebrew-tap.git"])
@@ -113,7 +113,7 @@ class AdoptTests(unittest.TestCase):
         self.addCleanup(h.cleanup)
         repo = h.home / ".dotfiles"
         h.write(".dotfiles/nix/mas.txt", "1 C# Toolkit\n")
-        s = fake.scanner(h, fake.brew_runner(mas="2 C# Toolkit (1.0)\n3 Back\\slash (1.0)\n4 Pages (1.0)\n")).run()
+        s = fake.session(h, fake.brew_runner(mas="2 C# Toolkit (1.0)\n3 Back\\slash (1.0)\n4 Pages (1.0)\n")).scan()
         # "C\\# Toolkit" is the escaped line of the file; "Back\\slash" was written by hand, raw.
         m = adopt.missing(s, repo, base.Base(fake.ROOT), {"masApps": {"C\\# Toolkit": 1, "Back\\slash": 9}})
         self.assertEqual(m.mas, [(2, "C# Toolkit (2)"), (3, "Back\\slash (3)"), (4, "Pages")])

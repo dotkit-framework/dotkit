@@ -1,8 +1,8 @@
 """The screens of the setup wizard, as data. The curses and the plain frontends show the same screens.
 
 The sequence: where the repository goes, the zsh keymap, one screen per page
-of the planner (pages without items are not there), and the plan. A screen
-only changes the Choices; the planner has the rules. Nothing on the Mac
+of the Session (pages without items are not there), and the plan. A screen
+only changes the Choices; the migrators have the rules. Nothing on the Mac
 changes until the caller writes the plan after the last screen.
 
 No curses here: tests drive the screens with a scripted frontend.
@@ -16,6 +16,7 @@ from typing import Any
 
 from ..context import expand, repo_error, tilde
 from ..model import Choices, Page
+from ..registry import Session
 
 KEYMAPS = (("emacs", "Ctrl+A, Ctrl+E, Ctrl+R, as in most terminals"),
            ("vi", "Esc for command mode, as in vim"))
@@ -74,9 +75,9 @@ def not_carried(pages: list[Page], c: Choices) -> list[tuple[Page, int]]:
     return out
 
 
-def review_lines(planner, pages: list[Page], c: Choices) -> list[str]:
+def review_lines(session: Session, pages: list[Page], c: Choices) -> list[str]:
     """The text of the plan screen: the summary of a fresh plan, then what you left out, per page."""
-    lines = list(planner.build(c).summary)
+    lines = list(session.build(c).summary)
     left = not_carried(pages, c)
     if left:
         lines += ["", "Not carried, by your choice:"] + [f"  {page.title}: {n}" for page, n in left]
@@ -90,9 +91,9 @@ def toggle_all(screen: Screen) -> None:
         screen.set(r.id, on)
 
 
-def build(planner, c: Choices, home: str) -> list[Screen]:
-    """The screens for the pages of the planner. They change c."""
-    pages = planner.pages()
+def build(session: Session, c: Choices, home: str) -> list[Screen]:
+    """The screens for the pages of the Session. They change c."""
+    pages = session.pages()
 
     def set_repo(_id: str, value: str) -> str:
         path = expand(value or "~/.dotfiles", home)
@@ -118,7 +119,7 @@ def build(planner, c: Choices, home: str) -> list[Screen]:
     ]
     out += [_page_screen(page, c) for page in pages if page.items]
     out.append(Screen("review", "review", "The plan", "", [], lambda _id: None, lambda _id, _v: "",
-                      lambda _id: "", lines=lambda: review_lines(planner, pages, c)))
+                      lambda _id: "", lines=lambda: review_lines(session, pages, c)))
     return out
 
 

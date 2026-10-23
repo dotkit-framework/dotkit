@@ -20,8 +20,7 @@ def main() -> None:
     out = Path(sys.argv[1])
     h = fake.Home()
     try:
-        s = fake.scanner(h, used_mac(h)).run()
-        p = fake.planner(s)
+        p = fake.session(h, used_mac(h))
         home = str(h.home)
         c = p.defaults(str(h.home / ".dotfiles"))
         if curses_ui.available():

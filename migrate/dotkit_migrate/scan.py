@@ -6,11 +6,9 @@ timeout; a command that fails gives an empty result.
 
 from __future__ import annotations
 
-import getpass
 import json
 import os
 import re
-import socket
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,7 +18,7 @@ from . import catalog
 from ._compat import tomllib
 from . import secrets
 from .context import Context, is_managed, read_json, read_text, version_key
-from .proc import BREW_ENV
+from .catalog import BREW_ENV
 
 # Shell files that the base links, and the layer files of yours that the
 # base reads after them, in the order zsh and bash read them.
@@ -113,11 +111,6 @@ class OtherConfig:
 @dataclass
 class Scan:
     home: str
-    user: str
-    hostname: str = ""
-    login_shell: str = ""
-    git_name: str = ""
-    git_email: str = ""
     brew: str = ""  # the brew command, "" without Homebrew
     formulae: list[str] = field(default_factory=list)
     casks: list[str] = field(default_factory=list)
@@ -561,25 +554,10 @@ class Scanner:
             if self.h(rel).exists():
                 self.s.secret_files.append(rel)
 
-    # --- Identity
-
-    def scan_identity(self) -> None:
-        s = self.s
-        git = self.runner.which("git", ("/usr/bin",)) or "/usr/bin/git"
-        s.git_name = (self.runner.run([git, "config", "--global", "--includes", "--get", "user.name"], timeout=30) or "").strip()
-        s.git_email = (self.runner.run([git, "config", "--global", "--includes", "--get", "user.email"], timeout=30) or "").strip()
-        out = self.runner.run(["/usr/bin/dscl", ".", "-read", f"/Users/{s.user}", "UserShell"], timeout=30) or ""
-        m = re.search(r"UserShell:\s*(\S+)", out)
-        s.login_shell = m.group(1) if m else self.env.get("SHELL", "")
-
     def run(self) -> Scan:
-        try:
-            user = getpass.getuser()
-        except (KeyError, OSError):
-            user = self.env.get("USER", "")
-        self.s = Scan(home=str(self.home), user=user, hostname=socket.gethostname().split(".")[0])
+        self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_identity, self.scan_brew, self.scan_app_store, self.scan_npm, self.scan_python_tools,
+            self.scan_brew, self.scan_app_store, self.scan_npm, self.scan_python_tools,
             self.scan_cargo, self.scan_go, self.scan_mise, self.scan_version_managers, self.scan_frameworks,
             self.scan_shell_files, self.scan_config_files, self.scan_other_config,
         ):

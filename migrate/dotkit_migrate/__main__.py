@@ -12,9 +12,7 @@ from pathlib import Path
 
 from . import adopt as adopt_mod
 from . import base as base_mod
-from . import context
-from . import plan as plan_mod
-from . import scan, writer
+from . import context, registry, writer
 from .ui import curses_ui, plain
 
 # make_context(home, base) -> the Context that the scan reads. Tests give a fake Mac.
@@ -38,8 +36,10 @@ def info(msg: str) -> None:
 
 
 def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
-    home = os.environ.get("HOME") or str(Path.home())
     b = base_mod.Base(Path(a.base)) if a.base else base_mod.Base()
+    # One home for the repository path and the scan.
+    ctx = make_context(Path(os.environ.get("HOME") or str(Path.home())), b)
+    home = str(ctx.home)
     repo = context.expand(a.repo or os.environ.get("DOTFILES") or "~/.dotfiles", home)
     # The full-screen wizard needs a terminal on both sides; the plain
     # prompts only need one for the answers.
@@ -53,20 +53,20 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
             info(f"dotkit setup: {error}")
             return 2
     info("Scanning this Mac. This reads files and runs brew and mas; it changes nothing.")
-    s = scan.Scanner(make_context(Path(home), b)).run()
-    p = plan_mod.Planner(s, b, check_syntax)
-    c = p.defaults(repo)
-    blockers = p.build(c).blockers
+    session = registry.Session(ctx, check_syntax=check_syntax)
+    session.scan()
+    c = session.defaults(repo)
+    blockers = session.build(c).blockers
     if blockers and not a.dry_run:
         info("dotkit setup: " + "\n".join(blockers))
         return 2
     if interactive:
         frontend = curses_ui if (not a.plain and curses_ui.available()) else plain
-        ok = frontend.run(p, c, home, a.dry_run)
+        ok = frontend.run(session, c, home, a.dry_run)
         if not ok:
             info("Stopped. Nothing changed.")
             return 1
-    result = p.build(c)
+    result = session.build(c)
     if result.blockers and not a.dry_run:
         info("dotkit setup: " + "\n".join(result.blockers))
         return 2
@@ -89,13 +89,13 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
 
 
 def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
-    home = os.environ.get("HOME") or str(Path.home())
     b = base_mod.Base(Path(a.base)) if a.base else base_mod.Base()
+    ctx = make_context(Path(os.environ.get("HOME") or str(Path.home())), b)
     repo = Path(a.repo)
     declared = json.loads(a.declared) if a.declared else {}
     info("Scanning this Mac. It changes nothing.")
-    s = scan.Scanner(make_context(Path(home), b)).run()
-    m = adopt_mod.missing(s, repo, b, declared, a.all)
+    facts = registry.Session(ctx).scan()
+    m = adopt_mod.missing(facts, repo, b, declared, a.all)
     if m.empty:
         print("The lists have everything that this Mac has.", flush=True)
         return 0

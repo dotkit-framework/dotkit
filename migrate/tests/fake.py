@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from dotkit_migrate import base, context, plan, scan
+from dotkit_migrate import base, context, registry
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -118,9 +118,6 @@ def context_of(h: Home, runner: FakeRunner, env: dict[str, str] | None = None) -
     return context.Context(h.home, env or {}, runner, base.Base(ROOT), h.apps, h.prefix)
 
 
-def scanner(h: Home, runner: FakeRunner, env: dict[str, str] | None = None) -> scan.Scanner:
-    return scan.Scanner(context_of(h, runner, env))
-
-
-def planner(s: scan.Scan, check=None) -> plan.Planner:
-    return plan.Planner(s, base.Base(ROOT), check)
+def session(h: Home, runner: FakeRunner, env: dict[str, str] | None = None, check=None) -> registry.Session:
+    """The Session of a fake Mac. check is the check_syntax of the shell lines; None: no check."""
+    return registry.Session(context_of(h, runner, env), check_syntax=check)

@@ -15,14 +15,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import base as base_mod
-from . import catalog, checks, rcparse, secrets, writer
+from . import catalog, rcparse, secrets
 from . import docs as docs_mod
-from . import report as report_mod
 from .docs import mas_label, mas_problem, nix_string, tap_name_problem, tap_problem
-from .model import Choices, Item, Page, Plan
+from .model import Choices, Facts, Item, Page
 from .report import plural
 from . import scan as scan_mod
-from .context import expand, tilde
+from .context import tilde
 from .scan import Scan, ShellFile
 
 # --- The choices
@@ -244,13 +243,10 @@ class Planner:
                                         "your global mise tools; goes to config/mise.toml"))
         return items
 
-    def defaults(self, repo: str) -> Choices:
-        return Choices.defaults(repo, self.pages())
-
     # --- The plan
 
-    def build(self, c: Choices) -> Plan:
-        return _Build(self, c).run()
+    def plan(self, facts: Facts, c: Choices, txn: docs_mod.Txn) -> None:
+        _Build(self, facts, c, txn).run()
 
 
 def tap_line(t: scan_mod.Tap) -> str:
@@ -319,19 +315,17 @@ def mas_lines(apps: list[tuple[int, str]], taken: dict[str, int],
 
 
 class _Build:
-    def __init__(self, planner: Planner, c: Choices):
+    def __init__(self, planner: Planner, facts: Facts, c: Choices, txn: docs_mod.Txn):
         self.p = planner
         self.s = planner.scan
+        self.identity = facts.identity
         self.base = planner.base
         self.c = c
         self.home = self.s.home
-        self.repo = Path(expand(c.repo, self.home))
         # The items of the pages: a deselected item that was on by default is "Not carried, by your choice".
         self.items = {i.id: i for page in planner.pages() for i in page.items}
-        self.template = self.base.template
-        # The planning steps write only through this transaction; render() turns the documents into the plan.
-        self.docs = docs_mod.Docs("setup", self.template, self.repo, home=self.home, host=self.s.hostname)
-        self.txn = self.docs.begin("plan")
+        # The planning steps write only through this transaction.
+        self.txn = txn
         self.r = self.txn.report
         # Repository files that are merged from several of yours, and what they are from.
         self.merged: dict[str, str] = {}
@@ -351,7 +345,7 @@ class _Build:
         if items:
             self.r.todo("Not carried, by your choice", intro, items)
 
-    def run(self) -> Plan:
+    def run(self) -> None:
         # Your mise config first: the tools that it has are not added again.
         if self.mise_layered():
             self.txn.mise().set_base(self.s.mise_config.read_text(encoding="utf-8", errors="replace"))
@@ -363,9 +357,6 @@ class _Build:
         self.config_files()
         self.other_config()
         self.secret_files()
-        self.misc()
-        self.txn.commit()
-        return self.render()
 
     # --- Homebrew and the App Store
 
@@ -632,10 +623,11 @@ class _Build:
             r.todo("Shell frameworks",
                    "dotkit's zsh does not load them. Remove each one when you no longer need it.",
                    [f"{n}: `rm -rf {p}`" for n, p in s.frameworks.items()])
-        shell = os.path.basename(s.login_shell or "")
-        if s.login_shell and not s.login_shell.endswith("/sw/bin/zsh") and shell != "zsh":
+        login_shell = self.identity.login_shell
+        shell = os.path.basename(login_shell or "")
+        if login_shell and not login_shell.endswith("/sw/bin/zsh") and shell != "zsh":
             r.todo("Login shell",
-                   f"Your login shell is {s.login_shell}. dotkit makes the zsh of Nix the login shell, so the "
+                   f"Your login shell is {login_shell}. dotkit makes the zsh of Nix the login shell, so the "
                    f"config of {shell} is not used in new terminals.", [])
 
     def findings(self, name: str, res: rcparse.Result) -> None:
@@ -797,36 +789,6 @@ class _Build:
         if items:
             self.r.todo("Logins", "These files hold logins. They stay in place and are not in the repository.",
                         items)
-
-    def misc(self) -> None:
-        for w in self.s.warnings:
-            self.r.todo("Scan errors", "Part of the scan failed. Check these by hand.", [w])
-
-    # --- Rendering the files
-
-    def render(self) -> Plan:
-        """The plan from the documents, after the transaction of the planning steps is committed."""
-        s, docs = self.s, self.docs
-        repo_rel = tilde(self.repo, self.home)
-        user = (
-            "# Your macOS account and this repository. dotkit's scripts/setup writes it.\n"
-            "rec {\n"
-            f"  name = {nix_string(s.user)};\n"
-            '  home = "/Users/${name}";\n'
-            f'  dotfiles = "${{home}}/{nix_string(repo_rel[2:])[1:-1]}";\n'
-            "}\n"
-        )
-        core = docs.begin("core")
-        core.file("nix/user.nix").set(user)
-        core.shell_nix().set_keymap(self.c.keymap)
-        core.commit()
-        plan = writer.render(docs)
-        checks.check(docs, plan)
-        report = report_mod.render(docs.report, s.hostname, repo_rel)
-        plan.report = "".join(writer.mask_lines(report.splitlines(keepends=True)))
-        plan.files["MIGRATION.md"] = plan.report
-        plan.summary = writer.mask_lines(checks.summary(plan, docs.report, s.git_name, s.git_email))
-        return plan
 
 
 def _shell_left_out(name: str, res: rcparse.Result, repo_file: str) -> str:

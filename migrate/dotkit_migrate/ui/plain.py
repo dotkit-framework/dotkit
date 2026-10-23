@@ -11,6 +11,7 @@ import re
 import sys
 
 from ..model import Choices
+from ..registry import Session
 from . import screens as screens_mod
 from .screens import Quit, Screen
 
@@ -127,7 +128,7 @@ class Plain(screens_mod.Frontend):
             raise Quit()
 
 
-def run(planner, c: Choices, home: str, dry_run: bool = False) -> bool:
+def run(session: Session, c: Choices, home: str, dry_run: bool = False) -> bool:
     """Asks the questions. False when the person says no at the end, or the input ends."""
     print("dotkit setup. Nothing on this Mac changes before the last question.\n")
-    return screens_mod.run(Plain(dry_run), screens_mod.build(planner, c, home))
+    return screens_mod.run(Plain(dry_run), screens_mod.build(session, c, home))

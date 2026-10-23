@@ -108,9 +108,11 @@ migrate/
 Rules:
 
 - `migrators/` import only `context`, `catalog`, `model`, `docs` (through
-  the `Txn` they get), `declared`, `rcparse`, `secrets`, `base`, and their
-  own helpers. They never import `ui/`, `writer`, or `curses`, and never
-  write a file (section 6).
+  the `Txn` they get), `declared`, `rcparse`, `secrets`, `base`, `_compat`
+  (for `tomllib`), `report` (only the text helper `plural`), and their own
+  helpers. They never import `ui/`, `writer`, `proc`, `subprocess`, or
+  `curses`, and never write a file (section 6). Constants that a scan
+  passes to the runner, such as `BREW_ENV`, are data in `catalog.py`.
 - `ui/` imports only `model`, `registry` (the Session), and the path helpers
   from `context`.
 - Only `writer.py` writes to disk.
@@ -155,7 +157,8 @@ class Migrator:
 
     def plan(self, facts: Facts, choices: Choices, txn: Txn) -> None:
         """Pure: add to the documents and the report through txn. May read the
-        template, base files, and files that the scan found."""
+        template and the base (facts.base), and files that the scan found.
+        Runs no command; the one exception is facts.check_syntax."""
 
     def adopt(self, facts: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:
         """`dotkit migrate`: add what the repository lacks. Default: nothing."""
@@ -167,7 +170,14 @@ class Migrator:
 
 A migrator's `scan` sees only the `Context`. Other migrators' facts are read
 in `pages`, `plan`, and `adopt`, when every scan has finished. So scan order
-never matters.
+never matters. `pages`, `plan`, and `adopt` never get the `Context`: it has
+the runner and the environment, which belong to the scan. What they need
+from outside comes through `Facts` (section 4.2).
+
+Pure helpers of one migrator that others call take facts and choices, for
+example `config_files.layered_mise(facts, choices)` and
+`config_files.merged_sources(facts, choices)` (the files merged into one
+repository file). They must handle missing facts (`None`).
 
 ### 4.2 Facts and Identity
 
@@ -180,8 +190,14 @@ class Identity:                          # core scan, today's scan_identity (sca
 class Facts:
     identity: Identity
     warnings: List[str]                  # expected problems, from every migrator
+    base: Base                           # set by the Session: the dotkit base (read-only data)
+    check_syntax: Optional[Callable[[str, str], bool]]   # set by the Session; None: no check
     def get(self, key: str) -> Optional[object]   # None if that scan failed or was skipped
 ```
+
+`base` and `check_syntax` are the only things from outside the facts that
+`pages`, `plan`, and `adopt` use. `check_syntax(shell, text)` runs `zsh -n` or
+`bash -n` in production and is a fake in the tests.
 
 Each migrator module has a typed accessor, for example
 `def facts_of(f: Facts) -> Optional[BrewFacts]`. A reader must handle `None`.
@@ -629,8 +645,9 @@ Rules that keep this enforceable:
 - **Migrators cannot write files.** An AST test over `migrators/` fails on
   `open(…)` with a write or append mode, `.write_text`, `.write_bytes`,
   `shutil.copy*`, `shutil.copytree`, `os.replace`, `os.rename`, `os.remove`,
-  `os.unlink`, and `subprocess`. Commands run only through `ctx.runner`
-  (read-only by contract).
+  `os.unlink`, and `subprocess`, and on an import of `proc`, `subprocess`,
+  `writer`, `ui`, or `curses` (section 3). Commands run only through
+  `ctx.runner` (read-only by contract).
 - **The guard and the verification fail closed.** If either raises, the run
   stops and nothing is written (section 7.2).
 - **A property test:** a home directory with a `fake.TOKENS` value in every
@@ -1005,7 +1022,7 @@ class Runtimes(Migrator):
         lines = runtime_lines(facts_of(f))                              # today's plan.py:123-141
         return [Page("runtimes", self.title, "config/mise.toml", INTRO, "checklist",
                      [Item(f"runtime:{t}", f"{t} {', '.join(v)}", default=False) for t, v in lines.items()],
-                     note="off: mise installs them; the base has " + base_runtimes(ctx.base))]
+                     note="off: mise installs them; the base has " + base_runtimes(f.base))]
 
     def plan(self, f, c, txn):
         user = config_files.layered_mise(f, c)                          # your config, if carried as "layer"
@@ -1016,7 +1033,7 @@ class Runtimes(Migrator):
         # Both idiomatic settings are arrays; your value replaces dotkit's completely.
         for key in IDIOMATIC:
             if user is not None and key in user.settings:
-                base_val = ctx.base.mise_settings.get(key, [])
+                base_val = f.base.mise_settings.get(key, [])
                 union = dedup(list(base_val) + list(user.settings[key]))   # dotkit's order first, then yours
                 if union != user.settings[key] and not txn.mise().replace_setting(
                         key, union, expect=user.settings[key]):
@@ -1025,7 +1042,7 @@ class Runtimes(Migrator):
         # Never write these keys when you do not set them: a copy would freeze dotkit's list.
         for vm in facts_of(f).managers:                                 # today's plan.py:468-493
             lines = [x for x in shell.findings(f) if x.source == vm.name]   # None-safe helper
-            txn.report.todo("Version managers", intro(ctx.base), [step_text(vm, lines, c)])
+            txn.report.todo("Version managers", intro(f.base), [step_text(vm, lines, c)])
 ```
 
 - **`Base.mise_settings`** reads `[settings]` of the base `config/mise.toml`,
@@ -1141,7 +1158,7 @@ Rules for every step:
 | 5 | **Documents and transactions.** `docs.py` with every type of section 4.4 (`ListDoc` covers brews, casks, taps, and mas); `MiseDoc` settings API; `Base.mise_settings`; `_Build` writes through one `Txn` instead of `self.brews`, `self.mise_lines`, `self.plan`; its `render()` becomes document renders | no change, except three ruled cases that no golden reaches: a copy to a taken repository path is not made and gets a to-do (the old code let the last copy win, behind both links); a mise config with a secret forced to "layer" no longer suppresses tools; a tap name with whitespace is not written and gets the to-do | 2, 4 | STD; `tests/test_docs.py` (load/add/render, conflicts, add-time checks, `replace_setting` refusals and undo, commit/rollback) |
 | 6 | **Writer and checks.** `writer.py` (render, plan-time guard, `write_new` with write-time verification) replaces `write.py`; `checks.py` (links, moved aside, blockers, summary); `mask_lines` moves to `writer.py`, which also masks the summary; `SecretInRepository` ends the run with a clean error and exit 2; a repository path inside a copied directory, or one that a copied directory would contain, counts as taken (rule 4) | no change on the goldens; two ruled cases that no golden reaches: a summary line with a secret is masked, and an overlapping directory copy is not made and gets the `other_config` to-do | 5 | STD; `write.py` is gone; a test that stages a secret past the guard aborts with no directory left; a summary line with a token is masked; `~/.config/bash` selected for adoption next to a carried `~/.bash_profile` is not copied, has no link, and gets the to-do, and a copied directory that would contain `config/zsh/zshrc` is refused the same way |
 | 7 | **Pages, per-item choices, and the new UI.** `Page`/`Item`/`Choices` of section 4.3 (Homebrew as three pages; one shell item per file); the planner returns pages instead of `groups`/`file_items`/`adoptable`, and `_Build` reads `Choices.picked`/`options`; "Not carried, by your choice"; `ui/screens.py`, `ui/curses_ui.py`, `ui/plain.py` replace `wizard.py` and `prompts.py`; `ScriptedFrontend`; `wizard_child.py` writes the new `Choices` JSON; PTY tests rewritten for the new screens, plain-prompt counts taken from the planner | UI and Choices change; default-choice goldens unchanged | 6 | STD; `wizard.py` and `prompts.py` are gone; new goldens with deselected items; UI flow tests |
-| 8 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session`. The first commit replaces `Planner` with `Session` and switches `ui/`, `__main__`, and the tests to it; the code that is not yet split runs as a private last entry of the registry. Then one migrator per commit, in `MIGRATORS` order: its scan step and its `Scan` fields, its `_Build` part, its pages, and its tests (into `tests/migrators/`) move together. rcparse parsing moves into the `shell` scan, for the page labels; `plan` parses again with the selection-aware chain (section 4.3). `Facts.get`, `needs` | no change (scan warnings now come in `MIGRATORS` order; only visible when several steps fail) | 7 | STD per commit; at the end `plan.py`, `scan.py`, the `Scan` dataclass, `_Build`, and the private registry entry are gone |
+| 8 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session`. The first commit replaces `Planner` with `Session` and switches `ui/`, `__main__`, and the tests to it; the code that is not yet split runs as a private last entry of the registry. Then one migrator per commit, in `MIGRATORS` order: its scan step and its `Scan` fields, its `_Build` part, its pages, and its tests (into `tests/migrators/`) move together. rcparse parsing moves into the `shell` scan, for the page labels; `plan` parses again with the selection-aware chain (section 4.3). `Facts.get`, `Facts.base`, `Facts.check_syntax`, `needs`. One `Txn` per migrator (owner = its key), committed in `MIGRATORS` order, and a core `Txn` for the keymap, `nix/user.nix`, and the scan warnings; no rollback yet (step 11). The identity scan is core and runs first. `Session.scan` catches an exception per migrator and records `"<key>: <type>: <message>"` as a warning, until step 11 turns this into `Failure`. `adopt.py` (until step 12) reads the migrators' facts and imports `tap_lines`/`mas_lines` from `migrators/homebrew.py` and `migrators/appstore.py`. The whole-plan tests move to `tests/test_session.py` | no change, except on the failure path that no golden reaches: a scan warning now starts with the migrator key (`homebrew: …` instead of `brew: …`), warnings come in `MIGRATORS` order, and a migrator stops at its first failing part (cargo failing now also loses the Go tools of `built_tools`) | 7 | STD per commit; at the end `plan.py`, `scan.py`, the `Scan` dataclass, `_Build`, `migrators/_rest.py`, and the private registry entry are gone |
 | 9 | **Runtimes rules.** The union rule for both idiomatic settings (section 12.1); runtime versions in report text and page note from `Base.mise` (replaces `plan.py:181`, `490-493`); `.tool-versions` in the hint; `VersionManagerSpec.env_var` (`NVM_DIR`, `FNM_DIR`, `PYENV_ROOT`, …) is respected by detection and by the npm scan, and `npm_globs` become relative to the manager's directory; the version-manager item says "config/mise.toml has these versions now" only for tools that `MiseDoc.add_tool` accepted, and for a tool that your mise config already has it says "config/mise.toml has <tool> from your mise config already, so these versions were not added; `mise use -g <tool>@<version>` for one you need" (today `plan.py:482-483` checks only that the page is on) | changes report text and possibly `config/mise.toml` | 8 | goldens updated and reviewed; tests: pyenv with `python` in your mise config gets the second text; your config without the keys writes nothing; a single-line key gets the union and parses; a multi-line or dotted key gives the to-do; base values come from the base file |
 | 10 | **Registry invariants.** Unique page keys and item-id prefixes; `sections` ⊆ `SECTIONS` (`ORDER` becomes `SECTIONS`); the empty home; the AST no-write test; the secret property test; every static section intro and rcparse hint passes `secrets.line_secret(...) is None` | no change | 8 | the tests pass; a migrator that writes a file, or copies a token file, fails them; an intro with "password manager" in it fails |
 | 11 | **Crash isolation.** One transaction per migrator; isolated `scan` and `pages`; `Failure`; the identity pseudo-migrator; `manual_steps` for every migrator (section 7.5 texts for `shell` and `config_files`); "Problems during the migration"; summary and stderr lines; `--debug`; masking; strict mode (`fake.session` default, `DOTKIT_MIGRATE_STRICT=1` in the e2e job, hidden `--strict`); exit code 0 with failures; in the UI, the warning line and the review Problems block (section 8) | the scan catch-all (`scan.py:648-651`, by then inside the migrators) becomes isolation; plan crashes are newly isolated | 10 | `tests/test_isolation.py`; UI flow tests for the warning line and the Problems block; goldens unchanged (no faults in the fixtures) |

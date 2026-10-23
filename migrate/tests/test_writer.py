@@ -90,8 +90,7 @@ class WriteTests(unittest.TestCase):
     def test_write(self):
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        s = fake.scanner(h, used_mac(h)).run()
-        p = fake.planner(s)
+        p = fake.session(h, used_mac(h))
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         writer.write_new(result, TEMPLATE)
         repo = h.home / ".dotfiles"
@@ -115,7 +114,7 @@ class WriteTests(unittest.TestCase):
         h.write(".config/nvim/nested/settings.lua", "return {}\n")
         for rel in (".config/nvim/.DS_Store", ".config/nvim/nested/.DS_Store"):
             h.write(rel).write_bytes(b"metadata\0binary")
-        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        p = fake.session(h, fake.brew_runner())
         self.assertIn(".config/nvim", other_config(p))
         c = p.defaults(str(h.home / ".dotfiles"))
         pick(c, "other:.config/nvim")
@@ -130,8 +129,7 @@ class WriteTests(unittest.TestCase):
     def test_write_leaves_other_directories_alone(self):
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        s = fake.scanner(h, used_mac(h)).run()
-        p = fake.planner(s)
+        p = fake.session(h, used_mac(h))
         result = p.build(p.defaults(str(h.home / "code")))
         other = h.write("code.partial/keep.txt", "mine\n")
         writer.write_new(result, TEMPLATE)
@@ -149,8 +147,7 @@ class VerifyTests(unittest.TestCase):
     def setUp(self):
         self.h = fake.Home()
         self.addCleanup(self.h.cleanup)
-        s = fake.scanner(self.h, used_mac(self.h)).run()
-        p = fake.planner(s)
+        p = fake.session(self.h, used_mac(self.h))
         c = p.defaults(str(self.h.home / ".dotfiles"))
         pick(c, "other:.config/nvim")
         self.plan = p.build(c)
@@ -218,7 +215,7 @@ class VerifyTests(unittest.TestCase):
                 h = fake.Home()
                 self.addCleanup(h.cleanup)
                 runner, env = make(h)
-                p = fake.planner(fake.scanner(h, runner, env).run(), test_golden.check_syntax)
+                p = fake.session(h, runner, env, check=test_golden.check_syntax)
                 repo = str(h.home / ".dotfiles")
                 plan = p.build(choose(p, repo) if choose else p.defaults(repo))
                 writer.write_new(plan, TEMPLATE)

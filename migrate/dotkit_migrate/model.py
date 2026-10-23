@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -61,6 +63,40 @@ class Choices:
         return {"repo": self.repo, "keymap": self.keymap,
                 "picked": {k: sorted(v) for k, v in sorted(self.picked.items())},
                 "options": dict(sorted(self.options.items()))}
+
+
+@dataclass
+class Identity:
+    """Who and where: the core scan of the Session, before the migrators."""
+
+    home: str
+    user: str
+    hostname: str = ""
+    login_shell: str = ""
+    git_name: str = ""
+    git_email: str = ""
+
+
+class Facts:
+    """What every scan found, by migrator key, for pages(), plan(), and adopt.
+
+    base and check_syntax are set by the Session. They are the only things
+    from outside the facts that the migrators use: base is the dotkit base
+    (read-only data), and check_syntax(shell, text) runs zsh -n or bash -n
+    (None: no check).
+    """
+
+    def __init__(self, identity: Identity, base: Any, check_syntax: Callable[[str, str], bool] | None = None,
+                 by_key: dict[str, object] | None = None, warnings: list[str] | None = None):
+        self.identity = identity
+        self.base = base
+        self.check_syntax = check_syntax
+        self._by_key = dict(by_key or {})
+        self.warnings = list(warnings or [])
+
+    def get(self, key: str) -> object | None:
+        """The facts of one migrator, or None when its scan failed or did not run."""
+        return self._by_key.get(key)
 
 
 @dataclass

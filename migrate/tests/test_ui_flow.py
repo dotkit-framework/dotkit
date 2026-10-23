@@ -54,8 +54,8 @@ class FlowTests(unittest.TestCase):
         self.h = fake.Home()
         self.addCleanup(self.h.cleanup)
 
-    def planner(self, runner=None):
-        return fake.planner(fake.scanner(self.h, runner if runner is not None else used_mac(self.h)).run())
+    def session(self, runner=None):
+        return fake.session(self.h, runner if runner is not None else used_mac(self.h))
 
     def run_flow(self, p, **kw):
         c = p.defaults(str(self.h.home / ".dotfiles"))
@@ -64,7 +64,7 @@ class FlowTests(unittest.TestCase):
         return ok, c, ui
 
     def test_page_order(self):
-        p = self.planner()
+        p = self.session()
         ok, _, ui = self.run_flow(p)
         self.assertTrue(ok)
         keys = [page.key for page in p.pages()]
@@ -75,15 +75,15 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(ui.steps, [(i, total) for i in range(1, total + 1)])
 
     def test_empty_pages_are_skipped(self):
-        ok, _, ui = self.run_flow(self.planner(fake.FakeRunner()))
+        ok, _, ui = self.run_flow(self.session(fake.FakeRunner()))
         self.assertTrue(ok)
         self.assertEqual(ui.shown, ["repo", "keymap", "review"])
         # Only formulae and the default tap of Homebrew: no screen for casks, taps, and the rest.
-        ok, _, ui = self.run_flow(self.planner(fake.brew_runner(formulae=["wget"])))
+        ok, _, ui = self.run_flow(self.session(fake.brew_runner(formulae=["wget"])))
         self.assertEqual(ui.shown, ["repo", "keymap", "formulae", "review"])
 
     def test_defaults(self):
-        p = self.planner()
+        p = self.session()
         ok, c, ui = self.run_flow(p)
         self.assertTrue(ok)
         self.assertEqual(c, p.defaults(str(self.h.home / ".dotfiles")))
@@ -91,7 +91,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(ui.review, p.build(c).summary)
 
     def test_single_items(self):
-        p = self.planner()
+        p = self.session()
         ok, c, ui = self.run_flow(p, answers={
             "keymap": {"vi": True},
             "formulae": {"brew:hashicorp/tap/terraform": False},
@@ -117,14 +117,14 @@ class FlowTests(unittest.TestCase):
         self.assertIn("1 cargo tool -> config/mise.toml", plan.summary)
 
     def test_an_option_that_the_item_does_not_have(self):
-        p = self.planner()
+        p = self.session()
         ok, c, ui = self.run_flow(p, answers={"files": {"file:.npmrc": "replace"}})
         self.assertTrue(ok)
         self.assertEqual(ui.errors["file:.npmrc"], "replace is not one of: keep, dotkit")
         self.assertEqual(c.option("file:.npmrc"), "keep")
 
     def test_a_repository_outside_the_home_directory(self):
-        p = self.planner()
+        p = self.session()
         ok, c, ui = self.run_flow(p, answers={"repo": "/tmp/elsewhere"}, quit_at="keymap")
         self.assertFalse(ok)
         self.assertIn("Use a directory in", ui.errors["repo"])
@@ -133,7 +133,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual((ok, c.repo, ui.errors["repo"]), (True, str(self.h.home / "dots"), ""))
 
     def test_back_rebuilds_the_plan(self):
-        p = self.planner()
+        p = self.session()
         ui = ScriptedFrontend(moves={"review": [-1], "other": [1, 1]}, answers={"other": {"other:.bashrc": True}})
         c = p.defaults(str(self.h.home / ".dotfiles"))
         self.assertTrue(screens.run(ui, screens.build(p, c, str(self.h.home))))
@@ -141,20 +141,20 @@ class FlowTests(unittest.TestCase):
         self.assertIn("1 other config file or directory -> config/, linked with dotkit.links", ui.review)
 
     def test_back_on_the_first_screen_stays(self):
-        p = self.planner()
+        p = self.session()
         ui = ScriptedFrontend(moves={"repo": [-1]})
         c = p.defaults(str(self.h.home / ".dotfiles"))
         self.assertTrue(screens.run(ui, screens.build(p, c, str(self.h.home))))
         self.assertEqual(ui.shown[:3], ["repo", "repo", "keymap"])
 
     def test_quit(self):
-        ok, _, ui = self.run_flow(self.planner(), quit_at="files")
+        ok, _, ui = self.run_flow(self.session(), quit_at="files")
         self.assertFalse(ok)
         self.assertEqual(ui.shown[-1], "files")
         self.assertEqual(ui.review, [])
 
     def test_all_or_none(self):
-        p = self.planner()
+        p = self.session()
         c = p.defaults(str(self.h.home / ".dotfiles"))
         by_id = {s.id: s for s in screens.build(p, c, str(self.h.home))}
         screens.toggle_all(by_id["taps"])  # all selected: none
@@ -166,7 +166,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(c.picked["other"], {"other:.config/nvim", "other:.bashrc"})
 
     def test_screens_show_the_pages(self):
-        p = self.planner()
+        p = self.session()
         c = p.defaults(str(self.h.home / ".dotfiles"))
         by_id = {s.id: s for s in screens.build(p, c, str(self.h.home))}
         cargo = by_id["cargo"]
@@ -188,7 +188,7 @@ class PlainTests(unittest.TestCase):
     def setUp(self):
         self.h = fake.Home()
         self.addCleanup(self.h.cleanup)
-        p = fake.planner(fake.scanner(self.h, used_mac(self.h)).run())
+        p = fake.session(self.h, used_mac(self.h))
         self.c = p.defaults(str(self.h.home / ".dotfiles"))
         self.shell = next(s for s in screens.build(p, self.c, str(self.h.home)) if s.id == "shell")
 
