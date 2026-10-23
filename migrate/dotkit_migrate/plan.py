@@ -21,6 +21,7 @@ from .model import Choices, Facts, Item, Page
 from .report import plural
 from .context import tilde
 from .migrators import NOT_CARRIED
+from .migrators import tools as tools_mod
 from .scan import Scan, ShellFile
 
 # --- The choices
@@ -109,9 +110,6 @@ class Planner:
             out.append(Page(key, title, dest, intro, "checklist", list(unique.values()), note))
 
         for key, title, pkgs, intro in (
-            ("npm", "npm, pnpm, and bun tools", [p for p in s.npm if p.name not in catalog.NPM_NOT_IN_MISE],
-             "Global tools of npm, pnpm, and bun. The selected ones move to mise; the old copies stay until you "
-             "remove them."),
             ("pipx", "pipx and uv tools", s.pipx,
              "Tools of pipx and uv tool. The selected ones move to mise; the old copies stay until you remove "
              "them."),
@@ -215,12 +213,14 @@ class _Build:
     def __init__(self, planner: Planner, facts: Facts, c: Choices, txn: docs_mod.Txn):
         self.p = planner
         self.s = planner.scan
+        self.facts = facts
         self.identity = facts.identity
         self.base = planner.base
         self.c = c
         self.home = self.s.home
         # The items of the pages: a deselected item that was on by default is "Not carried, by your choice".
-        self.items = {i.id: i for page in planner.pages() for i in page.items}
+        self.pages = planner.pages()
+        self.items = {i.id: i for page in self.pages for i in page.items}
         # The planning steps write only through this transaction.
         self.txn = txn
         self.r = self.txn.report
@@ -263,53 +263,13 @@ class _Build:
 
     def tools(self) -> None:
         s, r = self.s, self.r
-        mise = self.txn.mise()
-
-        def add(key: str, comment: str) -> bool:
-            return mise.add_tool(key, "latest", comment)
-
         groups = (
-            ("npm", s.npm, "npm", "# From npm, pnpm, and bun (global packages), see MIGRATION.md.",
-             "npm uninstall -g {name}"),
-            ("pipx", s.pipx, "pipx", "# From pipx and uv tool, see MIGRATION.md.", "{remove}"),
-            ("cargo", s.cargo, "cargo", "# From cargo install, see MIGRATION.md.", "cargo uninstall {name}"),
-            ("go", s.go, "go", "# From ~/go/bin, see MIGRATION.md.", "rm {where}"),
+            ("pipx", s.pipx, "# From pipx and uv tool, see MIGRATION.md.", "{remove}"),
+            ("cargo", s.cargo, "# From cargo install, see MIGRATION.md.", "cargo uninstall {name}"),
+            ("go", s.go, "# From ~/go/bin, see MIGRATION.md.", "rm {where}"),
         )
-        for key, pkgs, backend, comment, remove in groups:
-            carried, manual, old, left = [], [], [], []
-            for p in pkgs:
-                if key == "npm" and p.name in catalog.NPM_NOT_IN_MISE:
-                    manual.append(f"`{p.name}` ({p.where}): {catalog.NPM_NOT_IN_MISE[p.name]}")
-                    continue
-                if not p.ok:
-                    manual.append(f"`{p.name}` ({p.where}): {p.note}. Add it to config/mise.toml by hand.")
-                    continue
-                spec = f"{backend}:{p.name}"
-                if self.picked(key, f"{key}:{p.name}"):
-                    if add(spec, comment):
-                        carried.append(p)
-                        rm = remove.format(name=p.name, where=p.where,
-                                           remove=("pipx uninstall " if p.where == "pipx" else "uv tool uninstall ")
-                                           + p.name)
-                        old.append(f"`{spec}`, was {p.version or 'installed'} in {p.where}. "
-                                   f"Old copy: `{rm}`" + (f". Note: {p.note}" if p.note else ""))
-                elif self.left_out(f"{key}:{p.name}"):
-                    left.append(f"`{p.name}` ({p.where}): `mise use -g {spec}`")
-                else:
-                    manual.append(f"`{p.name}` ({p.where}): `mise use -g {spec}`")
-            self.not_carried(NOT_CARRIED, left)
-            if carried:
-                r.carried(plural(len(carried), f"{key} tool"), "config/mise.toml")
-                r.todo("Tools that moved to mise",
-                       "mise installs these at the end of setup (`mise install`). The old copies stay, and "
-                       "they can come first in PATH. Remove each one when the mise copy works.",
-                       old)
-            if manual:
-                why = ""
-                if key in catalog.BUILT_FROM_SOURCE:
-                    why = f"mise builds {catalog.BUILT_FROM_SOURCE[key]} tools from source, so they are off by default."
-                r.todo("Tools that are not in mise", (why + " " if why else "") +
-                       "They stay where they are. To add one to config/mise.toml:", manual)
+        for key, pkgs, comment, remove in groups:
+            carried = tools_mod.plan_tools(self.facts, self.c, self.txn, self.pages, key, pkgs, comment, remove)
             if key == "cargo" and carried and not s.has_cargo:
                 r.todo("Tools that moved to mise", "", ["mise needs cargo for these: `mise use -g rust`."])
             if key == "go" and carried and not s.has_go:

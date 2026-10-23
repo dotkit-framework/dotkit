@@ -4,7 +4,8 @@ import itertools
 import re
 import unittest
 
-from dotkit_migrate import catalog, rcparse, scan
+from dotkit_migrate import catalog, rcparse
+from dotkit_migrate.migrators import node_tools
 
 # The literals of rcparse.py before the catalog (commit a75562e).
 OLD_FRAMEWORK = (
@@ -127,7 +128,7 @@ class CatalogRegexTests(unittest.TestCase):
         self.assertGreater(hits, 40)
 
     def test_node_globs(self):
-        self.assertEqual(scan.node_version_globs(), OLD_NODE_GLOBS)
+        self.assertEqual(node_tools.node_version_globs(), OLD_NODE_GLOBS)
 
     def test_names_unique(self):
         for specs in (catalog.VERSION_MANAGERS, catalog.FRAMEWORKS):

@@ -16,6 +16,7 @@ from . import base as base_mod
 from . import catalog
 from ._compat import tomllib
 from . import secrets
+from .migrators import tools as tools_mod
 from .context import Context, is_managed, read_json, read_text, version_key
 
 # Shell files that the base links, and the layer files of yours that the
@@ -49,15 +50,6 @@ _STATE_NAMES = re.compile(
 )
 _MAX_FILES = 300
 _MAX_BYTES = 2_000_000
-
-
-@dataclass
-class Package:
-    name: str
-    version: str = ""
-    where: str = ""  # where it is installed, for the report
-    ok: bool = True  # False: it cannot go to a mise backend; note says why
-    note: str = ""
 
 
 @dataclass
@@ -99,10 +91,9 @@ class OtherConfig:
 @dataclass
 class Scan:
     home: str
-    npm: list[Package] = field(default_factory=list)
-    pipx: list[Package] = field(default_factory=list)
-    cargo: list[Package] = field(default_factory=list)
-    go: list[Package] = field(default_factory=list)
+    pipx: list[tools_mod.Package] = field(default_factory=list)
+    cargo: list[tools_mod.Package] = field(default_factory=list)
+    go: list[tools_mod.Package] = field(default_factory=list)
     has_cargo: bool = False
     has_go: bool = False
     mise_config: Path | None = None
@@ -120,17 +111,6 @@ class Scan:
     warnings: list[str] = field(default_factory=list)
 
 
-def node_version_globs() -> list[tuple[str, str, int]]:
-    """The global npm packages of each Node version: (glob relative to the home, label, index of the version).
-
-    The version managers first, then mise. The order decides the label of a
-    directory that two globs find.
-    """
-    globs = [(pattern, spec.name, index) for spec in catalog.VERSION_MANAGERS for pattern, index in spec.npm_globs]
-    globs.append((".local/share/mise/installs/node/*/lib/node_modules", "mise node", -3))
-    return globs
-
-
 def _secrets_of(p: Path) -> list[secrets.Secret]:
     """The secrets of a file. A file that cannot be checked counts as one with a secret."""
     try:
@@ -144,7 +124,6 @@ class Scanner:
         self.home = ctx.home
         self.runner = ctx.runner
         self.base = ctx.base
-        self.brew_prefix = ctx.brew_prefix
         self.env = ctx.env
 
     def _tilde(self, p: Path) -> str:
@@ -160,81 +139,8 @@ class Scanner:
 
     # --- Global tools of other package managers
 
-    def _node_module_roots(self) -> list[tuple[Path, str]]:
-        roots: list[tuple[Path, str]] = [
-            (self.brew_prefix / "lib/node_modules", "Homebrew node"),
-            (self.h(".npm-global/lib/node_modules"), "~/.npm-global"),
-            (self.h(".local/lib/node_modules"), "~/.local"),
-        ]
-        prefix = re.search(r"(?m)^\s*prefix\s*=\s*(.+?)\s*$", read_text(self.h(".npmrc")))
-        if prefix and not is_managed(self.h(".npmrc")):
-            p = prefix.group(1).replace("${HOME}", str(self.home)).replace("$HOME", str(self.home))
-            roots.append((Path(p).expanduser() / "lib/node_modules", f"npm prefix {prefix.group(1)}"))
-        for pattern, label, index in node_version_globs():
-            for p in sorted(self.home.glob(pattern)):
-                roots.append((p, f"{label} {p.parts[index]}"))
-        # Keg-only Homebrew nodes, for example node@20.
-        for p in sorted(self.brew_prefix.glob("opt/node@*/lib/node_modules")):
-            roots.append((p, f"Homebrew {p.parts[-3]}"))
-        # The npm on PATH, without running it: npm writes a log file for each
-        # command, and the scan writes nothing. Its global packages are in
-        # <prefix>/lib/node_modules, and its prefix is the directory above bin.
-        for var in ("npm_config_prefix", "NPM_CONFIG_PREFIX"):
-            if self.env.get(var):
-                roots.append((Path(self.env[var]).expanduser() / "lib/node_modules", f"npm prefix {self.env[var]}"))
-        npm = self.runner.which("npm")
-        if npm:
-            prefix = Path(npm).parent.parent
-            roots.append((prefix / "lib/node_modules", f"npm in {self._tilde(prefix)}"))
-        seen: set[str] = set()
-        unique = []
-        for p, label in roots:
-            key = os.path.realpath(p)
-            if key not in seen and p.is_dir():
-                seen.add(key)
-                unique.append((p, label))
-        return unique
-
-    def scan_npm(self) -> None:
-        found: dict[str, Package] = {}
-
-        def add(name: str, version: str, where: str, ok: bool = True, note: str = "") -> None:
-            if name in ("npm", "corepack") or name in found:
-                return
-            found[name] = Package(name, version, where, ok, note)
-
-        for root, label in self._node_module_roots():
-            entries = []
-            for p in sorted(root.iterdir()):
-                if p.name.startswith("@") and p.is_dir() and not p.is_symlink():
-                    entries += sorted(p.iterdir())
-                elif not p.name.startswith("."):
-                    entries.append(p)
-            for p in entries:
-                meta = read_json(p / "package.json")
-                if not isinstance(meta, dict) or not meta.get("bin"):
-                    continue
-                name = meta.get("name") or p.name
-                if p.is_symlink():
-                    add(name, "", label, False, "a linked local package (npm link)")
-                    continue
-                add(name, str(meta.get("version", "")), label)
-        pnpm_home = self.env_path("PNPM_HOME", "Library/pnpm")
-        for manifest in sorted(pnpm_home.glob("global/*/package.json")):
-            deps = (read_json(manifest) or {}).get("dependencies") or {}
-            for name, version in sorted(deps.items()):
-                add(name, str(version).lstrip("^~"), "pnpm")
-        bun = self.env_path("BUN_INSTALL", ".bun") / "install/global/package.json"
-        for name, version in sorted(((read_json(bun) or {}).get("dependencies") or {}).items()):
-            add(name, str(version).lstrip("^~"), "bun")
-        for p in sorted(self.h(".volta/tools/user/packages").glob("*.json")):
-            meta = read_json(p) or {}
-            if meta.get("name"):
-                add(meta["name"], str(meta.get("version", "")), "volta")
-        self.s.npm = sorted(found.values(), key=lambda p: p.name)
-
     def scan_python_tools(self) -> None:
-        found: dict[str, Package] = {}
+        found: dict[str, tools_mod.Package] = {}
         homes = [self.env_path("PIPX_HOME", ".local/pipx"), self.h("Library/Application Support/pipx")]
         for home in homes:
             for meta_path in sorted(home.glob("venvs/*/pipx_metadata.json")):
@@ -248,7 +154,7 @@ class Scanner:
                 injected = sorted((meta.get("injected_packages") or {}).keys())
                 if injected:
                     note = "injected packages: " + ", ".join(injected)
-                found.setdefault(name, Package(name, main.get("package_version", ""), "pipx", ok, note))
+                found.setdefault(name, tools_mod.Package(name, main.get("package_version", ""), "pipx", ok, note))
         tools = self.env_path("UV_TOOL_DIR", ".local/share/uv/tools")
         for receipt in sorted(tools.glob("*/uv-receipt.toml")):
             try:
@@ -265,7 +171,7 @@ class Scanner:
                 ok, note = False, "installed from a URL or a directory"
             if len(reqs) > 1:
                 note = "with " + ", ".join(r.get("name", "?") for r in reqs[1:] if isinstance(r, dict))
-            found.setdefault(name, Package(name, "", "uv tool", ok, note))
+            found.setdefault(name, tools_mod.Package(name, "", "uv tool", ok, note))
         self.s.pipx = sorted(found.values(), key=lambda p: p.name)
 
     def scan_cargo(self) -> None:
@@ -287,7 +193,7 @@ class Scanner:
                 continue
             name, version, source = m.groups()
             ok = source.startswith(("registry+", "sparse+"))
-            out.append(Package(name, version, "cargo install", ok, "" if ok else f"installed from {source}"))
+            out.append(tools_mod.Package(name, version, "cargo install", ok, "" if ok else f"installed from {source}"))
         self.s.cargo = out
 
     def scan_go(self) -> None:
@@ -303,9 +209,9 @@ class Scanner:
                 continue
             module, version = self._go_module(p, go)
             if module:
-                out.append(Package(module, version, self._tilde(p), True, f"the command {p.name}"))
+                out.append(tools_mod.Package(module, version, self._tilde(p), True, f"the command {p.name}"))
             else:
-                out.append(Package(p.name, "", self._tilde(p), False, "no Go module information"))
+                out.append(tools_mod.Package(p.name, "", self._tilde(p), False, "no Go module information"))
         self.s.go = out
 
     def _go_module(self, p: Path, go: str | None) -> tuple[str, str]:
@@ -483,7 +389,7 @@ class Scanner:
     def run(self) -> Scan:
         self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_npm, self.scan_python_tools,
+            self.scan_python_tools,
             self.scan_cargo, self.scan_go, self.scan_mise, self.scan_version_managers, self.scan_frameworks,
             self.scan_shell_files, self.scan_config_files, self.scan_other_config,
         ):

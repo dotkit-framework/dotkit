@@ -21,12 +21,13 @@ from . import docs as docs_mod
 from . import report as report_mod
 from .context import Context, expand, tilde
 from .docs import nix_string
-from .migrators import _rest, appstore, homebrew
+from .migrators import _rest, appstore, homebrew, node_tools
 from .model import Choices, Facts, Identity, Page, Plan
 
 MIGRATORS = (
     homebrew.Homebrew(),
     appstore.AppStore(),
+    node_tools.NodeTools(),
     _rest.Rest(),
 )
 

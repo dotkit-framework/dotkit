@@ -10,7 +10,7 @@ from pathlib import Path
 from . import base as base_mod
 from . import catalog
 from .docs import insert_tools, ruby_escape, toml_key
-from .migrators import appstore, homebrew
+from .migrators import appstore, homebrew, node_tools
 from .writer import mask_lines
 from .model import Facts
 
@@ -87,7 +87,7 @@ def missing(facts: Facts, repo: Path, base: base_mod.Base, declared: dict, all_t
     apps = (appstore.facts_of(facts) or appstore.AppStoreFacts()).apps
     m.mas, m.mas_notes, m.mas_todos = appstore.mas_lines(apps, taken, ids)
     keys = set(base.mise) | set(repo_mise)
-    for backend, pkgs in (("npm", scan.npm), ("pipx", scan.pipx), ("cargo", scan.cargo), ("go", scan.go)):
+    for backend, pkgs in (("npm", (node_tools.facts_of(facts) or node_tools.NodeFacts()).packages), ("pipx", scan.pipx), ("cargo", scan.cargo), ("go", scan.go)):
         for p in pkgs:
             key = f"{backend}:{p.name}"
             if not p.ok or p.name in catalog.NPM_NOT_IN_MISE or key in keys or has_tool(p.name):

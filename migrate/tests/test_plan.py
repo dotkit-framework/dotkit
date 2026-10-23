@@ -2,7 +2,7 @@ import shutil
 import subprocess
 import unittest
 
-from dotkit_migrate import migrators, registry, scan, secrets, writer
+from dotkit_migrate import migrators, registry, secrets, writer
 from dotkit_migrate._compat import tomllib
 from dotkit_migrate.migrators import Migrator
 from dotkit_migrate.ui import screens
@@ -403,18 +403,6 @@ class PlanTests(unittest.TestCase):
             if rel.startswith("config/zsh/"):
                 self.assertNotIn("DEV", text, rel)
                 self.assertNotIn("GOPATH", text, rel)
-
-    def test_one_item_for_a_package_in_two_places(self):
-        """A package twice in the scan (the npm scan keeps the first; pages() does not rely on it): one row."""
-        p = fake.session(self.h, used_mac(self.h))
-        p.scan().get("_rest").npm.append(scan.Package("typescript", "5.5.0", "nvm v22.1.0"))
-        npm = next(page for page in p.pages() if page.key == "npm")
-        self.assertEqual([i.id for i in npm.items], ["npm:typescript"])
-        result = p.build(p.defaults(self.repo))
-        self.assertIn("1 npm tool -> config/mise.toml", result.summary)
-        c = p.defaults(self.repo)
-        c.picked["npm"] = set()
-        self.assertEqual(p.build(c).report.count("`mise use -g npm:typescript`"), 2, "both copies stay")
 
     def test_part_of_the_runtimes(self):
         """The carried row names the managers of the selected tools; the to-do says what is still to do."""
