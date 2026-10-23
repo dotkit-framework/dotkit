@@ -204,7 +204,9 @@ class RuntimesTests(unittest.TestCase):
         self.assertIn("`rm -rf ~/'Library/Application Support/fnm'`", report)
         self.h.mkdir(".pyenv/versions/3.12.2")
         report = fake.session(self.h, fake.brew_runner()).build(Choices(self.repo)).report
-        self.assertIn("`rm -rf ~/.pyenv`", report)
+        self.assertIn("(the report lists them). Before `rm -rf ~/.pyenv`, check that nothing points into it: "
+                      "LaunchAgents, IDE interpreter settings, git hooks, crontab "
+                      "(`grep -rl ~/.pyenv ~/Library/LaunchAgents`).", report)
 
     def test_has_these_versions_only_when_they_were_added(self):
         """A template whose config/mise.toml has node already: add_tool refuses it, so the item says what to do."""

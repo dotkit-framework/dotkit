@@ -157,6 +157,13 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(r.findings[0].note, "the line replaces PATH")
         r = self.parse('export PATH="$PATH:$HOME/bin"\n')
         self.assertEqual(r.carried_text(), 'path+=("$HOME/bin")\n')
+        # A carried path line knows its directories, expanded, without the ones dotkit adds.
+        os.makedirs(f"{self.home}/tools")
+        r = self.parse('export PATH="/opt/homebrew/bin:$HOME/bin:$PATH:$HOME/tools"\n')
+        self.assertEqual([(c.kind, c.dirs) for c in r.carried],
+                         [("path", (f"{self.home}/bin", f"{self.home}/tools"))])
+        self.assertTrue(rcparse.path_done("/opt/homebrew/bin/", self.home))
+        self.assertFalse(rcparse.path_done(f"{self.home}/bin", self.home))
         r = self.parse('export PATH="$HOME/.pyenv/shims:$PATH"\n')
         self.assertEqual(r.findings[0].category, rcparse.VERSION_MANAGER)
         r = self.parse('export PATH="$HOME/bin:$PATH"\n', shell="bash", name=".bash_profile")

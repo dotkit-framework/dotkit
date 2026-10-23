@@ -93,9 +93,9 @@ class SessionTests(unittest.TestCase):
         self.assertIs(p.scan(), facts, "the scan runs once")
         self.assertEqual([m.key for m in registry.MIGRATORS], [
             "homebrew", "appstore", "node_tools", "python_tools", "built_tools", "runtimes", "shell", "frameworks",
-            "config_files", "other_config", "logins"])
+            "config_files", "other_config", "logins", "leftovers"])
         self.assertEqual(facts.get("homebrew").formulae, ["wget"])
-        self.assertIsNone(facts.get("leftovers"))
+        self.assertIsNone(facts.get("no-such-migrator"))
         self.assertIs(facts.base, p.ctx.base)
         self.assertIs(facts.check_syntax, check)
 
@@ -217,7 +217,7 @@ class PlanTests(unittest.TestCase):
                      "`npm:typescript`, was 5.4.0 in nvm v20.11.0. Old copy: `npm uninstall -g typescript`",
                      "`pnpm` (nvm v20.11.0): dotkit has no global pnpm",
                      "`bat` (cargo install): dotkit has bat (from Nix). Old copy: `cargo uninstall bat`",
-                     "nvm (~/.nvm)", "`mise use -g node@20`", "Oh My Zsh: `rm -rf ~/.oh-my-zsh`",
+                     "nvm (~/.nvm)", "`mise use -g node@20`", "Oh My Zsh: before `rm -rf ~/.oh-my-zsh`,",
                      "~/.bashrc: It stays in place", "~/.config/nvim", "`acme/tools`: git@gitlab.com"):
             self.assertIn(text, r)
 

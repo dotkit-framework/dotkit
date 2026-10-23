@@ -6,17 +6,17 @@ into Packages; the page and the planning step are the same for all of them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Set
 
 from .. import catalog
-from ..context import Context, shell_path
+from ..context import Context
 from ..declared import Declared
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
 from ..report import plural
-from . import NOT_CARRIED, left_out, unique_items
+from . import NOT_CARRIED, before_removal, left_out, unique_items
 from . import config_files
 
 
@@ -27,6 +27,7 @@ class Package:
     where: str = ""  # where it is installed, for the report
     ok: bool = True  # False: it cannot go to a mise backend; note says why
     note: str = ""
+    commands: List[str] = field(default_factory=list)  # the names of its commands, for the leftovers
 
 
 def env_path(ctx: Context, var: str, default: str) -> Path:
@@ -53,6 +54,18 @@ def page(key: str, title: str, intro: str, pkgs: List[Package], declared: Declar
                 f"off: mise builds them from source with {key}" if off else "")
 
 
+def old_copy(key: str, p: Package) -> str:
+    """How to remove the copy of a tool that the scan found, for "Old copy: ...": a command, with the
+    reference check when it removes a path."""
+    if key == "npm":
+        return f"`npm uninstall -g {p.name}`"
+    if key == "pipx":
+        return f"`{'pipx' if p.where == 'pipx' else 'uv tool'} uninstall {p.name}`"
+    if key == "cargo":
+        return f"`cargo uninstall {p.name}`"
+    return "before " + before_removal(p.where, directory=False)
+
+
 # The intro of the tools that dotkit has already, in "Tools that are not in mise".
 DOTKIT_HAS = "dotkit has these tools already, so they are not added."
 
@@ -64,7 +77,7 @@ def flagged_text(p: Package, key: str) -> str:
 
 
 def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs: Optional[List[Package]],
-               comment: str, remove: str) -> List[Package]:
+               comment: str) -> List[Package]:
     """The selected tools of one package manager to config/mise.toml, and the report.
 
     Returns the selected tools that go to mise: carried, or a to-do when your
@@ -86,10 +99,6 @@ def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs
     carried, manual, old, left, todo, to_mise, has, flagged = [], [], [], [], [], [], [], []
     seen: Set[str] = set()
 
-    def rm(p: Package) -> str:
-        return remove.format(name=p.name, path=shell_path(p.where),
-                             remove=("pipx uninstall " if p.where == "pipx" else "uv tool uninstall ") + p.name)
-
     for p in pkgs or []:
         if key == "npm" and p.name in catalog.NPM_NOT_IN_MISE:
             manual.append(f"`{p.name}` ({p.where}): {catalog.NPM_NOT_IN_MISE[p.name]}")
@@ -99,7 +108,7 @@ def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs
             continue
         source = declared.tool_source(p.name)
         if source:
-            has.append(f"`{p.name}` ({p.where}): dotkit has {source}. Old copy: `{rm(p)}`")
+            has.append(f"`{p.name}` ({p.where}): dotkit has {source}. Old copy: {old_copy(key, p)}")
             continue
         spec = f"{key}:{p.name}"
         if c.selected(key, f"{key}:{p.name}"):
@@ -117,7 +126,7 @@ def plan_tools(f: Facts, c: Choices, txn: Txn, pages: List[Page], key: str, pkgs
                 carried.append(p)
                 to_mise.append(p)
                 old.append(f"`{spec}`, was {p.version or 'installed'} in {p.where}. "
-                           f"Old copy: `{rm(p)}`" + (f". Note: {p.note}" if p.note else ""))
+                           f"Old copy: {old_copy(key, p)}" + (f". Note: {p.note}" if p.note else ""))
         elif left_out(pages, c, f"{key}:{p.name}"):
             left.append(f"`{p.name}` ({p.where}): `mise use -g {spec}`")
         else:

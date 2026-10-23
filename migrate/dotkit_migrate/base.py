@@ -55,6 +55,24 @@ SHELL_LAYERS: dict[str, tuple[str, str]] = {
     ".bash_profile": (".bash_profile.local", "config/bash/bash_profile"),
 }
 
+# dotkit.toolPath of nix/home.nix, in its order: the directories of DOTKIT_TOOL_PATH,
+# with <user> for the account name and ~ for the home directory. They are on
+# PATH before mise starts, and GUI apps have them before the mise shims
+# (nix/darwin.nix). tests/test_base.py compares the two.
+TOOL_PATH = (
+    "/etc/profiles/per-user/<user>/bin",
+    "/run/current-system/sw/bin",
+    "~/.local/bin",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+)
+
+
+def tool_path(home: str, user: str) -> list[str]:
+    """TOOL_PATH for one account: absolute directories."""
+    return [home + d[1:] if d.startswith("~/") else d.replace("<user>", user) for d in TOOL_PATH]
+
+
 # Every target that the base links. nix/home.nix has these and the herdr
 # scripts; tests/test_base.py compares the two.
 BASE_TARGETS = frozenset(

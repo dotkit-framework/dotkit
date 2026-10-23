@@ -14,7 +14,7 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from .. import base as base_mod
 from .. import rcparse
-from ..context import Context, is_managed, read_text
+from ..context import Context, executables, is_managed, read_text
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
 from ..report import plural
@@ -55,6 +55,9 @@ class ShellFacts:
     other_files: List[str] = field(default_factory=list)  # OTHER_SHELL_FILES that exist
     # The parsed files of the full chain, for the page labels and for what a deselected file offered.
     results: Dict[str, rcparse.Result] = field(default_factory=dict)
+    # The executables of each directory that a carried PATH line adds, by directory: name -> link target ("" for
+    # a file that is not a link), for the leftovers.
+    executables: Dict[str, Dict[str, str]] = field(default_factory=dict)
 
 
 def facts_of(f: Facts) -> Optional[ShellFacts]:
@@ -84,6 +87,54 @@ def parse_chain(home: str, files: List[ShellFile], skipped: FrozenSet[str] = fro
             if name not in skipped:
                 known = r.variables
             out[name] = r
+    return out
+
+
+def _shell_of(name: str) -> str:
+    return "bash" if name.startswith(".bash") else "zsh"
+
+
+def _check(f: Facts, shell: str, res: rcparse.Result) -> None:
+    """Drops the carried lines that do not pass the syntax check, and reports them."""
+    if not (res.carried_text() and f.check_syntax) or f.check_syntax(shell, res.carried_text()):
+        return
+    # Keep the lines that parse on their own; report the functions.
+    for cl in [k for k in res.carried if k.kind == "function"]:
+        res.findings.append(rcparse.Finding(cl.lines, rcparse.BLOCKS, cl.text, f"{shell} -n could not check it"))
+    res.carried = [k for k in res.carried if k.kind != "function"]
+    res.findings.sort(key=lambda y: y.lines)
+    if res.carried_text() and not f.check_syntax(shell, res.carried_text()):
+        for cl in res.carried:
+            if cl.kind != "comment":
+                res.findings.append(rcparse.Finding(cl.lines, rcparse.COMMANDS, cl.text,
+                                                    f"{shell} -n could not check it"))
+        res.carried = []
+
+
+def planned(f: Facts, c: Choices) -> Dict[str, rcparse.Result]:
+    """The parsed files as the plan carries them: the chain of the selected files, then the syntax check of each
+    selected file. A deselected file is parsed too, for its findings, and carries nothing. {} without the facts."""
+    sh = facts_of(f)
+    if sh is None:
+        return {}
+    items = {i.id for page in Shell().pages(f) for i in page.items}
+    skipped = frozenset(n for n in sh.results if f"shell:{n}" in items and not c.selected("shell", f"shell:{n}"))
+    results = parse_chain(sh.home, sh.files, skipped)
+    for name, res in results.items():
+        if c.selected("shell", f"shell:{name}"):
+            _check(f, _shell_of(name), res)
+    return results
+
+
+def carried_paths(f: Facts, c: Choices) -> List[Tuple[str, Tuple[int, int], Tuple[str, ...], Tuple[str, ...], str]]:
+    """The carried PATH lines of this plan: (shell file, its lines, the directories, those of them that go in
+    front of PATH, the repository file)."""
+    out = []
+    for name, res in planned(f, c).items():
+        if not c.selected("shell", f"shell:{name}"):
+            continue
+        repo_file = base_mod.SHELL_LAYERS[name.removesuffix(".local")][1]
+        out += [(name, cl.lines, cl.dirs, cl.front, repo_file) for cl in res.carried if cl.kind == "path"]
     return out
 
 
@@ -131,6 +182,10 @@ class Shell(Migrator):
             if p.is_file() and not is_managed(p):
                 sh.other_files.append(name)
         sh.results = parse_chain(sh.home, sh.files)
+        for r in sh.results.values():
+            for d in (d for cl in r.carried for d in cl.dirs):
+                if d not in sh.executables:
+                    sh.executables[d] = executables(Path(d))
         return sh
 
     def pages(self, f: Facts) -> List[Page]:
@@ -157,10 +212,8 @@ class Shell(Migrator):
     def plan(self, f: Facts, c: Choices, txn: Txn) -> None:
         sh, r = facts_of(f), txn.report
         pages = self.pages(f)
-        items = {i.id for page in pages for i in page.items}
-        # The chain of the selected files, parsed again: a failed syntax check below changes the results.
-        skipped = frozenset(n for n in sh.results if f"shell:{n}" in items and not c.selected("shell", f"shell:{n}"))
-        results = parse_chain(sh.home, sh.files, skipped)
+        # The chain of the selected files, parsed again, after the syntax check.
+        results = planned(f, c)
         unread = [x for x in sh.files if not x.managed and not x.read]
         by_repo: Dict[str, List[Tuple[ShellFile, Optional[rcparse.Result]]]] = {}
         files = {x.name: x for x in sh.files if not x.managed}
@@ -173,7 +226,6 @@ class Shell(Migrator):
 
         for main, entries in by_repo.items():
             layer, repo_file = base_mod.SHELL_LAYERS[main]
-            shell = "bash" if main == ".bash_profile" else "zsh"
             rc = txn.shell_rc(main)
             written = False
             for x, res in entries:
@@ -181,21 +233,6 @@ class Shell(Migrator):
                     continue
                 on = c.selected("shell", f"shell:{x.name}")
                 carried = res.carried_text() if on else ""
-                if carried and f.check_syntax and not f.check_syntax(shell, carried):
-                    # Keep the lines that parse on their own; report the functions.
-                    for cl in [k for k in res.carried if k.kind == "function"]:
-                        res.findings.append(rcparse.Finding(cl.lines, rcparse.BLOCKS, cl.text,
-                                                            f"{shell} -n could not check it"))
-                    res.carried = [k for k in res.carried if k.kind != "function"]
-                    res.findings.sort(key=lambda y: y.lines)
-                    carried = res.carried_text()
-                    if carried and not f.check_syntax(shell, carried):
-                        for cl in res.carried:
-                            if cl.kind != "comment":
-                                res.findings.append(rcparse.Finding(cl.lines, rcparse.COMMANDS, cl.text,
-                                                                    f"{shell} -n could not check it"))
-                        res.carried = []
-                        carried = ""
                 if carried:
                     rc.add_part(f"# From ~/{x.name}. MIGRATION.md lists the lines that are not here.", carried)
                     written = True
@@ -253,7 +290,7 @@ def _findings(txn: Txn, name: str, res: rcparse.Result) -> None:
             continue
         items = []
         for f in fs:
-            text = "(not shown: it has a secret)" if f.secret else _code(f.text)
+            text = finding_code(f)
             items.append(f"~/{name}:{f.where} {text}" + (f" ({f.note})" if f.note else ""))
         txn.report.todo(f"Shell lines: {cat}", rcparse.hint(cat, zshrc, zshenv), items)
 
@@ -269,6 +306,11 @@ def _left_out_item(name: str, res: rcparse.Result, repo_file: str) -> str:
         parts.append(f"Its lines with secrets are not carried: {names}. Keep them out of files that Git tracks.")
     assert parts, f"~/{name} is a shell item, so it has lines or secrets"
     return f"~/{name}: " + " ".join(parts)
+
+
+def finding_code(f: rcparse.Finding) -> str:
+    """A line that is not carried, for the report: its first line in backticks, never a secret."""
+    return "(not shown: it has a secret)" if f.secret else _code(f.text)
 
 
 def _code(text: str) -> str:

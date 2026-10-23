@@ -245,7 +245,7 @@ NOT_STATIC = {
     # ReportView.todo hands its arguments on to ReportDoc.todo: the intro is whatever its caller gave.
     "dotkit_migrate/docs.py:1000",
     # rcparse.hint(...): test_rcparse_hints_have_no_secret checks every hint with both file names.
-    "dotkit_migrate/migrators/shell.py:258",
+    "dotkit_migrate/migrators/shell.py:295",
 }
 
 

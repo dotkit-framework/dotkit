@@ -204,3 +204,13 @@ NPM_NOT_IN_MISE = {
 # mise backends that build their tools from source, with the name in report
 # text: off in the wizard by default, and added by `dotkit migrate` only with --all.
 BUILT_FROM_SOURCE = {"cargo": "cargo", "go": "Go"}
+
+# The commands of mise tools whose commands are not only their name: the runtimes, and uv. Another mise
+# tool has one command, its name (base.mise_short). For the leftovers that can shadow them
+# (ARCHITECTURE.md, section 11).
+MISE_COMMANDS = {
+    "node": ("node", "npm", "npx"),
+    "python": ("python3", "python", "pip3"),
+    "ruby": ("ruby", "gem"),
+    "uv": ("uv",),
+}

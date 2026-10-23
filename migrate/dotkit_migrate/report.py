@@ -22,6 +22,7 @@ SECTIONS = (
     "Tools that moved to mise",
     "Tools that are not in mise",
     "mise",
+    "Leftovers that can still take effect",
     "Homebrew copies of dotkit tools",
     "Not carried, by your choice",
     "Homebrew taps",

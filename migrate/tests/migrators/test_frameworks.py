@@ -27,14 +27,17 @@ class FrameworksTests(unittest.TestCase):
         p = fake.session(self.h, fake.brew_runner())
         report = p.build(p.defaults(str(self.h.home / ".dotfiles"))).report
         self.assertIn("### Shell frameworks\n\ndotkit's zsh does not load them. Remove each one when you no longer "
-                      "need it.\n\n- Oh My Zsh: `rm -rf ~/.oh-my-zsh`\n", report)
+                      "need it.\n\n- Oh My Zsh: before `rm -rf ~/.oh-my-zsh`, check that nothing points into it: "
+                      "LaunchAgents, IDE interpreter settings, git hooks, crontab "
+                      "(`grep -rl ~/.oh-my-zsh ~/Library/LaunchAgents`).\n", report)
 
     def test_the_removal_quotes_the_path(self):
         self.h.mkdir(".oh-my-zsh")
         p = fake.session(self.h, fake.brew_runner())
         frameworks.facts_of(p.scan()).found["Oh My Zsh"] = "~/my shell/oh-my-zsh"
         report = p.build(p.defaults(str(self.h.home / ".dotfiles"))).report
-        self.assertIn("- Oh My Zsh: `rm -rf ~/'my shell/oh-my-zsh'`\n", report)
+        self.assertIn("- Oh My Zsh: before `rm -rf ~/'my shell/oh-my-zsh'`, check that nothing points into it", report)
+        self.assertIn("(`grep -rl ~/'my shell/oh-my-zsh' ~/Library/LaunchAgents`).\n", report)
 
 
 if __name__ == "__main__":

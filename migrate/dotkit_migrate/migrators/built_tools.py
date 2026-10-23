@@ -52,7 +52,12 @@ def _cargo(ctx: Context, b: BuiltFacts) -> None:
             continue
         name, version, source = m.groups()
         ok = source.startswith(("registry+", "sparse+"))
-        b.cargo.append(Package(name, version, "cargo install", ok, "" if ok else f"installed from {source}"))
+        # .crates2.json has {"bins": [...]} per crate, .crates.toml a list of the bins.
+        info = installs[key]
+        bins = info.get("bins") if isinstance(info, dict) else info
+        commands = [str(x) for x in bins or [] if isinstance(x, str)] if isinstance(bins, list) else []
+        b.cargo.append(Package(name, version, "cargo install", ok, "" if ok else f"installed from {source}",
+                               commands))
 
 
 def _go(ctx: Context, b: BuiltFacts) -> None:
@@ -67,9 +72,9 @@ def _go(ctx: Context, b: BuiltFacts) -> None:
             continue
         module, version = _go_module(ctx, p, go)
         if module:
-            b.go.append(Package(module, version, tilde_path(ctx, p), True, f"the command {p.name}"))
+            b.go.append(Package(module, version, tilde_path(ctx, p), True, f"the command {p.name}", [p.name]))
         else:
-            b.go.append(Package(p.name, "", tilde_path(ctx, p), False, "no Go module information"))
+            b.go.append(Package(p.name, "", tilde_path(ctx, p), False, "no Go module information", [p.name]))
 
 
 def _go_module(ctx: Context, p: Path, go: Optional[str]) -> Tuple[str, str]:
@@ -126,11 +131,10 @@ class BuiltTools(Migrator):
             return
         pages = self.pages(f)
         kept = config_files.mise_target(f, c) == "kept"
-        if plan_tools(f, c, txn, pages, "cargo", b.cargo, "# From cargo install, see MIGRATION.md.",
-                      "cargo uninstall {name}") and not b.has_cargo:
+        if (plan_tools(f, c, txn, pages, "cargo", b.cargo, "# From cargo install, see MIGRATION.md.")
+                and not b.has_cargo):
             _needs(txn, kept, "mise needs cargo for these: `mise use -g rust`.")
-        if plan_tools(f, c, txn, pages, "go", b.go, "# From ~/go/bin, see MIGRATION.md.",
-                      "rm {path}") and not b.has_go:
+        if plan_tools(f, c, txn, pages, "go", b.go, "# From ~/go/bin, see MIGRATION.md.") and not b.has_go:
             _needs(txn, kept, "mise needs go for these: `mise use -g go`.")
 
     def adopt(self, f: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:

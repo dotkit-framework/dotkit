@@ -48,7 +48,8 @@ class PythonTools(Migrator):
                 injected = sorted((meta.get("injected_packages") or {}).keys())
                 if injected:
                     note = "injected packages: " + ", ".join(injected)
-                found.setdefault(name, Package(name, main.get("package_version", ""), "pipx", ok, note))
+                apps = [str(a) for a in main.get("apps") or [] if isinstance(a, str)]
+                found.setdefault(name, Package(name, main.get("package_version", ""), "pipx", ok, note, apps))
         tools = env_path(ctx, "UV_TOOL_DIR", ".local/share/uv/tools")
         for receipt in sorted(tools.glob("*/uv-receipt.toml")):
             try:
@@ -65,7 +66,9 @@ class PythonTools(Migrator):
                 ok, note = False, "installed from a URL or a directory"
             if len(reqs) > 1:
                 note = "with " + ", ".join(r.get("name", "?") for r in reqs[1:] if isinstance(r, dict))
-            found.setdefault(name, Package(name, "", "uv tool", ok, note))
+            entry_points = [str(e["name"]) for e in (data.get("tool") or {}).get("entrypoints") or []
+                            if isinstance(e, dict) and e.get("name")]
+            found.setdefault(name, Package(name, "", "uv tool", ok, note, entry_points))
         return PythonFacts(sorted(found.values(), key=lambda p: p.name))
 
     def pages(self, f: Facts) -> List[Page]:
@@ -80,8 +83,7 @@ class PythonTools(Migrator):
         p = facts_of(f)
         if p is None:
             return
-        plan_tools(f, c, txn, self.pages(f), "pipx", p.packages, "# From pipx and uv tool, see MIGRATION.md.",
-                   "{remove}")
+        plan_tools(f, c, txn, self.pages(f), "pipx", p.packages, "# From pipx and uv tool, see MIGRATION.md.")
 
     def adopt(self, f: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:
         p = facts_of(f)

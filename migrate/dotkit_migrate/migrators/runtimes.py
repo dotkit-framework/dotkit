@@ -12,11 +12,11 @@ from typing import Dict, List, Optional
 
 from .. import catalog
 from ..base import Base
-from ..context import Context, is_managed, read_text, shell_path, tilde, version_key
+from ..context import Context, is_managed, read_text, tilde, version_key
 from ..declared import Declared
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
-from . import Migrator, unique_items
+from . import Migrator, before_removal, unique_items
 from . import config_files
 
 
@@ -211,12 +211,13 @@ class Runtimes(Migrator):
                     steps.append("With mise: " + ", ".join(
                         f"`mise use -g {t}@{(lines.get(t) or ['<version>'])[0]}`" for t in rest))
             items.append(f"{vm.name} ({vm.path}): {'. '.join(steps)}. Then remove its lines from the shell files "
-                         f"(the report lists them) and `rm -rf {shell_path(vm.path)}`")
+                         f"(the report lists them). Before {before_removal(vm.path)}.")
         if items:
             r.todo("Version managers",
                    f"mise replaces them; dotkit's shell does not load them. The base has {base_runtimes(f.base)}. "
                    "A project pins its own versions with `mise use` or a .nvmrc, .python-version, .ruby-version, "
                    "or .tool-versions file.", items)
         for extra in rt.mise_extra:
-            r.todo("mise", f"mise still reads these files. Move their tools to {config_files.mise_dest(f, c)}.",
+            r.todo("mise", "mise still reads these files, and they override the dotkit defaults for everything "
+                           f"under ~. Move their tools to {config_files.mise_dest(f, c)}.",
                    [f"~/{extra}"])

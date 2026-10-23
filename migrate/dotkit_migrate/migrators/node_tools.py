@@ -82,6 +82,13 @@ def _node_module_roots(ctx: Context) -> List[Tuple[Path, str]]:
     return unique
 
 
+def bin_names(name: str, bins: object) -> List[str]:
+    """The commands of an npm package: the keys of `bin` in its package.json, or its name without the scope."""
+    if isinstance(bins, dict):
+        return sorted(str(k) for k in bins)
+    return [name.rsplit("/", 1)[-1]] if isinstance(bins, str) else []
+
+
 class NodeTools(Migrator):
     key = "node_tools"
     title = "npm, pnpm, and bun tools"
@@ -95,10 +102,11 @@ class NodeTools(Migrator):
     def scan(self, ctx: Context) -> NodeFacts:
         found: Dict[str, Package] = {}
 
-        def add(name: str, version: str, where: str, ok: bool = True, note: str = "") -> None:
+        def add(name: str, version: str, where: str, ok: bool = True, note: str = "",
+                commands: Optional[List[str]] = None) -> None:
             if name in ("npm", "corepack") or name in found:
                 return
-            found[name] = Package(name, version, where, ok, note)
+            found[name] = Package(name, version, where, ok, note, commands or [])
 
         for root, label in _node_module_roots(ctx):
             entries = []
@@ -115,7 +123,7 @@ class NodeTools(Migrator):
                 if p.is_symlink():
                     add(name, "", label, False, "a linked local package (npm link)")
                     continue
-                add(name, str(meta.get("version", "")), label)
+                add(name, str(meta.get("version", "")), label, commands=bin_names(name, meta["bin"]))
         pnpm_home = env_path(ctx, "PNPM_HOME", "Library/pnpm")
         for manifest in sorted(pnpm_home.glob("global/*/package.json")):
             deps = (read_json(manifest) or {}).get("dependencies") or {}
@@ -146,7 +154,7 @@ class NodeTools(Migrator):
         if n is None:
             return
         plan_tools(f, c, txn, self.pages(f), "npm", n.packages,
-                   "# From npm, pnpm, and bun (global packages), see MIGRATION.md.", "npm uninstall -g {name}")
+                   "# From npm, pnpm, and bun (global packages), see MIGRATION.md.")
 
     def adopt(self, f: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:
         n = facts_of(f)

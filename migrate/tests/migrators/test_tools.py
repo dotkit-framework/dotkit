@@ -90,7 +90,8 @@ class ToolsTests(unittest.TestCase):
         for text in (f"They stay where they are. To add one to {dest}:\n",
                      f"`mytool` (pipx): installed from git+https://example.com/mytool.git. Add it to {dest} by hand.",
                      f"`mystery` (~/go/bin/mystery): no Go module information. Add it to {dest} by hand.",
-                     f"mise still reads these files. Move their tools to {dest}.\n\n- ~/.tool-versions\n"):
+                     f"mise still reads these files, and they override the dotkit defaults for everything under ~. "
+                     f"Move their tools to {dest}.\n\n- ~/.tool-versions\n"):
             self.assertIn(text, result.report)
         for text in ("To add one to config/mise.toml", "Add it to config/mise.toml", "Move their tools to config/"):
             self.assertNotIn(text, result.report)
@@ -127,7 +128,8 @@ class ToolsTests(unittest.TestCase):
                               result.summary)
                 for text in ("They stay where they are. To add one to config/mise.toml:\n",
                              "Add it to config/mise.toml by hand.",
-                             "mise still reads these files. Move their tools to config/mise.toml.\n"):
+                             "mise still reads these files, and they override the dotkit defaults for everything "
+                             "under ~. Move their tools to config/mise.toml.\n"):
                     self.assertIn(text, result.report)
                 self.assertNotIn("~/.config/mise/config.toml by hand", result.report)
                 self.assertEqual(result.summary[-2],

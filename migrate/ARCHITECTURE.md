@@ -1027,7 +1027,7 @@ How PATH works, for mise 2026.10.3, from its source and a local test:
   `~/.bashrc` is sourced after activation, in interactive bash.
 - **GUI apps and launchd agents.** Their PATH is fixed:
   `DOTKIT_TOOL_PATH`, then the mise shims, then the system directories
-  (`nix/darwin.nix:29-30`). There, a leftover binary with the same name in
+  (`nix/darwin.nix:43-44`). There, a leftover binary with the same name in
   `~/.local/bin`, `/opt/homebrew/bin`, or `/opt/homebrew/sbin` **wins** over
   the mise shim.
 - **Not checked:** nested shells, and the order relative to direnv's hook.
@@ -1040,11 +1040,15 @@ What the migrator reports:
    the `DOTKIT_TOOL_PATH` entries (a constant in `base.py`, checked by
    `test_base` against `nix/home.nix`), `rcparse._PATH_DONE`
    (`rcparse.py:113-117`), the system directories, and the directories
-   carried into `config/zsh/zshenv` or `config/zsh/zprofile`.
+   carried into `config/zsh/zshenv` or `config/zsh/zprofile`. Each such line
+   is listed, also when nothing in its directory shadows a tool now, in a
+   block of its own: it puts the directory in front of mise's tools.
 2. **Shadowed tools.** If such a directory, or `~/.local/bin`,
    `/opt/homebrew/bin`, or `/opt/homebrew/sbin`, contains a command with the
-   same name as a tool that moved to mise in this run, warn. Name the
-   context:
+   same name as a mise tool, warn. The mise tools are the tool entries that
+   this run added to `config/mise.toml` (none when your mise config is kept:
+   those tools are not in mise yet) and the base's mise tools (`Base.mise`:
+   the runtimes, `uv`, …), whose shims GUI apps use. Name the context:
    - for a carried new directory: "interactive shells";
    - for a toolPath directory: "GUI apps and launchd agents; interactive
      shells use mise's".
@@ -1054,7 +1058,19 @@ What the migrator reports:
    - move it to config/zsh/zprofile (`~/.zprofile.local`), which runs before
      mise starts;
    - uninstall the leftover binary (`pipx uninstall ruff`,
-     `npm uninstall -g typescript`, `brew uninstall node`);
+     `npm uninstall -g typescript`, `brew uninstall node`). Which package a
+     binary belongs to comes from its link target, read at scan time and
+     resolved against the directory it is listed in. A `Cellar/<formula>/`
+     or `Caskroom/<cask>/` segment anywhere in the target names the Homebrew
+     package; a `…/pipx/venvs/<package>/`, `…/uv/tools/<package>/`, or
+     `…/lib/node_modules/<package>/` segment names the pipx, uv, or npm
+     package (`npm` and `corepack` themselves give no command). Without
+     such a segment, the item says "`ls -l <path>` shows where it comes
+     from" instead of a command. When the Homebrew package is in the lists
+     of this repository (for example `python@3.13`, kept on the formulae
+     page), the item says so and gives `dotkit remove brew:<name>` (or
+     `cask:<name>`), which takes it out of the list and uninstalls it, not
+     a bare `brew uninstall`, which the next apply would undo;
    - as a last resort, `activate_aggressive = true` in `[settings]` of
      config/mise.toml. It acts only on full hook-env runs, and it does not
      change GUI apps.
@@ -1065,17 +1081,21 @@ What the migrator reports:
    and new-PATH lines as "still runs". Installers for nvm, sdkman, and conda
    write to `~/.bashrc`.
 4. **mise files that mise still reads:** `~/.tool-versions` (always read,
-   whatever the idiomatic settings) and `~/.config/mise/conf.d/*.toml`. They
-   override the dotkit defaults for everything under `~`.
-5. **Undeclared Homebrew packages,** including deselected ones:
-   - they stay installed and on PATH;
-   - `dotkit upgrade brew` upgrades only the declared ones (`dotkit:250-256`),
-     so they go stale;
-   - with `homebrew.onActivation.cleanup = "uninstall"`, activation
-     uninstalls them (for casks, the apps);
-   - the scan sees only `brew leaves --installed-on-request`
-     (`scan.py:244`), so dependency formulae are on PATH but not listed.
-6. **A reference check next to every removal command:** "Before `rm -rf
+   whatever the idiomatic settings) and `~/.config/mise/conf.d/*.toml`. The
+   `runtimes` migrator reports them ("mise still reads these files"), and
+   its intro says that they override the dotkit defaults for everything
+   under `~`; `leftovers` does not repeat them.
+5. **Homebrew packages that are not in the lists** need no block here. A
+   deselected one is under "Not carried, by your choice", whose Homebrew
+   intro also says that `dotkit upgrade brew` upgrades only the declared
+   packages (`dotkit:250-256`), so it goes stale, and that
+   `homebrew.onActivation.cleanup = "uninstall"` would uninstall it. One
+   that dotkit or your mise config provides is under "Homebrew copies of
+   dotkit tools". A dependency formula, which `brew leaves` does not show,
+   matters only when it shadows a tool, and point 2 finds that by the
+   binary.
+6. **A reference check next to every `rm` or `rm -rf` command** (not next to
+   the uninstall commands of a package manager): "Before `rm -rf
    ~/.pyenv`, check that nothing points into it: LaunchAgents, IDE
    interpreter settings, git hooks, crontab (`grep -rl ~/.pyenv
    ~/Library/LaunchAgents`)."
@@ -1301,11 +1321,12 @@ Rules for every step:
 | 10a | **Secret names inside other assignments.** `secrets._ASSIGNMENTS` becomes a lookahead, like `_SETTINGS`, so that `finditer` checks every `name=`/`name:` position, also one inside the value of an earlier match (`Note: PASSWORD=…`, `run: PGPASSWORD=… psql`, `x=TOKEN=…`, `-Dapi.password=…`, `?token=…`). The named groups stay. A name is at most 256 characters (`[A-Za-z_][\w.\-]{0,255}`), so each position costs the same and a long line stays linear. Every user of `secrets` gets the fix: the shell router, the guard, and the verification; step 11's failure text calls `secrets.line_secret` directly, with no prefix stripping of its own | changes secret detection: more lines are secrets | 10 | goldens unchanged; tests: a `~/.zshrc` with `export JAVA_OPTS=-Dapi.password=…` and `export PIP_INDEX_URL=https://…?token=…` sends both lines to `local/zshrc.zsh`; `Note: PASSWORD=…` is flagged; `export PATH=$HOME/bin:$PATH`, `export LESS=-R`, and `alias ll='ls -l'` stay clean; a 1 MB file is still scanned in about the time it took before (a smoke test); a 20 KB line `x=foo-bar-baz-…` is scanned within a fixed bound; a name of 200 characters with a secret value is still flagged; on the real Mac, a read-only comparison of the old and the new `line_secret` over the text files of the home directory lists each line that is newly flagged (file, line number, and the name found, never the value), and the list is reviewed |
 | 11 | **Crash isolation.** One transaction per migrator; isolated `scan` and `pages`; `Failure`; the identity pseudo-migrator; `manual_steps` for every migrator (section 7.5 texts for `shell` and `config_files`); "Problems during the migration"; summary and stderr lines; `--debug`; masking; strict mode (`fake.session` default, `DOTKIT_MIGRATE_STRICT=1` in the e2e job, hidden `--strict`); exit code 0 with failures; in the UI, the warning line and the review Problems block (section 8) | the scan catch-all (`scan.py:648-651`, by then inside the migrators) becomes isolation; plan crashes are newly isolated | 10 | `tests/test_isolation.py`; UI flow tests for the warning line and the Problems block; the failure text of `ValueError('bad entry: _authToken=…')` is masked (section 6, point 5); the plan goldens gain only `"failures": []` (`Plan.failures`, section 4.8), in a commit of its own; nothing else in them changes, because the fixtures have no faults; an isolation test with `other:.bashrc` selected and `other_config.plan` raising still has the `~/.bashrc` note under "Other shell files" |
 | 12 | **Adopt unification.** `Declared` (section 4.5); `adopt()` for homebrew, appstore, node_tools, python_tools, built_tools; `Session.adopt`; `writer.apply_edits`; adopt output from the documents' `added()` and the report; `adopt.py` removed; the pnpm rule applies to npm packages only (today `adopt.py` skips a package named `pnpm` from any backend). Setup now also skips a formula that your mise config provides, and an npm, pipx, cargo, or Go tool that the base has (`Declared.tool`), as adopt does; runtimes ask `Declared.yours_mise_key` only (section 4.5) | de-duplication change; the adopt list comment becomes `# Added by dotkit migrate on <host>.` | 11 | goldens updated and reviewed (adopt and plan goldens); `adopt.py` is gone; tests: your mise config has `jq` and brew has `jq` → skipped in setup and adopt; `cargo:bat` with `bat` in the base → not offered in setup, not added in adopt, with the "dotkit has" item; an nvm `node 20` with the base's `node = "24"` is still offered and added; a repository with an existing secret-looking line can still be adopted into, and a new secret line still aborts; apply twice → the second run adds nothing; a fault in the second replace restores the first file |
-| 13 | **Leftovers report** (section 11). `Package.commands`; executable listings in the `shell` and `leftovers` scans; `base.TOOL_PATH` checked against `nix/home.nix`; report-only parsing of `~/.bashrc`, `~/.zlogin`, `~/.zlogout`, `~/.profile`; the shadowing warnings with their context and fixes; the Homebrew stale/cleanup warning, including deselected items; the reference check next to every removal | new report text | 8 | goldens updated and reviewed; fixtures: `~/.npm-global/bin` with `tsc` carried from `~/.zshrc` while `npm:typescript` moves to mise → "interactive shells" warning with file and line; `~/.local/bin/ruff` while `pipx:ruff` moves → "GUI apps" warning; `source ~/.nvm/nvm.sh` in `~/.bashrc` → "still runs"; a carried line that re-adds `/opt/homebrew/bin` → no warning |
+| 12a | **Tests leave no temp directories.** Every test that makes a temporary directory (`fake.Home`, the PTY and `main_child` children, the writer tests with 0555 directories) removes it, also after a failure and when parts of it are read-only (the same make-writable-and-retry removal as `write_new`). A child process cleans up its own directories, or the parent removes them. Test-only: no production code changes | no change | 12 | STD; a test (or a `unittest` `load_tests`/module hook) runs the suite's temp-directory makers and checks that `$TMPDIR` has no new `dotkit-migrate-*` entries afterwards; a full run of the suite leaves none |
+| 13 | **Leftovers report** (section 11). `Package.commands`; executable listings in the `shell` and `leftovers` scans; `base.TOOL_PATH` checked against `nix/home.nix`; report-only parsing of `~/.bashrc`, `~/.zlogin`, `~/.zlogout`, `~/.profile`; the shadowing warnings with their context and fixes; the stale and cleanup sentences in the Homebrew intro of "Not carried, by your choice" (no separate Homebrew block); binaries matched to their package by link target; the reference check next to every `rm`; the `check_syntax` results are cached per build, so `zsh -n` runs once per text | new report text | 8 | goldens updated and reviewed; fixtures: `~/.npm-global/bin` with `tsc` carried from `~/.zshrc` while `npm:typescript` moves to mise → "interactive shells" warning with file and line; `~/.local/bin/ruff` while `pipx:ruff` moves → "GUI apps" warning; `source ~/.nvm/nvm.sh` in `~/.bashrc` → "still runs"; `~/bin` carried into `config/zsh/zprofile` from `~/.zprofile` and added again in `~/.zshrc` → no new-directory item; `/opt/homebrew/bin/node` (a link into `Cellar/node/`) → "GUI apps" warning with `brew uninstall node`, from the base's `node` |
 | 14 | **Package docstring.** `dotkit_migrate/__init__.py` points to this file and keeps the Python 3.9 rules; README "Work on dotkit" mentions it | no change | all | review |
 
 Order: 1 → 1a → 2 → 3 and 4 (in either order) → 5 → 6 → 7 → 8. After 8: 9 (then
-9a), 10 (then 10a), and 13 in any order; 11 needs 10a; 12 needs 11. Land each step that changes
+9a), 10 (then 10a), and 13 in any order; 11 needs 10a; 12 needs 11; 12a (tests only) can land any time after 12, in parallel with 13. Land each step that changes
 behavior (1a, 2, 7, 9, 9a, 10a, 11, 12, 13) on its own, so that each golden diff can be
 reviewed by itself.
 

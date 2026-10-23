@@ -62,6 +62,21 @@ def read_json(p: Path):
         return None
 
 
+def executables(d: Path) -> dict[str, str]:
+    """The executable files in a directory, sorted by name: name -> the target of the link, absolute and
+    normalized (one step, not resolved further), or "" for a file that is not a link. {} when the directory
+    cannot be read. Opens no file."""
+    out: dict[str, str] = {}
+    try:
+        for p in sorted(d.iterdir()):
+            if p.is_file() and os.access(p, os.X_OK):
+                target = os.readlink(p) if p.is_symlink() else ""
+                out[p.name] = os.path.normpath(os.path.join(str(d), target)) if target else ""
+    except OSError:
+        return {}
+    return out
+
+
 def version_key(v: str) -> list:
     return [int(x) if x.isdigit() else x for x in re.split(r"[.\-_+]", v.lstrip("v"))]
 

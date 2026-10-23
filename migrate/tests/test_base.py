@@ -25,6 +25,17 @@ class BaseTests(unittest.TestCase):
         for main in base.SHELL_LAYERS:
             self.assertIn(main, links)
 
+    def test_tool_path_matches_nix_home(self):
+        """base.TOOL_PATH is dotkit.toolPath of nix/home.nix, in its order."""
+        text = (fake.ROOT / "nix/home.nix").read_text()
+        block = re.search(r"^\s*toolPath = lib\.mkMerge \[\n(.*?)^\s*\];\n", text, re.M | re.S)
+        self.assertIsNotNone(block, "dotkit.toolPath in nix/home.nix")
+        dirs = re.findall(r'^\s*"([^"]+)"\s*$', block.group(1), re.M)
+        dirs = [d.replace("${user.name}", "<user>").replace("${user.home}", "~") for d in dirs]
+        self.assertEqual(dirs, list(base.TOOL_PATH))
+        self.assertEqual(base.tool_path("/Users/jane", "jane")[:3],
+                         ["/etc/profiles/per-user/jane/bin", "/run/current-system/sw/bin", "/Users/jane/.local/bin"])
+
     def test_layers_are_read(self):
         """Each layer file is one that the base file reads."""
         for main, (layer, _) in base.SHELL_LAYERS.items():

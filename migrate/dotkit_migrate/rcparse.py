@@ -137,6 +137,9 @@ class Carried:
     lines: tuple[int, int]
     text: str  # what goes into the repository file
     kind: str  # export, path, alias, function, comment
+    # A path line: the directories it adds, expanded, and those of them that it puts in front of PATH.
+    dirs: tuple[str, ...] = ()
+    front: tuple[str, ...] = ()
 
 
 @dataclass
@@ -330,7 +333,8 @@ def _home_form(path: str, home: str) -> str:
     return shlex.quote(path)
 
 
-def _path_entry_done(entry: str, home: str) -> bool:
+def path_done(entry: str, home: str) -> bool:
+    """A PATH entry that dotkit adds, that the system has, or that is in the Nix store: rcparse does not carry it."""
     for d in _PATH_DONE:
         d = home + d[1:] if d.startswith("~") else d
         if entry.rstrip("/") == d:
@@ -351,11 +355,12 @@ class Parser:
         known = dict(known or {})
         pending: list[tuple[int, str]] = []  # comment lines right before a statement
 
-        def carry(st: _Statement, out: str, kind: str) -> None:
+        def carry(st: _Statement, out: str, kind: str, dirs: tuple[str, ...] = (),
+                  front: tuple[str, ...] = ()) -> None:
             for no, comment in pending:
                 res.carried.append(Carried((no, no), comment, "comment"))
             pending.clear()
-            res.carried.append(Carried((st.start, st.end), out, kind))
+            res.carried.append(Carried((st.start, st.end), out, kind, dirs, front))
 
         def report(st: _Statement, category: str, note: str = "", source: str = "") -> None:
             pending.clear()
@@ -573,7 +578,7 @@ class Parser:
                 names = (m.group(1) or m.group(2) for m in _VAR_REF.finditer(raw))
                 source = source or next((_VAR_SOURCES[n] for n in names if SKIP_VARS.get(n) == VERSION_MANAGER), "")
                 continue
-            if _path_entry_done(path, self.home):
+            if path_done(path, self.home):
                 continue
             vm = _PATH_VERSION_MANAGERS.search(path)
             if vm:
@@ -605,7 +610,7 @@ class Parser:
                     lines.append(f'PATH="{joined(front)}:$PATH"')
                 if back:
                     lines.append(f'PATH="$PATH:{joined(back)}"')
-            carry(st, "\n".join(lines), "path")
+            carry(st, "\n".join(lines), "path", tuple(p for p, _ in keep), tuple(front))
         return True
 
 

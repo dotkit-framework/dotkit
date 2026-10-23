@@ -28,8 +28,8 @@ from . import report as report_mod
 from .context import Context, expand, tilde
 from .declared import Declared
 from .docs import nix_string
-from .migrators import (appstore, built_tools, config_files, frameworks, homebrew, logins, node_tools, other_config,
-                        python_tools, runtimes, shell)
+from .migrators import (appstore, built_tools, config_files, frameworks, homebrew, leftovers, logins, node_tools,
+                        other_config, python_tools, runtimes, shell)
 from .model import AdoptOptions, AdoptResult, Choices, Facts, Failure, Identity, Page, Plan, warnings_of
 
 MIGRATORS = (
@@ -44,6 +44,7 @@ MIGRATORS = (
     config_files.ConfigFiles(),
     other_config.OtherConfig(),
     logins.Logins(),
+    leftovers.Leftovers(),
 )
 
 
@@ -266,12 +267,14 @@ class Session:
         repo = Path(expand(choices.repo, ident.home))
         out = set(self._out)
         failures = list(self.failures)
+        check = self._check_once()
         passes = 0
         while True:
             passes += 1
             # Each migrator fails once at most: one pass more than there are migrators.
             assert passes <= len(self.migrators) + 1, "the build started again too often"
             view = facts.without(out)
+            view.check_syntax = check
             docs = docs_mod.Docs("setup", facts.base.template, repo, home=ident.home, host=ident.hostname,
                                  strict=self.strict)
             if self._plans(view, choices, docs, out, failures):
@@ -316,6 +319,20 @@ class Session:
         plan.summary = writer.mask_lines(checks.summary(plan, docs.report, ident.git_name, ident.git_email,
                                                            config_files.mise_dest(view, choices)))
         return plan
+
+    def _check_once(self) -> Optional[Callable[[str, str], bool]]:
+        """check_syntax for one build: each (shell, text) is checked once, as more than one migrator asks."""
+        check = self.check_syntax
+        if check is None:
+            return None
+        done: Dict[Tuple[str, str], bool] = {}
+
+        def cached(shell: str, text: str) -> bool:
+            if (shell, text) not in done:
+                done[(shell, text)] = check(shell, text)
+            return done[(shell, text)]
+
+        return cached
 
     def adopt(self, repo: Path, nix_declared: dict, opts: AdoptOptions) -> AdoptResult:
         """`dotkit migrate`: what the repository lacks, added by each migrator in its own transaction.
