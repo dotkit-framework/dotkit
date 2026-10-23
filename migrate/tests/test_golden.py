@@ -85,7 +85,7 @@ ZSH_THEME="robbyrussell"
 plugins=(git docker)
 source $ZSH/oh-my-zsh.sh
 
-export NVM_DIR="$HOME/.nvm"
+export NVM_DIR="$HOME/.local/share/nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh"
 export PYENV_ROOT="$HOME/.pyenv"
 eval "$(pyenv init -)"
@@ -139,13 +139,17 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     # Frameworks.
     h.mkdir(".oh-my-zsh")
     h.write(".p10k.zsh", "typeset -g POWERLEVEL9K_MODE=nerdfont-complete\n")
-    # Version managers: nvm, pyenv, asdf, sdkman.
-    h.json(".nvm/versions/node/v22.1.0/lib/node_modules/typescript/package.json",
+    # Version managers: nvm (in NVM_DIR), fnm (in two places), pyenv, asdf, sdkman.
+    h.json(".local/share/nvm/versions/node/v22.1.0/lib/node_modules/typescript/package.json",
            {"name": "typescript", "version": "5.4.0", "bin": {"tsc": "bin/tsc"}})
-    h.json(".nvm/versions/node/v22.1.0/lib/node_modules/pnpm/package.json",
+    h.json(".local/share/nvm/versions/node/v22.1.0/lib/node_modules/pnpm/package.json",
            {"name": "pnpm", "version": "9.0.0", "bin": {"pnpm": "x"}})
-    h.mkdir(".nvm/versions/node/v20.11.0")
-    h.write(".nvm/alias/default", "22\n")
+    h.mkdir(".local/share/nvm/versions/node/v20.11.0")
+    h.write(".local/share/nvm/alias/default", "22\n")
+    h.mkdir(".local/share/fnm/node-versions/v21.7.0/installation")
+    # A second, stale fnm location: fnm uses the first, and so does the scan; this tool is not in the plan.
+    h.json("Library/Application Support/fnm/node-versions/v16.20.0/installation/lib/node_modules/stale-fnm-tool/"
+           "package.json", {"name": "stale-fnm-tool", "version": "1.0.0", "bin": {"stale": "x"}})
     h.mkdir(".pyenv/versions/3.11.8")
     h.mkdir(".pyenv/versions/3.12.2")
     h.write(".pyenv/version", "3.12.2\n")
@@ -184,7 +188,8 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     h.write("go/bin/mystery", "#!/bin/sh\n", mode=0o755)
     # mise: your config, and files that mise also reads.
     h.write(".config/mise/config.toml",
-            '[tools]\njq = "latest"\n"npm:prettier" = "latest"\npython = "3.12"\n\n[settings]\nexperimental = true\n')
+            '[tools]\njq = "latest"\n"npm:prettier" = "latest"\npython = "3.12"\n\n[settings]\nexperimental = true\n'
+            'idiomatic_version_file_enable_tools = ["rust"]\n')
     h.write(".config/mise/conf.d/work.toml", '[tools]\nterraform = "1.7"\n')
     # Config files: Ghostty in a folded Stow directory, Git in two files, and others.
     h.write("dotfiles/ghostty/config", "font-size = 14\n")
@@ -219,7 +224,7 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
               {"name": "corp/tap", "remote": "https://git.example.com/homebrew tap.git"}],
         mas=MAS,
     )
-    return runner, {"SHELL": "/bin/bash"}
+    return runner, {"SHELL": "/bin/bash", "NVM_DIR": str(h.home / ".local/share/nvm")}
 
 
 def kitchen_sink_choices(p: registry.Session, repo: str) -> Choices:
