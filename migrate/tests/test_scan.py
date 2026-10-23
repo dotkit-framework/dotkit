@@ -38,7 +38,7 @@ class ScanTests(unittest.TestCase):
         self.assertEqual((s.brew, s.formulae, s.casks, s.taps), ("", [], [], []))
 
     def test_app_store(self):
-        s = self.scan(fake.brew_runner(mas="497799835  Xcode       (16.0)\n409183694 Keynote (14.2)\n"))
+        s = self.scan(fake.brew_runner(mas="497799835  Xcode       (16.0)\n  123   (1.0)\n409183694 Keynote (14.2)\n"))
         self.assertTrue(s.mas)
         self.assertEqual(s.mas_apps, [(497799835, "Xcode"), (409183694, "Keynote")])
         receipt = self.h.apps / "Pages.app/Contents/_MASReceipt/receipt"

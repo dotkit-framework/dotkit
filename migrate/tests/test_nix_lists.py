@@ -16,7 +16,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests import fake
+from dotkit_migrate import adopt, base
+from tests import fake, test_golden
 
 NIX = shutil.which("nix")
 RUBY = "/usr/bin/ruby" if os.access("/usr/bin/ruby", os.X_OK) else None
@@ -118,6 +119,52 @@ class NixListTests(unittest.TestCase):
                 "Pages": 2,
             },
         })
+
+    def test_the_plan_evaluates(self):
+        """The lists that setup writes for the kitchen-sink Mac of the goldens."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        runner, env = test_golden.kitchen_sink(h)
+        p = fake.planner(fake.scanner(h, runner, env).run(), test_golden.check_syntax)
+        files = p.build(test_golden.kitchen_sink_choices(p, str(h.home / ".dotfiles"))).files
+        taps = self.write("taps.txt", files["nix/taps.txt"])
+        mas = self.write("mas.txt", files["nix/mas.txt"])
+        self.assertEqual(eval_lists([taps], [mas]), {
+            "taps": ["hashicorp/tap", {"name": "acme/tools", "clone_target": "git@gitlab.com:acme/homebrew-tools.git"}],
+            "masApps": {
+                "Xcode": 497799835,
+                "Pixelmator Pro": 1289583905,
+                "C\\# Toolkit": 1234567890,
+                "Notes \u270f\ufe0f": 1274495053,
+                "Caf\u00e9 \\\"Pro\\\"": 1500000001,
+                "Keynote": 409183694,
+                "Keynote (409183695)": 409183695,
+            },
+        })
+
+    def test_a_name_written_by_hand(self):
+        """dotkit migrate gives a scanned app a label when nix/darwin.nix has its name, and the Mac evaluates."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        repo = h.home / ".dotfiles"
+        h.write(".dotfiles/nix/mas.txt", (fake.ROOT / "templates/default/nix/mas.txt").read_text())
+        darwin = h.write(".dotfiles/nix/darwin.nix",
+                         '{ dotkit.lists.masApps = [ ./mas.txt ]; homebrew.masApps."Keynote" = 1; }\n')
+        module = f"import (/. + {nix_string(str(darwin))})"
+        out = eval_mac(module, "masApps", "--json")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        declared = {"masApps": json.loads(out.stdout)}
+        self.assertEqual(declared["masApps"], {"Keynote": 1})
+        scan = fake.scanner(h, fake.brew_runner(mas="409183694 Keynote (14.2)\n")).run()
+        m = adopt.missing(scan, repo, base.Base(fake.ROOT), declared)
+        self.assertEqual(m.mas, [(409183694, "Keynote (409183694)")])
+        adopt.apply(m, repo)
+        out = eval_mac(module, "masApps", "--json")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(out.stdout), {"Keynote": 1, "Keynote (409183694)": 409183694})
+        # Without the label, the build would have two values for homebrew.masApps.Keynote.
+        (repo / "nix/mas.txt").write_text("409183694 Keynote\n")
+        self.assertNotEqual(eval_mac(module, "masApps", "--json").returncode, 0)
 
     def test_empty_and_template_files(self):
         t = fake.ROOT / "templates/default/nix"

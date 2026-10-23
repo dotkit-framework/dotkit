@@ -168,8 +168,8 @@ class Planner:
         out = [
             Group("formulae", "Homebrew formulae", "nix/brews.txt", formulae, True),
             Group("casks", "Homebrew casks", "nix/casks.txt", casks, True),
-            Group("taps", "Homebrew taps", "nix/darwin.nix", [t.name for t in s.taps], True),
-            Group("mas", "App Store apps", "nix/darwin.nix", [n for _, n in s.mas_apps], True),
+            Group("taps", "Homebrew taps", "nix/taps.txt", [t.name for t in s.taps], True),
+            Group("mas", "App Store apps", "nix/mas.txt", [n for _, n in s.mas_apps], True),
             Group("npm", "npm, pnpm, and bun tools", "config/mise.toml", self.npm_tools(), True),
             Group("pipx", "pipx and uv tools", "config/mise.toml", [p.name for p in s.pipx if p.ok], True),
             Group("cargo", "cargo install tools", "config/mise.toml", [p.name for p in s.cargo if p.ok], False,
@@ -275,8 +275,103 @@ def nix_string(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("${", "\\${") + '"'
 
 
-def nix_name(s: str) -> str:
-    return s if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_'-]*", s) else nix_string(s)
+def tap_line(t: scan_mod.Tap) -> str:
+    """The line of a tap in nix/taps.txt: the name, and the clone URL of a tap that is not on GitHub."""
+    return f"{t.name} {t.remote}" if t.custom else t.name
+
+
+# The lines of nix/taps.txt and nix/mas.txt that nix/read-taps.nix and
+# nix/read-mas.nix accept. A line they reject stops the evaluation of the
+# whole configuration, so a writer checks each line first.
+_TAP_NAME = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+
+
+def tap_problem(t: scan_mod.Tap) -> str | None:
+    """Why a tap cannot go into nix/taps.txt, or None. A URL with a secret says "it has a secret (<what>)"."""
+    if not _TAP_NAME.fullmatch(t.name):
+        return "its name is not owner/repo of letters, digits, `_`, `.`, and `-`"
+    if not t.custom:
+        return None
+    url = t.remote
+    # The secret first: such a URL is never written and never shown.
+    what = secrets.line_secret(url)
+    if what:
+        return f"it has a secret ({what})"
+    for bad, why in ((not url, "it is empty"), (re.search(r"\s", url), "it has a space"),
+                     ("#" in url, "it has a `#`"), ('"' in url, 'it has a `"`'), ("\\" in url, "it has a `\\`")):
+        if bad:
+            return why
+    return None
+
+
+def tap_lines(taps: list[scan_mod.Tap], declared: set[str]) -> tuple[list[str], list[str]]:
+    """The nix/taps.txt lines of the taps that are not declared, and to-dos for the ones that cannot go there."""
+    lines, todos, seen = [], [], set(declared)
+    for t in taps:
+        if t.name in seen:
+            continue
+        problem = tap_problem(t)
+        if problem is None:
+            seen.add(t.name)
+            lines.append(tap_line(t))
+        elif problem.startswith("its name"):
+            todos.append(f"`{t.name}`: it cannot go into nix/taps.txt: {problem}.")
+        elif problem.startswith("it has a secret"):
+            todos.append(f"`{t.name}`: its URL has a secret ({problem[len('it has a secret ('):-1]}), so it is not "
+                         "in nix/taps.txt. Take the credential out of the URL (for example with an SSH URL or a "
+                         "git credential helper), then add the tap to nix/taps.txt. Do not put the URL with the "
+                         "credential into a file that Git tracks.")
+        else:
+            todos.append(f"`{t.name}`: its URL cannot go into nix/taps.txt ({problem}). Add it by hand to "
+                         f"`homebrew.taps` in nix/darwin.nix as "
+                         f"`{{ name = {nix_string(t.name)}; clone_target = {nix_string(t.remote)}; }}`.")
+    return lines, todos
+
+
+def mas_problem(app_id: int, name: str) -> str | None:
+    """Why an App Store app cannot go into nix/mas.txt, or None."""
+    if not str(app_id).isdigit():
+        return "its ID is not digits"
+    if not name.strip():
+        return "its name is empty"
+    if "\n" in name or "\r" in name:
+        return "its name has a line break"
+    return None
+
+
+def ruby_escape(name: str) -> str:
+    """A name as nix/read-mas.nix escapes it for the Brewfile: `\\`, `"`, and `#` get a `\\` in front."""
+    return re.sub(r'[\\"#]', lambda m: "\\" + m.group(0), name)
+
+
+def mas_lines(apps: list[tuple[int, str]], taken: dict[str, int],
+              declared: set[int]) -> tuple[list[tuple[int, str]], list[str], list[str]]:
+    """The App Store apps for nix/mas.txt as (ID, label), notes on the labels, and to-dos for the rest.
+
+    homebrew.masApps lists apps by name, and the name is only a label. An app
+    whose name is `taken` (in nix/mas.txt, by an earlier app, or by a name in
+    the configuration) gets the label `<name> (<ID>)`. An app whose ID is
+    `declared` already is left out.
+    """
+    out, notes, todos, taken = [], [], [], dict(taken)
+    for i, n in apps:
+        n = n.strip()
+        if i in declared:
+            continue
+        problem = mas_problem(i, n)
+        if problem:
+            todos.append(f"`{n}` (ID {i}): it cannot go into nix/mas.txt: {problem}.")
+            continue
+        label = n if n not in taken else f"{n} ({i})"
+        if label in taken:
+            todos.append(f"`{n}` (ID {i}): other apps have this name and `{label}`, so it is not in nix/mas.txt. "
+                         f"Add it there under another name: `{i} <name>`.")
+            continue
+        if label != n:
+            notes.append(f"`{n}` (ID {i}): another app has this name, so nix/mas.txt lists it as `{label}`.")
+        taken[label] = i
+        out.append((i, label))
+    return out, notes, todos
 
 
 def toml_key(s: str) -> str:
@@ -314,6 +409,8 @@ class _Build:
         self.mise_lines: list[str] = []
         self.brews: list[str] = []
         self.casks: list[str] = []
+        self.taps: list[str] = []
+        self.mas: list[tuple[int, str]] = []
 
     def t(self, path: str | Path) -> str:
         return tilde(path, self.home)
@@ -358,15 +455,19 @@ class _Build:
                        "stays installed. Remove it when nothing else needs it; brew says when another "
                        "formula depends on it.",
                        [f"`{n}`: dotkit has {what}. `brew uninstall {flag}{n}`" for n, what in redundant.items()])
-        if s.taps and self.on("taps"):
-            r.carried(plural(len(s.taps), "Homebrew tap"), "homebrew.taps in nix/darwin.nix")
-            custom = [t for t in s.taps if t.custom]
+        lines, todos = tap_lines(s.taps, set())
+        if lines and self.on("taps"):
+            self.taps = lines
+            r.carried(plural(len(lines), "Homebrew tap"), "nix/taps.txt")
+            custom = [t for t in s.taps if t.custom and tap_problem(t) is None]
             if custom:
                 r.todo("Homebrew taps", "These taps are not on GitHub, so the list has their URL. Check it.",
                        [f"`{t.name}`: {t.remote}" for t in custom])
-        elif s.taps:
-            r.todo("Homebrew taps", "They stay tapped. Add them to homebrew.taps in nix/darwin.nix for a new Mac.",
-                   [f"`{t.name}`" for t in s.taps])
+        elif lines:
+            r.todo("Homebrew taps", "They stay tapped. Add their lines to nix/taps.txt for a new Mac.",
+                   [f"`{line}`" for line in lines])
+        if todos:
+            r.todo("Homebrew taps", "", todos)
         if s.old_taps:
             r.todo("Homebrew taps", "Homebrew merged these taps into its own. Remove them.",
                    [f"`{t}`: `brew untap {t}`" for t in s.old_taps])
@@ -374,15 +475,19 @@ class _Build:
     def app_store(self) -> None:
         s, r = self.s, self.r
         if s.mas_apps and self.on("mas"):
-            r.carried(plural(len(s.mas_apps), "App Store app"), "homebrew.masApps in nix/darwin.nix")
+            self.mas, notes, todos = mas_lines(s.mas_apps, {}, set())
+            if self.mas:
+                r.carried(plural(len(self.mas), "App Store app"), "nix/mas.txt")
+            if notes or todos:
+                r.todo("App Store apps", "", notes + todos)
         elif s.mas_apps:
-            r.todo("App Store apps", "Add the ones you want to homebrew.masApps in nix/darwin.nix.",
-                   [f"`{n}`: `{nix_name(n)} = {i};`" for i, n in s.mas_apps])
+            r.todo("App Store apps", "They stay installed. Add the ones you want to nix/mas.txt.",
+                   [f"`{n}`: `dotkit add mas:{i}`" for i, n in s.mas_apps])
         if s.store_apps:
             r.todo("App Store apps",
                    "These apps came from the App Store. dotkit installs App Store apps with mas, which was not "
-                   "on this Mac, so the scan has no IDs. Run `dotkit add brew:mas`, then `mas list`, and add "
-                   "each app to homebrew.masApps in nix/darwin.nix as `Name = ID;`.",
+                   "on this Mac, so the scan has no IDs. Run `dotkit add brew:mas`, then `mas list`, and "
+                   "`dotkit add mas:ID` for each app.",
                    [f"{n}" for n in s.store_apps])
 
     # --- Tools of other package managers
@@ -790,24 +895,9 @@ class _Build:
         list_file("nix/brews.txt", self.brews, f"From Homebrew on {s.hostname or 'this Mac'}")
         list_file("nix/casks.txt", self.casks, f"From Homebrew on {s.hostname or 'this Mac'}")
 
-        darwin = self.tmpl("nix/darwin.nix")
-        if s.taps and self.on("taps"):
-            items = []
-            for t in s.taps:
-                if t.custom:
-                    items.append(f"    {{\n      name = {nix_string(t.name)};\n"
-                                 f"      clone_target = {nix_string(t.remote)};\n    }}\n")
-                else:
-                    items.append(f"    {nix_string(t.name)}\n")
-            darwin = darwin.replace("  homebrew.taps = [ ];\n", "  homebrew.taps = [\n" + "".join(items) + "  ];\n")
-        if s.mas_apps and self.on("mas"):
-            apps: dict[str, int] = {}
-            for i, n in s.mas_apps:
-                apps.setdefault(n, i)
-            body = "".join(f"    {nix_name(n)} = {i};\n" for n, i in sorted(apps.items()))
-            darwin = darwin.replace("  homebrew.masApps = { };\n", "  homebrew.masApps = {\n" + body + "  };\n")
-        if darwin != self.tmpl("nix/darwin.nix"):
-            plan.files["nix/darwin.nix"] = darwin
+        list_file("nix/taps.txt", self.taps, f"From Homebrew on {s.hostname or 'this Mac'}")
+        list_file("nix/mas.txt", [f"{i} {n}" for i, n in self.mas],
+                  f"From the App Store on {s.hostname or 'this Mac'}")
 
         if plan.keymap == "vi":
             plan.files["nix/shell.nix"] = self.tmpl("nix/shell.nix").replace('# keymap = "vi";', 'keymap = "vi";')
@@ -842,9 +932,7 @@ class _Build:
                 "\n# Files with secrets, from the migration. See MIGRATION.md.\n/local/\n"
 
         self.links_in_the_way()
-        plan.report = "".join(
-            line if not secrets.line_secret(line) else "(a line with a secret was here)\n"
-            for line in self.r.render(s, repo_rel).splitlines(keepends=True))
+        plan.report = "".join(mask_lines(self.r.render(s, repo_rel).splitlines(keepends=True)))
         plan.files["MIGRATION.md"] = plan.report
         plan.summary = self.summary(repo_rel)
 
@@ -1001,6 +1089,12 @@ class _Build:
         if s.git_name or s.git_email:
             out.append(f"Git identity: {s.git_name} <{s.git_email}>, in ~/.gitconfig.user.")
         return out
+
+
+def mask_lines(lines: list[str]) -> list[str]:
+    """Lines of text that is shown or written, with each line that has a secret replaced."""
+    return [line if not secrets.line_secret(line) else
+            "(a line with a secret was here)" + ("\n" if line.endswith("\n") else "") for line in lines]
 
 
 def _code(text: str) -> str:

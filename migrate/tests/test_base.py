@@ -48,8 +48,12 @@ class BaseTests(unittest.TestCase):
         """plan.py edits the template at these lines."""
         t = self.b.template
         self.assertIn('    ".zshrc.local" = "config/zsh/zshrc";\n', (t / "nix/home.nix").read_text())
-        self.assertIn("  homebrew.taps = [ ];\n", (t / "nix/darwin.nix").read_text())
-        self.assertIn("  homebrew.masApps = { };\n", (t / "nix/darwin.nix").read_text())
+        darwin = (t / "nix/darwin.nix").read_text()
+        self.assertIn("    taps = [ ./taps.txt ];\n", darwin)
+        self.assertIn("    masApps = [ ./mas.txt ];\n", darwin)
+        self.assertNotIn("homebrew.", darwin, "taps and App Store apps are in their list files")
+        for rel in ("nix/taps.txt", "nix/mas.txt"):
+            self.assertEqual(base.read_list(t / rel), [], rel)
         self.assertIn('# keymap = "vi";', (t / "nix/shell.nix").read_text())
         self.assertIn("[tools]", (t / "config/mise.toml").read_text())
 

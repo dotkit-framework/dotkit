@@ -4,6 +4,7 @@ Usage: python3 main_child.py <home> <args>...
 The scan of the fake Mac replaces the real one; the arguments go to main().
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,7 +19,8 @@ from tests.test_plan import used_mac  # noqa: E402
 def main() -> int:
     h = fake.Home.at(Path(sys.argv[1]))
     runner = used_mac(h)
-    runner.commands["mas list"] = "409183694 Keynote (14.2)\n1274495053 Notes \u270f\ufe0f (2.0)\n"
+    runner.commands["mas list"] = os.environ.get("DOTKIT_TEST_MAS_LIST",
+                                                 "409183694 Keynote (14.2)\n1274495053 Notes \u270f\ufe0f (2.0)\n")
     real = scan.Scanner
 
     def fake_scanner(*_args, **_kwargs):

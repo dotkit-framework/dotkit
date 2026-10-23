@@ -90,7 +90,7 @@ def cmd_adopt(a: argparse.Namespace) -> int:
         return 0
     print("Installed on this Mac, and not in the lists:")
     print("\n".join(adopt_mod.describe(m)), flush=True)
-    if not (m.formulae or m.casks or m.mise):
+    if not (m.formulae or m.casks or m.taps or m.mas or m.mise):
         return 0
     if a.dry_run:
         info("No change. Run dotkit migrate without -n to add them.")

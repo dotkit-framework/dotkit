@@ -4,7 +4,7 @@ import stat
 import subprocess
 import unittest
 
-from dotkit_migrate import plan, secrets, write
+from dotkit_migrate import adopt, plan, secrets, write
 from dotkit_migrate._compat import tomllib
 from dotkit_migrate.report import Report
 from tests import fake
@@ -104,10 +104,11 @@ class PlanTests(unittest.TestCase):
         self.assertIn("\nwget\nhashicorp/tap/terraform\n", f["nix/brews.txt"])
         self.assertNotIn("ripgrep", f["nix/brews.txt"])
         self.assertTrue(f["nix/casks.txt"].endswith("\nraycast\n"))
-        self.assertIn('    "hashicorp/tap"\n', f["nix/darwin.nix"])
-        self.assertIn('clone_target = "git@gitlab.com:acme/homebrew-tools.git";', f["nix/darwin.nix"])
-        self.assertIn("    Xcode = 497799835;\n", f["nix/darwin.nix"])
-        self.assertIn('    "Pixelmator Pro" = 1289583905;\n', f["nix/darwin.nix"])
+        self.assertNotIn("nix/darwin.nix", f, "taps and App Store apps are in their list files")
+        self.assertTrue(f["nix/taps.txt"].endswith(
+            "\nhashicorp/tap\nacme/tools git@gitlab.com:acme/homebrew-tools.git\n"))
+        self.assertTrue(f["nix/mas.txt"].endswith("\n497799835 Xcode\n1289583905 Pixelmator Pro\n"))
+        self.assertTrue(f["nix/mas.txt"].startswith((fake.ROOT / "templates/default/nix/mas.txt").read_text()))
         mise = tomllib.loads(f["config/mise.toml"])
         self.assertEqual(mise["tools"], {"jq": "latest", "npm:typescript": "latest", "pipx:ruff": "latest"})
         self.assertEqual(mise["settings"], {"experimental": True})
@@ -291,7 +292,8 @@ class PlanTests(unittest.TestCase):
         p = self.build(groups=off)
         self.assertNotIn("nix/brews.txt", p.files)
         self.assertNotIn("nix/casks.txt", p.files)
-        self.assertNotIn("nix/darwin.nix", p.files)
+        self.assertNotIn("nix/taps.txt", p.files)
+        self.assertNotIn("nix/mas.txt", p.files)
         self.assertEqual(tomllib.loads(p.files["config/mise.toml"])["tools"], {"jq": "latest"})
         self.assertNotIn("export EDITOR", p.files["config/zsh/zshrc"])
         self.assertIn("`wget`: `dotkit add brew:wget`", p.report)
@@ -299,7 +301,53 @@ class PlanTests(unittest.TestCase):
         self.assertIn("You chose not to carry shell lines", p.report)
         self.assertEqual(p.local, {})
         self.assertIn("`GITHUB_TOKEN` has a secret. You chose not to carry shell lines", p.report)
-        self.assertIn("Xcode = 497799835;", p.report)
+        self.assertIn("`acme/tools git@gitlab.com:acme/homebrew-tools.git`", p.report)
+        self.assertIn("`Xcode`: `dotkit add mas:497799835`", p.report)
+
+    def test_taps_and_apps_that_cannot_go_into_the_lists(self):
+        runner = fake.brew_runner(taps=[
+            {"name": "ok/tap", "remote": "https://github.com/ok/homebrew-tap"},
+            {"name": "acme/space", "remote": "https://example.com/a b.git"},
+            {"name": "acme/hash", "remote": "https://example.com/a.git#main"},
+        ], mas="409183694 Keynote (14.2)\n1234 Keynote (1.0)\n497799835 Xcode (16.0)\n")
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        p = fake.planner(fake.scanner(h, runner).run())
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertTrue(result.files["nix/taps.txt"].endswith(", see MIGRATION.md.\nok/tap\n"))
+        self.assertNotIn("acme/", result.files["nix/taps.txt"])
+        for name, url, why in (("acme/space", "https://example.com/a b.git", "it has a space"),
+                               ("acme/hash", "https://example.com/a.git#main", "it has a `#`")):
+            self.assertIn(f"- `{name}`: its URL cannot go into nix/taps.txt ({why}). Add it by hand to "
+                          f"`homebrew.taps` in nix/darwin.nix as "
+                          f'`{{ name = "{name}"; clone_target = "{url}"; }}`.\n', result.report)
+        # Two apps with one name: the second gets a label.
+        self.assertTrue(result.files["nix/mas.txt"].endswith(
+            ", see MIGRATION.md.\n409183694 Keynote\n1234 Keynote (1234)\n497799835 Xcode\n"))
+        self.assertIn("- `Keynote` (ID 1234): another app has this name, so nix/mas.txt lists it as "
+                      "`Keynote (1234)`.\n", result.report)
+        self.assertIn("1 Homebrew tap -> nix/taps.txt", result.summary)
+        self.assertIn("3 App Store apps -> nix/mas.txt", result.summary)
+
+    def test_a_tap_url_with_a_secret_is_not_shown(self):
+        url = fake.fill("https://me:@GH@@git.example.com/homebrew tap.git")
+        runner = fake.brew_runner(taps=[{"name": "corp/tap", "remote": url}])
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        s = fake.scanner(h, runner).run()
+        p = fake.planner(s)
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertNotIn("nix/taps.txt", result.files)
+        self.assertIn("- `corp/tap`: its URL has a secret (", result.report)
+        self.assertIn("), so it is not in nix/taps.txt. Take the credential out of the URL (for example with an "
+                      "SSH URL or a git credential helper), then add the tap to nix/taps.txt. Do not put the URL "
+                      "with the credential into a file that Git tracks.\n", result.report)
+        m = adopt.missing(s, h.home / ".dotfiles", fake.base.Base(fake.ROOT), {})
+        out = "\n".join(adopt.describe(m))
+        self.assertIn("`corp/tap`: its URL has a secret", out)
+        for text in (result.report, "\n".join(result.summary), out):
+            self.assertNotIn(fake.TOKENS["@GH@"], text)
+            self.assertNotIn("git.example.com", text)
 
     def test_runtimes_and_cargo_on(self):
         p = self.build(groups={"runtimes": True, "cargo": True})
@@ -547,13 +595,13 @@ class WriteTests(unittest.TestCase):
         s = fake.scanner(h, used_mac(h)).run()
         p = fake.planner(s)
         result = p.build(p.defaults(str(h.home / "my dots")))
-        for rel in ("nix/darwin.nix", "nix/home.nix", "nix/user.nix"):
+        for rel in ("nix/home.nix", "nix/user.nix"):
             out = subprocess.run(["nix-instantiate", "--parse", "-E", result.files[rel]], capture_output=True,
                                  text=True)
             self.assertEqual(out.returncode, 0, f"{rel}: {out.stderr}")
         nixfmt = shutil.which("nixfmt")
         if nixfmt:
-            for rel in ("nix/darwin.nix", "nix/home.nix", "nix/user.nix"):
+            for rel in ("nix/home.nix", "nix/user.nix"):
                 out = subprocess.run([nixfmt, "--check"], input=result.files[rel], capture_output=True, text=True)
                 self.assertEqual(out.returncode, 0, f"{rel} is not nixfmt style: {out.stderr}")
 

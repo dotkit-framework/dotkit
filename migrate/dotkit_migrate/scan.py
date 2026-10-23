@@ -273,7 +273,8 @@ class Scanner:
                 s.mas = True
                 for line in out.splitlines():
                     m = re.match(r"^\s*(\d+)\s+(.+?)\s+\(([^)]*)\)\s*$", line)
-                    if m:
+                    # An app without a name cannot go into nix/mas.txt.
+                    if m and m.group(2).strip():
                         s.mas_apps.append((int(m.group(1)), m.group(2).strip()))
                 return
         try:

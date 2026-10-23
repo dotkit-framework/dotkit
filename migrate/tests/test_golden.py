@@ -211,7 +211,9 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
         taps=[{"name": "homebrew/core"},
               {"name": "homebrew/cask-fonts"},
               {"name": "hashicorp/tap", "remote": "https://github.com/hashicorp/homebrew-tap"},
-              {"name": "acme/tools", "remote": "git@gitlab.com:acme/homebrew-tools.git"}],
+              {"name": "acme/tools", "remote": "git@gitlab.com:acme/homebrew-tools.git"},
+              # A URL that nix/taps.txt cannot hold.
+              {"name": "corp/tap", "remote": "https://git.example.com/homebrew tap.git"}],
         mas=MAS,
     )
     return runner, {"SHELL": "/bin/bash"}
@@ -231,6 +233,8 @@ ADOPT_REPO = {
     "nix/packages.txt": "dust\n",
     "nix/brews.txt": "# mine\nwget\n",
     "nix/casks.txt": "raycast",
+    "nix/taps.txt": "hashicorp/tap\n",
+    "nix/mas.txt": "497799835 Xcode",
     "config/mise.toml": '[tools]\n"npm:typescript" = "latest"\n\n[settings]\nexperimental = true\n',
 }
 ADOPT_DECLARED = {"taps": ["hashicorp/tap"], "masApps": {"Xcode": 497799835}}

@@ -33,8 +33,8 @@ class MainTests(unittest.TestCase):
         out = run(self.root, "setup", "--yes", "--repo", str(self.home / ".dotfiles"), "--result", str(result),
                   env=env)
         self.assertEqual(out.returncode, 0, out.stderr.decode(errors="replace"))
-        darwin = (self.home / ".dotfiles/nix/darwin.nix").read_text(encoding="utf-8")
-        self.assertIn('"Notes \u270f\ufe0f" = 1274495053;', darwin)
+        mas = (self.home / ".dotfiles/nix/mas.txt").read_text(encoding="utf-8")
+        self.assertIn("\n1274495053 Notes \u270f\ufe0f\n", mas)
         self.assertEqual(result.read_text(encoding="utf-8").splitlines()[0], str(self.home / ".dotfiles"))
         out = run(self.root, "setup", "--yes", "--dry-run", "--repo", str(self.home / "dry"), env=env)
         self.assertEqual(out.returncode, 0, out.stderr.decode(errors="replace"))
@@ -71,6 +71,22 @@ class MainTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr.decode(errors="replace"))
         self.assertIn("wget", (repo / "nix/brews.txt").read_text(encoding="utf-8"))
         self.assertIn(b"Notes ", out.stdout)
+
+
+    def test_adopt_twice(self):
+        """Two App Store apps with one name: both are added, and the second run has nothing to add."""
+        repo = self.home / ".dotfiles"
+        (repo / "config").mkdir(parents=True)
+        (repo / "nix").mkdir()
+        for rel in ("nix/brews.txt", "nix/casks.txt", "nix/taps.txt", "nix/mas.txt"):
+            (repo / rel).write_text("", encoding="utf-8")
+        env = {"DOTKIT_TEST_MAS_LIST": "409183694 Keynote (14.2)\n1234 Keynote (1.0)\n"}
+        out = run(self.root, "adopt", "--yes", "--all", "--repo", str(repo), "--declared", "{}", env=env)
+        self.assertEqual(out.returncode, 0, out.stderr.decode(errors="replace"))
+        self.assertEqual((repo / "nix/mas.txt").read_text(encoding="utf-8"), "409183694 Keynote\n1234 Keynote (1234)\n")
+        out = run(self.root, "adopt", "--yes", "--all", "--repo", str(repo), "--declared", "{}", env=env)
+        self.assertEqual(out.returncode, 0, out.stderr.decode(errors="replace"))
+        self.assertEqual(out.stdout, b"The lists have everything that this Mac has.\n")
 
 
 if __name__ == "__main__":

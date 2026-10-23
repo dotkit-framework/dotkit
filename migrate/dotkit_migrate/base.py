@@ -120,6 +120,20 @@ def read_list(path: Path) -> list[str]:
     return names
 
 
+def read_mas(path: Path) -> dict[str, int]:
+    """The apps in nix/mas.txt, name -> ID, as nix/read-mas.nix reads them before it escapes the names."""
+    apps: dict[str, int] = {}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return apps
+    for line in text.splitlines():
+        m = re.fullmatch(r"(\d+)\s+(.+)", line.strip())
+        if m and not line.strip().startswith("#"):
+            apps.setdefault(m.group(2), int(m.group(1)))
+    return apps
+
+
 def mise_tools(path: Path) -> dict[str, object]:
     """The [tools] table of a mise config file, or {} when it cannot be read."""
     try:

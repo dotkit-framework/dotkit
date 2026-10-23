@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
-from .plan import insert_tools, nix_name, nix_string, toml_key
+from .plan import insert_tools, mas_lines, mask_lines, ruby_escape, tap_lines, toml_key
 from .scan import Scan
 
 
@@ -16,16 +16,22 @@ from .scan import Scan
 class Missing:
     formulae: list[str] = field(default_factory=list)
     casks: list[str] = field(default_factory=list)
-    taps: list[str] = field(default_factory=list)
+    taps: list[str] = field(default_factory=list)  # lines of nix/taps.txt
     mas: list[tuple[int, str]] = field(default_factory=list)
     mise: list[tuple[str, str]] = field(default_factory=list)  # (key, where it was installed)
     # cargo and Go tools: mise builds them from source, so, as in the setup
     # wizard, they are added only when asked (--all).
     built: list[tuple[str, str]] = field(default_factory=list)
+    # Taps and App Store apps that cannot go into the lists: what to do by hand.
+    tap_todos: list[str] = field(default_factory=list)
+    mas_todos: list[str] = field(default_factory=list)
+    # App Store apps above that got a label because another app has their name.
+    mas_notes: list[str] = field(default_factory=list)
 
     @property
     def empty(self) -> bool:
-        return not (self.formulae or self.casks or self.taps or self.mas or self.mise or self.built)
+        return not (self.formulae or self.casks or self.taps or self.mas or self.mise or self.built
+                    or self.tap_todos or self.mas_todos)
 
 
 def missing(scan: Scan, repo: Path, base: base_mod.Base, declared: dict, all_tools: bool = False) -> Missing:
@@ -57,10 +63,23 @@ def missing(scan: Scan, repo: Path, base: base_mod.Base, declared: dict, all_too
     for c in scan.casks:
         if c not in casks and short(c) not in casks and not base.provides_brew(c, "cask"):
             m.casks.append(c)
-    taps = set(declared.get("taps") or [])
-    m.taps = [t.name for t in scan.taps if t.name not in taps]
-    ids = set((declared.get("masApps") or {}).values())
-    m.mas = [(i, n) for i, n in scan.mas_apps if i not in ids]
+    # The evaluated configuration, and the lines of nix/taps.txt and nix/mas.txt
+    # as they are now.
+    taps = set(declared.get("taps") or []) | set(base_mod.read_list(repo / "nix/taps.txt"))
+    m.taps, m.tap_todos = tap_lines(scan.taps, taps)
+    # The evaluated masApps has the names of nix/mas.txt escaped (nix/read-mas.nix)
+    # and the names written by hand in nix/darwin.nix as they are. The escape is
+    # one to one, so each key that is not an escaped name of the file is one
+    # written by hand.
+    listed = base_mod.read_mas(repo / "nix/mas.txt")
+    evaluated = declared.get("masApps") or {}
+    escaped = {ruby_escape(n) for n in listed}
+    taken = dict(listed)
+    for k, v in evaluated.items():
+        if k not in escaped:
+            taken.setdefault(k, v)
+    ids = set(evaluated.values()) | set(listed.values())
+    m.mas, m.mas_notes, m.mas_todos = mas_lines(scan.mas_apps, taken, ids)
     keys = set(base.mise) | set(repo_mise)
     for backend, pkgs in (("npm", scan.npm), ("pipx", scan.pipx), ("cargo", scan.cargo), ("go", scan.go)):
         for p in pkgs:
@@ -80,23 +99,28 @@ def describe(m: Missing) -> list[str]:
         out += ["Homebrew formulae -> nix/brews.txt:"] + [f"  {n}" for n in m.formulae]
     if m.casks:
         out += ["Homebrew casks -> nix/casks.txt:"] + [f"  {n}" for n in m.casks]
+    if m.taps:
+        out += ["Homebrew taps -> nix/taps.txt:"] + [f"  {t}" for t in m.taps]
+    if m.mas:
+        out += ["App Store apps -> nix/mas.txt:"] + [f"  {i} {n}" for i, n in m.mas] + \
+            [f"  {n}" for n in m.mas_notes]
     if m.mise:
         out += ["Tools -> config/mise.toml:"] + [f"  {k} (from {w})" for k, w in m.mise]
     if m.built:
         out += ["cargo and Go tools, not added: mise builds them from source. Use --all to add them:"]
         out += [f"  {k} (from {w})" for k, w in m.built]
-    if m.taps:
-        out += ["Homebrew taps: add them to homebrew.taps in nix/darwin.nix by hand:"]
-        out += [f"  {nix_string(t)}" for t in m.taps]
-    if m.mas:
-        out += ["App Store apps: add them to homebrew.masApps in nix/darwin.nix by hand:"]
-        out += [f"  {nix_name(n)} = {i};" for i, n in m.mas]
-    return out
+    if m.tap_todos:
+        out += ["Homebrew taps, not added:"] + [f"  {t}" for t in m.tap_todos]
+    if m.mas_todos:
+        out += ["App Store apps, not added:"] + [f"  {t}" for t in m.mas_todos]
+    # Nothing that it prints can show a secret.
+    return mask_lines(out)
 
 
 def apply(m: Missing, repo: Path) -> None:
-    """Appends the formulae, casks, and mise tools to the lists of the repository."""
-    for rel, names in (("nix/brews.txt", m.formulae), ("nix/casks.txt", m.casks)):
+    """Appends the formulae, casks, taps, App Store apps, and mise tools to the lists of the repository."""
+    for rel, names in (("nix/brews.txt", m.formulae), ("nix/casks.txt", m.casks), ("nix/taps.txt", m.taps),
+                       ("nix/mas.txt", [f"{i} {n}" for i, n in m.mas])):
         if not names:
             continue
         p = repo / rel
