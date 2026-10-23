@@ -1,0 +1,2 @@
+# Mac App Store apps, one per line: the App Store ID, then the name, as
+# `mas list` shows them. `dotkit add mas:ID` appends one.
