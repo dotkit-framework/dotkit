@@ -10,7 +10,8 @@ from pathlib import Path
 from . import base as base_mod
 from . import catalog
 from .docs import insert_tools, ruby_escape, toml_key
-from .plan import mas_lines, tap_lines
+from .migrators import homebrew
+from .plan import mas_lines
 from .writer import mask_lines
 from .model import Facts
 
@@ -45,6 +46,7 @@ def missing(facts: Facts, repo: Path, base: base_mod.Base, declared: dict, all_t
     """
     m = Missing()
     scan = facts.get("_rest")
+    brew = homebrew.facts_of(facts) or homebrew.BrewFacts()
     repo_packages = set(base_mod.read_list(repo / "nix/packages.txt"))
     repo_mise = base_mod.mise_tools(repo / "config/mise.toml")
     declared_tools = repo_packages | set(base.packages) | {base_mod.mise_short(k) for k in (*repo_mise, *base.mise)}
@@ -61,16 +63,16 @@ def missing(facts: Facts, repo: Path, base: base_mod.Base, declared: dict, all_t
 
     brews |= {short(n) for n in brews}
     casks |= {short(n) for n in casks}
-    for f in scan.formulae:
+    for f in brew.formulae:
         if f not in brews and short(f) not in brews and not base.provides_brew(f, "formula") and not has_tool(f):
             m.formulae.append(f)
-    for c in scan.casks:
+    for c in brew.casks:
         if c not in casks and short(c) not in casks and not base.provides_brew(c, "cask"):
             m.casks.append(c)
     # The evaluated configuration, and the lines of nix/taps.txt and nix/mas.txt
     # as they are now.
     taps = set(declared.get("taps") or []) | set(base_mod.read_list(repo / "nix/taps.txt"))
-    m.taps, m.tap_todos = tap_lines(scan.taps, taps)
+    m.taps, m.tap_todos = homebrew.tap_lines(brew.taps, taps)
     # The evaluated masApps has the names of nix/mas.txt escaped (nix/read-mas.nix)
     # and the names written by hand in nix/darwin.nix as they are. The escape is
     # one to one, so each key that is not an escaped name of the file is one

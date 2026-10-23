@@ -8,11 +8,39 @@ scan (ARCHITECTURE.md, section 4.1).
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from ..context import Context
 from ..docs import Txn
-from ..model import Choices, Facts, Page
+from ..model import Choices, Facts, Item, Page
+
+
+# The intros of "Not carried, by your choice": items that were on by default and that you deselected.
+# Homebrew formulae and casks get the first one.
+NOT_CARRIED_BREW = ("You left these out of the lists. They stay on this Mac, and dotkit does not manage them. "
+                    "With `homebrew.onActivation.cleanup = \"uninstall\"` in nix/darwin.nix, activation would "
+                    "uninstall them.")
+NOT_CARRIED = "You left these out. They stay where they are, and dotkit does not manage them."
+
+
+def left_out(pages: List[Page], choices: Choices, item_id: str) -> bool:
+    """An item of these pages that was on by default and that you deselected: "Not carried, by your choice".
+
+    An item that is off by default keeps the to-do of its kind, which says why it is off.
+    """
+    for page in pages:
+        for item in page.items:
+            if item.id == item_id:
+                return item.default and not choices.selected(page.key, item_id)
+    return False
+
+
+def unique_items(items: List[Item]) -> List[Item]:
+    """The items without repeats: a package in two places is one item."""
+    out: Dict[str, Item] = {}
+    for i in items:
+        out.setdefault(i.id, i)
+    return list(out.values())
 
 
 class Migrator:

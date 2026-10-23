@@ -17,11 +17,11 @@ from pathlib import Path
 from . import base as base_mod
 from . import catalog, rcparse, secrets
 from . import docs as docs_mod
-from .docs import mas_label, mas_problem, nix_string, tap_name_problem, tap_problem
+from .docs import mas_label, mas_problem
 from .model import Choices, Facts, Item, Page
 from .report import plural
-from . import scan as scan_mod
 from .context import tilde
+from .migrators import NOT_CARRIED
 from .scan import Scan, ShellFile
 
 # --- The choices
@@ -33,14 +33,6 @@ OPTION_TEXT = {
     "keep": "leave yours in place, outside the repository",
     "adopt": "yours, in the repository",
 }
-
-# The intros of "Not carried, by your choice": items that were on by default and that you deselected.
-# Homebrew formulae and casks get the first one.
-NOT_CARRIED_BREW = ("You left these out of the lists. They stay on this Mac, and dotkit does not manage them. "
-                    "With `homebrew.onActivation.cleanup = \"uninstall\"` in nix/darwin.nix, activation would "
-                    "uninstall them.")
-NOT_CARRIED = "You left these out. They stay where they are, and dotkit does not manage them."
-
 
 def _file_item(target: str, options: list[str], default: str, note: str) -> Item:
     return Item(f"file:{target}", f"~/{target}", note, options=tuple(options), default_option=default,
@@ -58,16 +50,6 @@ class Planner:
         self._rc: dict[frozenset[str], dict[str, rcparse.Result]] = {}
 
     # --- What the wizard shows
-
-    def brew_split(self, names: list[str], kind: str) -> tuple[list[str], dict[str, str]]:
-        keep, redundant = [], {}
-        for n in names:
-            p = self.base.provides_brew(n, kind)
-            if p:
-                redundant[n] = p
-            else:
-                keep.append(n)
-        return keep, redundant
 
     def runtime_lines(self) -> dict[str, list[str]]:
         """mise tool -> versions, default first, for the version managers mise can replace."""
@@ -127,21 +109,6 @@ class Planner:
                 unique.setdefault(i.id, i)
             out.append(Page(key, title, dest, intro, "checklist", list(unique.values()), note))
 
-        formulae, _ = self.brew_split(s.formulae, "formula")
-        casks, _ = self.brew_split(s.casks, "cask")
-        checklist("formulae", "Homebrew formulae", "nix/brews.txt",
-                  "The formulae that you installed with Homebrew. The selected ones go to the list; all of them "
-                  "stay installed. MIGRATION.md lists the ones that the dotkit base has already.",
-                  [Item(f"brew:{n}", n, f"`dotkit add brew:{n}` adds it later.") for n in formulae])
-        checklist("casks", "Homebrew casks", "nix/casks.txt",
-                  "The apps that you installed with Homebrew. The selected ones go to the list; all of them stay "
-                  "installed. MIGRATION.md lists the ones that the dotkit base has already.",
-                  [Item(f"cask:{n}", n, f"`dotkit add cask:{n}` adds it later.") for n in casks])
-        lines, _ = tap_lines(s.taps, set())
-        checklist("taps", "Homebrew taps", "nix/taps.txt",
-                  "The taps of Homebrew. The selected ones go to the list, so that a new Mac has them too.",
-                  [Item(f"tap:{line.split()[0]}", line.split()[0],
-                        f"From {line.split()[1]}" if " " in line else "") for line in lines])
         checklist("mas", "App Store apps", "nix/mas.txt",
                   "The apps that mas lists. The selected ones go to the list, and a new Mac installs them from "
                   "the App Store.",
@@ -249,40 +216,6 @@ class Planner:
         _Build(self, facts, c, txn).run()
 
 
-def tap_line(t: scan_mod.Tap) -> str:
-    """The line of a tap in nix/taps.txt: the name, and the clone URL of a tap that is not on GitHub."""
-    return f"{t.name} {t.remote}" if t.custom else t.name
-
-
-def tap_line_problem(t: scan_mod.Tap) -> str | None:
-    """Why a tap cannot go into nix/taps.txt, or None: its name first, as the name has no spaces."""
-    return tap_name_problem(t.name) or tap_problem(tap_line(t))
-
-
-def tap_lines(taps: list[scan_mod.Tap], declared: set[str]) -> tuple[list[str], list[str]]:
-    """The nix/taps.txt lines of the taps that are not declared, and to-dos for the ones that cannot go there."""
-    lines, todos, seen = [], [], set(declared)
-    for t in taps:
-        if t.name in seen:
-            continue
-        problem = tap_line_problem(t)
-        if problem is None:
-            seen.add(t.name)
-            lines.append(tap_line(t))
-        elif problem.startswith("its name"):
-            todos.append(f"`{t.name}`: it cannot go into nix/taps.txt: {problem}.")
-        elif problem.startswith("it has a secret"):
-            todos.append(f"`{t.name}`: its URL has a secret ({problem[len('it has a secret ('):-1]}), so it is not "
-                         "in nix/taps.txt. Take the credential out of the URL (for example with an SSH URL or a "
-                         "git credential helper), then add the tap to nix/taps.txt. Do not put the URL with the "
-                         "credential into a file that Git tracks.")
-        else:
-            todos.append(f"`{t.name}`: its URL cannot go into nix/taps.txt ({problem}). Add it by hand to "
-                         f"`homebrew.taps` in nix/darwin.nix as "
-                         f"`{{ name = {nix_string(t.name)}; clone_target = {nix_string(t.remote)}; }}`.")
-    return lines, todos
-
-
 def mas_lines(apps: list[tuple[int, str]], taken: dict[str, int],
               declared: set[int]) -> tuple[list[tuple[int, str]], list[str], list[str]]:
     """The App Store apps for nix/mas.txt as (ID, label), notes on the labels, and to-dos for the rest.
@@ -349,7 +282,6 @@ class _Build:
         # Your mise config first: the tools that it has are not added again.
         if self.mise_layered():
             self.txn.mise().set_base(self.s.mise_config.read_text(encoding="utf-8", errors="replace"))
-        self.homebrew()
         self.app_store()
         self.tools()
         self.version_managers()
@@ -357,52 +289,6 @@ class _Build:
         self.config_files()
         self.other_config()
         self.secret_files()
-
-    # --- Homebrew and the App Store
-
-    def homebrew(self) -> None:
-        s, r = self.s, self.r
-        if not s.brew:
-            return
-        left: list[str] = []
-        for kind, names, key, dest in (("formula", s.formulae, "formulae", "nix/brews.txt"),
-                                       ("cask", s.casks, "casks", "nix/casks.txt")):
-            keep, redundant = self.p.brew_split(names, kind)
-            flag = "--cask " if kind == "cask" else ""
-            prefix = "cask" if kind == "cask" else "brew"
-            chosen = [n for n in keep if self.picked(key, f"{prefix}:{n}")]
-            for n in chosen:
-                self.txn.list(dest).add(n)
-            if chosen:
-                r.carried(plural(len(chosen), "Homebrew formula" if kind == "formula" else "Homebrew cask",
-                                  "Homebrew formulae" if kind == "formula" else "Homebrew casks"), dest)
-            left += [f"`{n}` ({kind}): `dotkit add {prefix}:{n}`" for n in keep
-                     if n not in chosen and self.left_out(f"{prefix}:{n}")]
-            if redundant:
-                r.todo("Homebrew copies of dotkit tools",
-                       "The dotkit base has these tools, so they are not in your lists. The Homebrew copy "
-                       "stays installed. Remove it when nothing else needs it; brew says when another "
-                       "formula depends on it.",
-                       [f"`{n}`: dotkit has {what}. `brew uninstall {flag}{n}`" for n, what in redundant.items()])
-        lines, todos = tap_lines(s.taps, set())
-        chosen = [line for line in lines if self.picked("taps", f"tap:{line.split()[0]}")]
-        for line in chosen:
-            self.txn.list("nix/taps.txt").add(line)
-        if chosen:
-            r.carried(plural(len(chosen), "Homebrew tap"), "nix/taps.txt")
-            names = {line.split()[0] for line in chosen}
-            custom = [t for t in s.taps if t.custom and t.name in names]
-            if custom:
-                r.todo("Homebrew taps", "These taps are not on GitHub, so the list has their URL. Check it.",
-                       [f"`{t.name}`: {t.remote}" for t in custom])
-        self.not_carried(NOT_CARRIED_BREW, left)
-        self.not_carried(NOT_CARRIED, [f"`{line.split()[0]}` (tap): add `{line}` to nix/taps.txt" for line in lines
-                                       if line not in chosen and self.left_out(f"tap:{line.split()[0]}")])
-        if todos:
-            r.todo("Homebrew taps", "", todos)
-        if s.old_taps:
-            r.todo("Homebrew taps", "Homebrew merged these taps into its own. Remove them.",
-                   [f"`{t}`: `brew untap {t}`" for t in s.old_taps])
 
     def app_store(self) -> None:
         s, r = self.s, self.r

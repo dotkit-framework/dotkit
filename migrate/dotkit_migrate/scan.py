@@ -6,7 +6,6 @@ timeout; a command that fails gives an empty result.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import stat
@@ -18,7 +17,6 @@ from . import catalog
 from ._compat import tomllib
 from . import secrets
 from .context import Context, is_managed, read_json, read_text, version_key
-from .catalog import BREW_ENV
 
 # Shell files that the base links, and the layer files of yours that the
 # base reads after them, in the order zsh and bash read them.
@@ -43,9 +41,6 @@ HOME_DOTFILES = (
     ".irbrc", ".pryrc", ".gitignore_global", ".gitmessage", ".hushlogin",
 )
 
-# The default taps of Homebrew. Other homebrew/* taps are old and merged.
-DEFAULT_TAPS = {"homebrew/core", "homebrew/cask"}
-
 # Files and directories in ~/.config that hold state or caches, not config.
 _STATE_NAMES = re.compile(
     r"(\.(db|sqlite\d?|sqlite-(wal|shm)|log|pid|sock|lock|ldb)$|^(cache|caches|Cache|logs?|history|"
@@ -63,13 +58,6 @@ class Package:
     where: str = ""  # where it is installed, for the report
     ok: bool = True  # False: it cannot go to a mise backend; note says why
     note: str = ""
-
-
-@dataclass
-class Tap:
-    name: str
-    remote: str = ""
-    custom: bool = False  # the remote is not github.com/<user>/homebrew-<repo>
 
 
 @dataclass
@@ -111,11 +99,6 @@ class OtherConfig:
 @dataclass
 class Scan:
     home: str
-    brew: str = ""  # the brew command, "" without Homebrew
-    formulae: list[str] = field(default_factory=list)
-    casks: list[str] = field(default_factory=list)
-    taps: list[Tap] = field(default_factory=list)
-    old_taps: list[str] = field(default_factory=list)  # homebrew/* taps other than core and cask
     mas: bool = False
     mas_apps: list[tuple[int, str]] = field(default_factory=list)
     store_apps: list[str] = field(default_factory=list)  # App Store apps, without mas
@@ -178,38 +161,6 @@ class Scanner:
     def env_path(self, var: str, default: str) -> Path:
         v = self.env.get(var)
         return Path(v).expanduser() if v else self.h(default)
-
-    # --- Homebrew
-
-    def _brew(self, *args: str, timeout: float = 300) -> list[str]:
-        out = self.runner.run([self.s.brew, *args], timeout=timeout, env=BREW_ENV)
-        return [line.strip() for line in (out or "").splitlines() if line.strip()]
-
-    def scan_brew(self) -> None:
-        s = self.s
-        s.brew = self.runner.which("brew", ("/opt/homebrew/bin",)) or ""
-        if not s.brew:
-            return
-        s.formulae = self._brew("leaves", "--installed-on-request")
-        s.casks = self._brew("list", "--cask", "--full-name", "-1")
-        out = self.runner.run([s.brew, "tap-info", "--json", "--installed"], timeout=300, env=BREW_ENV)
-        try:
-            taps = json.loads(out or "[]")
-        except ValueError:
-            taps = [{"name": n} for n in self._brew("tap")]
-        for t in taps:
-            name = t.get("name", "")
-            if not name or name in DEFAULT_TAPS:
-                continue
-            if name.startswith("homebrew/"):
-                s.old_taps.append(name)
-                continue
-            remote = t.get("remote") or ""
-            user, _, repo = name.partition("/")
-            usual = re.fullmatch(
-                rf"https://github\.com/{re.escape(user)}/homebrew-{re.escape(repo)}(\.git)?/?", remote, re.I
-            )
-            s.taps.append(Tap(name, remote, custom=bool(remote) and not usual))
 
     # --- App Store
 
@@ -557,7 +508,7 @@ class Scanner:
     def run(self) -> Scan:
         self.s = Scan(home=str(self.home))
         for step in (
-            self.scan_brew, self.scan_app_store, self.scan_npm, self.scan_python_tools,
+            self.scan_app_store, self.scan_npm, self.scan_python_tools,
             self.scan_cargo, self.scan_go, self.scan_mise, self.scan_version_managers, self.scan_frameworks,
             self.scan_shell_files, self.scan_config_files, self.scan_other_config,
         ):

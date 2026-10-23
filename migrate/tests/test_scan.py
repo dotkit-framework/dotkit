@@ -15,28 +15,10 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(self.facts.warnings, [])
         return self.facts.get("_rest")
 
-    def test_homebrew(self):
-        r = fake.brew_runner(
-            formulae=["wget", "ripgrep", "hashicorp/tap/terraform"],
-            casks=["ghostty", "raycast", "homebrew/cask-fonts/font-fira-code"],
-            taps=[
-                {"name": "homebrew/core", "remote": "https://github.com/Homebrew/homebrew-core"},
-                {"name": "homebrew/cask-fonts", "remote": "https://github.com/Homebrew/homebrew-cask-fonts"},
-                {"name": "hashicorp/tap", "remote": "https://github.com/hashicorp/homebrew-tap"},
-                {"name": "acme/tools", "remote": "git@gitlab.com:acme/homebrew-tools.git"},
-            ],
-        )
-        s = self.scan(r)
-        self.assertEqual(s.formulae, ["wget", "ripgrep", "hashicorp/tap/terraform"])
-        self.assertEqual(s.casks, ["ghostty", "raycast", "homebrew/cask-fonts/font-fira-code"])
-        self.assertEqual([(t.name, t.custom) for t in s.taps], [("hashicorp/tap", False), ("acme/tools", True)])
-        self.assertEqual(s.old_taps, ["homebrew/cask-fonts"])
+    def test_identity(self):
+        self.scan()
         self.assertEqual((self.facts.identity.git_name, self.facts.identity.git_email),
                          ("Jane Appleseed", "jane@example.com"))
-
-    def test_no_homebrew(self):
-        s = self.scan(fake.FakeRunner())
-        self.assertEqual((s.brew, s.formulae, s.casks, s.taps), ("", [], [], []))
 
     def test_app_store(self):
         s = self.scan(fake.brew_runner(mas="497799835  Xcode       (16.0)\n  123   (1.0)\n409183694 Keynote (14.2)\n"))
@@ -253,7 +235,7 @@ class ScanTests(unittest.TestCase):
                 raise RuntimeError("boom")
 
         s = fake.session(self.h, Broken(paths={"brew": fake.BREW})).scan()
-        self.assertTrue(any(w.startswith("brew: RuntimeError") for w in s.warnings), s.warnings)
+        self.assertTrue(any(w.startswith("homebrew: RuntimeError") for w in s.warnings), s.warnings)
 
 
 if __name__ == "__main__":

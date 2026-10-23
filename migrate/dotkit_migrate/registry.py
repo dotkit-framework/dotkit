@@ -21,10 +21,11 @@ from . import docs as docs_mod
 from . import report as report_mod
 from .context import Context, expand, tilde
 from .docs import nix_string
-from .migrators import _rest
+from .migrators import _rest, homebrew
 from .model import Choices, Facts, Identity, Page, Plan
 
 MIGRATORS = (
+    homebrew.Homebrew(),
     _rest.Rest(),
 )
 
