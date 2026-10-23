@@ -2,8 +2,11 @@
 
 registry.MIGRATORS has them in order. A migrator imports only context,
 catalog, model, docs (through the Txn it gets), declared, rcparse, secrets,
-base, and its own helpers; it never writes a file and never runs a command
-outside its scan (ARCHITECTURE.md, section 4.1).
+base, _compat (for tomllib), report (only plural), and its own helpers. It
+never imports ui, writer, proc, subprocess, or curses, never writes a file,
+and never runs a command but through ctx.runner in its scan
+(ARCHITECTURE.md, sections 3, 4.1, and 6). The AST test of
+tests/test_registry.py enforces this.
 """
 
 from __future__ import annotations

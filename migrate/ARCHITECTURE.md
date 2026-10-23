@@ -1,10 +1,12 @@
 # Architecture of the migration wizard
 
-This is the reference for the migration wizard in `migrate/`: the target
-design, the contracts between its parts, and the steps that get the current
-code there. Line references (`plan.py:768`) point to the code at commit
-`d91296a`. They show where today's logic lives, so it can be moved and not
-rewritten.
+This is the reference for the migration wizard in `migrate/`: the design,
+the contracts between its parts, and the steps that got the old code there
+(section 13; all of them have landed). References to the old modules
+(`plan.py:768`, `scan.py`, `wizard.py`, ...) point to the code at commit
+`d91296a`, before the refactor; those modules are gone. They show where the
+old logic lived. Other references (`nix/home.nix:92-103`, `dotkit:309-311`)
+point to the current tree.
 
 ## 1. Purpose and constraints
 
@@ -42,34 +44,37 @@ Hard constraints:
   formats, for example `homebrew.taps` and `homebrew.masApps` entries that an
   earlier wizard wrote into `nix/darwin.nix`.
 
-## 2. Current state, and what moves where
+## 2. The old code, and where it went
 
-The flow today: `Scanner.run()` → `Scan` (one dataclass for every source) →
-`Planner` (`groups`, `file_items`, `adoptable`, `defaults`) → the curses
-wizard or the plain prompts edit `Choices` → `Planner.build()` → `_Build`
-(about 700 lines that map every source and render every file) → `Plan` →
-`write.write()`. Adopt is separate: `adopt.missing/describe/apply`.
+The flow before the refactor (`d91296a`): `Scanner.run()` → `Scan` (one
+dataclass for every source) → `Planner` (`groups`, `file_items`,
+`adoptable`, `defaults`) → the curses wizard or the plain prompts edit
+`Choices` → `Planner.build()` → `_Build` (about 700 lines that map every
+source and render every file) → `Plan` → `write.write()`. Adopt was
+separate: `adopt.missing/describe/apply`.
 
-These parts are good and stay: `proc.Runner` and `FakeRunner`; `base.py` and
-its tables, which tests check against `nix/home.nix`; `rcparse.py` and
-`secrets.py` (pure functions); the atomic write in `write.py:25-65`; the
-final secret guards (`plan.py:854-898`); the rule that screens only change
-choices.
+These parts were good and stayed: `proc.Runner` and `FakeRunner`; `base.py`
+and its tables, which tests check against `nix/home.nix`; `rcparse.py` and
+`secrets.py` (pure functions); the atomic write (`write.py:25-65`, now
+`writer.write_new`); the final secret guards (`plan.py:854-898`, now in
+`writer.render`); the rule that screens only change choices.
 
-| Today | Target |
+The left column is the code at `d91296a`; the right column is where it is now.
+
+| Before (`d91296a`) | Now |
 |---|---|
 | `scan.py` `Scan` fields and `scan_*` steps (`scan.py:137-171`, `643-651`) | one `scan()` per migrator in `migrators/*.py`, each returning its own facts dataclass |
 | `VERSION_MANAGERS`, `SHELL_FRAMEWORKS`, `ASDF_TOOLS` (`scan.py:46-71`); default version readers (`scan.py:493-506`); the nvm/fnm/asdf globs of the npm scan (`scan.py:297-303`); `SKIP_VARS`, `_RULES`, `_PATH_VERSION_MANAGERS` (`rcparse.py:61-121`); the sdkman/jenv rule (`plan.py:127`, `476`); pnpm (`plan.py:121`, `418`, `adopt.py:68`); cargo/go "built from source" (`plan.py:175-178`, `443-446`, `adopt.py:70-71`) | `catalog.py` (data) |
 | `Planner.groups/file_items/adoptable/defaults` (`plan.py:162-236`) | `pages()` of each migrator; `Session` (`registry.py`) |
 | `Group`, `FileItem`, `Choices` (`plan.py:28-66`) | `Page`, `Item`, `Choices` (`model.py`) |
-| `_Build.homebrew/app_store/tools/version_managers/shell/config_files/other_config/secret_files/misc` (`plan.py:339-764`) | `plan()` of `homebrew`, `appstore`, `node_tools`, `python_tools`, `built_tools`, `runtimes`, `shell`, `frameworks`, `config_files`, `other_config`, `logins` |
+| `_Build.homebrew/app_store/tools/version_managers/shell/config_files/other_config/secret_files/misc` (`plan.py:339-764`) | `plan()` of `homebrew`, `appstore`, `node_tools`, `python_tools`, `built_tools`, `runtimes`, `shell`, `frameworks`, `config_files`, `other_config`, `logins`; the shared tool step in `migrators/tools.py`. `leftovers` is new (section 11) |
 | shared state `self.brews`, `self.casks`, `self.mise_lines`, `self.mise_text` (`plan.py:314-316`, `717`) and `render()` (`plan.py:768-848`); `insert_tools`, `nix_string`, `nix_name`, `toml_key`, `_merge_mise` (`plan.py:274-299`, `1014-1017`) | typed documents (`docs.py`) |
 | the `homebrew.taps` and `homebrew.masApps` anchors that `render()` fills in `nix/darwin.nix` (`plan.py:792-809`), and adopt's "add them by hand" lines (`adopt.py:88-93`) | `nix/taps.txt` and `nix/mas.txt`, read by the nix module, written through `ListDoc` |
 | `guard_copies`, `guard_files`, report masking (`plan.py:844-898`) | `writer.py` |
 | `link_targets`, `moved_aside`, `links_in_the_way`, `summary` (`plan.py:900-1002`) | `checks.py` |
 | `write.write` (`write.py:25-65`) | `writer.write_new` |
-| `adopt.missing/describe/apply` (`adopt.py:31-110`) | `migrator.adopt()` + `Declared` + `writer.apply_edits` |
-| `tilde`, `expand`, `repo_error` (`plan.py:69-96`); `_read`, `_json`, `is_managed`, `_version_key` (`scan.py:174-208`) | `context.py` |
+| `adopt.missing/describe/apply` (`adopt.py:31-110`) | `migrator.adopt()` + `Declared` + `Session.adopt` + `writer.apply_edits` |
+| `tilde`, `expand`, `repo_error` (`plan.py:69-96`); `_read`, `_json`, `is_managed`, `_version_key` (`scan.py:174-208`) | `context.py`: `tilde`, `expand`, `repo_error`, `read_text`, `read_json`, `is_managed`, `version_key` |
 | `wizard.py` screens (`wizard.py:137-374`) and `prompts.py:28-86` | `ui/screens.py`, `ui/curses_ui.py`, `ui/plain.py` |
 | `report.ORDER` (`report.py:10-29`) | `report.SECTIONS`, checked by a test |
 | monkeypatch of `cli.scan.Scanner` (`tests/main_child.py:24-28`) | `main(argv, make_context=None)` |
@@ -93,7 +98,8 @@ migrate/
     checks.py                      links in the way, files moved aside, blockers, summary
     report.py                      ReportDoc rendering, SECTIONS
     migrators/
-      __init__.py                  the Migrator base class
+      __init__.py                  the Migrator base class and shared report helpers
+      tools.py                     what node_tools, python_tools, and built_tools share
       homebrew.py  appstore.py  node_tools.py  python_tools.py  built_tools.py
       runtimes.py  shell.py  frameworks.py  config_files.py  other_config.py
       logins.py  leftovers.py
@@ -107,15 +113,19 @@ migrate/
 
 Rules:
 
-- `migrators/` import only `context`, `catalog`, `model`, `docs` (through
-  the `Txn` they get), `declared`, `rcparse`, `secrets`, `base`, `_compat`
+- `migrators/` import only `context`, `catalog`, `model`, `docs` (the views
+  of the `Txn` they get, and the pure helpers of `docs.py` such as
+  `nix_string`, `toml_value`, and the entry checks; never `Docs` itself or
+  its core methods), `declared`, `rcparse`, `secrets`, `base`, `_compat`
   (for `tomllib`), `report` (only the text helper `plural`), and their own
   helpers. They never import `ui/`, `writer`, `proc`, `subprocess`, or
   `curses`, and never write a file (section 6). Constants that a scan
   passes to the runner, such as `BREW_ENV`, are data in `catalog.py`.
 - `ui/` imports only `model`, `registry` (the Session), and the path helpers
   from `context`.
-- Only `writer.py` writes to disk.
+- Only `writer.py` writes to disk. The one exception is `__main__.py`, which
+  writes the `--result` file that `scripts/setup` asks for (the path of the
+  new repository, to a file that `scripts/setup` made with `mktemp`).
 - `MIGRATORS` is the single source of order: scan order, page order, plan
   order, and the order of the "Carried over" rows.
 
@@ -131,10 +141,11 @@ Session to `ShellNixDoc`), `nix/user.nix`, the identity scan (section 4.2)
 and the "Login shell" to-do, which reads only the identity, the scan
 warnings, `checks.py`, and the writer.
 
-These modules of today do not exist in the target, and nothing keeps their
-names alive: `plan.py`, `scan.py`, `adopt.py`, `write.py`, `wizard.py`,
-`prompts.py`. Their code moves to the modules above, and their tests move
-with it (section 13).
+These modules of the old code are gone, and nothing keeps their names
+alive: `plan.py`, `scan.py`, `adopt.py`, `write.py`, `wizard.py`,
+`prompts.py`, and the step 8 scaffolding `migrators/_rest.py`. So are the
+`Scan` dataclass, the `Planner`, and `_Build`. Their code moved to the
+modules above, and their tests moved with it (section 13).
 
 ## 4. Contracts
 
@@ -164,6 +175,10 @@ class Migrator:
     def adopt(self, facts: Facts, declared: Declared, txn: Txn, opts: AdoptOptions) -> None:
         """`dotkit migrate`: add what the repository lacks. Default: nothing."""
 
+    def mise_commands(self, facts: Facts) -> Dict[str, Tuple[str, ...]]:
+        """The commands of each mise key that this migrator can add (step 14a). Default: none."""
+        return {}
+
     def manual_steps(self, ctx: Context) -> str:
         """What a person does by hand when this migrator failed. Must describe
         what actually happens without it (plain-template behavior)."""
@@ -176,15 +191,18 @@ the runner and the environment, which belong to the scan. What they need
 from outside comes through `Facts` (section 4.2).
 
 Pure helpers of one migrator that others call take facts and choices, for
-example `config_files.mise_target(facts, choices)` and
+example `config_files.mise_target(facts, choices)`,
+`config_files.mise_dest(facts, choices)`,
 `config_files.merged_sources(facts, choices)` (the files merged into one
-repository file). They must handle missing facts (`None`).
+repository file), `other_config.adopted(facts, choices, rel)`, and
+`shell.carried_paths(facts, choices)`. They must handle missing facts
+(`None`).
 
 ### 4.2 Facts and Identity
 
 ```python
 @dataclass
-class Identity:                          # core scan, today's scan_identity (scan.py:628-635)
+class Identity:                          # the core scan: registry.IdentityScan
     home: str; user: str; hostname: str = ""; login_shell: str = ""
     git_name: str = ""; git_email: str = ""
 
@@ -193,7 +211,9 @@ class Facts:
     warnings: List[str]                  # expected problems, from every migrator
     base: Base                           # set by the Session: the dotkit base (read-only data)
     check_syntax: Optional[Callable[[str, str], bool]]   # set by the Session; None: no check
+    mise_commands: Dict[str, Tuple[str, ...]]            # set by the Session from Migrator.mise_commands
     def get(self, key: str) -> Optional[object]   # None if that scan failed or was skipped
+    def without(self, keys) -> "Facts"            # the same facts without these migrators and their warnings
 ```
 
 `base` and `check_syntax` are the only things from outside the facts that
@@ -221,7 +241,7 @@ class Item:
     default: bool = True                 # checklist pages
     options: Tuple[str, ...] = ()        # choices pages, e.g. ("layer", "replace", "dotkit", "keep")
     default_option: str = ""
-    option_text: Dict[str, str] = field(default_factory=dict)   # today's OPTION_TEXT (plan.py:51-57)
+    option_text: Dict[str, str] = field(default_factory=dict)   # from config_files.OPTION_TEXT
 
 @dataclass
 class Page:
@@ -245,18 +265,18 @@ class Page:
 | built_tools | `cargo`, `go` | checklist | `cargo:<crate>`, `go:<module>` | off |
 | runtimes | `runtimes` | checklist | `runtime:<mise tool>` | off |
 | shell | `shell` | checklist | `shell:<file>`, one item per shell file, e.g. `shell:.zshrc` | on |
-| config_files | `files` | choices | `file:<target>` | per item (today's `file_items`, `plan.py:189-226`) |
+| config_files | `files` | choices | `file:<target>` | per item (`ConfigFiles.pages`) |
 | other_config | `other` | checklist | `other:<rel>` | off |
 
 The shell page has one item per file, not one per statement. A carried
-statement can depend on an earlier one (variables that rcparse tracks,
-`rcparse.py:335-383`), so leaving out a single statement could break later
-ones.
+statement can depend on an earlier one (variables that `rcparse.Parser`
+tracks), so leaving out a single statement could break later ones.
 
 Items that cannot be carried (redundant Homebrew copies, `ok=False`
-packages, pnpm) are not items. They go to the report, as today. A file with a
-secret gets a restricted option list (`keep`, `dotkit`; `.gitconfig` with a
-secret: `keep` only).
+packages, pnpm, and tools that dotkit has already, `Declared.tool`) are not
+items. They go to the report. A file with a secret gets a restricted option
+list (`keep`, `dotkit`; `.gitconfig` or your mise config with a secret:
+`keep` only).
 
 ```python
 @dataclass
@@ -277,9 +297,11 @@ it. Each item there gives its next step, as the to-do of that kind did
 before: `dotkit add brew:<name>`, `dotkit add cask:<name>`, `dotkit add
 mas:<id>`, the line for nix/taps.txt, `mise use -g <spec>`, or, for a shell
 file, how many lines could be carried (and the names of lines with secrets,
-never their values). For Homebrew formulae and casks, the intro adds that
-with `homebrew.onActivation.cleanup = "uninstall"` activation would
-uninstall them. An item that is off by default (cargo, Go, runtimes, other
+never their values). For Homebrew formulae and casks, the intro
+(`migrators.NOT_CARRIED_BREW`) adds that `dotkit upgrade brew` upgrades
+only the packages in the lists, so these go stale, and that with
+`homebrew.onActivation.cleanup = "uninstall"` activation would uninstall
+them. An item that is off by default (cargo, Go, runtimes, other
 config) and that stays off keeps the to-do of its kind, which already says
 why it is off. These to-dos replace the old texts for a whole group that
 was off ("They stay tapped…", "Add the ones you want…", "You chose not to
@@ -317,7 +339,7 @@ class Docs:
     def drop(self, rel: str) -> None: ...          # the copy guard: remove a copy, its file, and the links to it
     def render(self) -> Tuple[Dict[str, str], Dict[str, str]]: ...   # (tracked files, local/ files) as text;
                                                    # writer.render wraps it
-    conflicts: List[Conflict]                      # reported under "Problems during the migration" from step 11
+    conflicts: List[Conflict]                      # reported under "Problems during the migration"
 
 class Txn:
     # The same accessors as Docs. Each returns a view on the committed document.
@@ -353,7 +375,7 @@ The rules for every view operation:
    `Copies.add` on a taken path makes no copy and returns `False`, with no
    conflict: the migrator handles it (for example `other_config` keeps the
    file in place and adds a to-do). A whole file set on a path that a copy
-   takes is a conflict. From step 6, paths overlap too: a path is taken when
+   takes is a conflict. Paths overlap too: a path is taken when
    it is inside a copy, or when it would contain a taken path. This compares
    path parts (`config/bash2` is not inside `config/bash`), and it does not
    look at the file system, so a file copy is treated like a directory copy.
@@ -381,9 +403,9 @@ The document types:
 
 | Type | Files | Operations | Checks at add | Adopt mode |
 |---|---|---|---|---|
-| `ListDoc` | `nix/brews.txt`, `nix/casks.txt`, `nix/taps.txt`, `nix/mas.txt` | `add(entry, comment="") -> bool`, `names()`, `added()` | brews/casks: one word without `#`; taps: `owner/repo` and an optional URL without spaces; mas: digits, a space, then a non-empty name | yes: appends after the existing text, with one comment per run: `# From <host>, see MIGRATION.md.` in setup, `# Added by dotkit migrate on <host>.` in adopt, which writes no MIGRATION.md |
-| `MiseDoc` | `config/mise.toml` | `add_tool(key, value, comment="") -> bool`, `has_tool(key)`, `set_base(text)`, `set_setting(key, value) -> bool`, `replace_setting(key, value, expect) -> bool`, `added()` | key: non-empty, no newline; value: str, list of str, or a flat table of str/int/bool | yes (`add_tool` only) |
-| `LinksDoc` | `nix/home.nix` `dotkit.links` (anchor `    ".zshrc.local" = "config/zsh/zshrc";\n`, `plan.py:834`) | `link(target, source_or_None) -> bool` | target relative to home, no `..`; source a repository path or None | no |
+| `ListDoc` | `nix/brews.txt`, `nix/casks.txt`, `nix/taps.txt`, `nix/mas.txt` | `add(entry, comment="") -> bool`, `names()`, `added()`; the view also has `flagged(entry)` (section 4.5) | brews/casks: one word without `#`; taps: `owner/repo` and an optional URL without spaces; mas: digits, a space, then a non-empty name | yes: appends after the existing text, with one comment per run: `# From Homebrew on <host>, see MIGRATION.md.` (`# From the App Store on <host>, ...` for `nix/mas.txt`) in setup, `# Added by dotkit migrate on <host>.` in adopt, which writes no MIGRATION.md |
+| `MiseDoc` | `config/mise.toml` | `add_tool(key, value, comment="") -> bool`, `has_tool(key)`, `set_base(text)`, `set_setting(key, value) -> bool`, `replace_setting(key, value, expect) -> bool`, `added()`; the view also has `flagged(key, value)` | key: non-empty, no newline; value: str, list of str, or a flat table of str/int/bool | yes (`add_tool` only) |
+| `LinksDoc` | `nix/home.nix` `dotkit.links` (after the anchor `docs.LINKS_ANCHOR`, `    ".zshrc.local" = "config/zsh/zshrc";\n`) | `link(target, source_or_None) -> bool` | target relative to home, no `..`; source a repository path or None | no |
 | `ShellRcDoc` | `config/zsh/zshenv`, `config/zsh/zprofile`, `config/zsh/zshrc`, `config/bash/bash_profile`, and their `local/<name>.<shell>` | `add_part(header, text)`, `add_secret(text)`, `ensure()` (write the file even when empty) | main in `SHELL_LAYERS` | no |
 | `ShellNixDoc` | `nix/shell.nix` | `set_keymap(value)`, written by the Session | `emacs` or `vi` | no |
 | `FileDoc` | a whole file with one owner: `nix/user.nix`, a merged `config/gitconfig` | `set(text)` | the path is not owned by another document | no |
@@ -393,15 +415,14 @@ The document types:
 `MiseDoc` details:
 
 - `set_base(text)` is used by `config_files` when your mise config is carried
-  as "layer": your file replaces the template text (today's `_merge_mise`,
-  `plan.py:1014-1017`). Keys in it count as existing text.
+  as "layer": your file replaces the template text. Keys in it count as
+  existing text.
 - **The order of `set_base` and `add_tool` does not matter.** `config_files`
   comes after the tool migrators in `MIGRATORS`, so `set_base` usually runs
   last. The tool migrators therefore never rely on the document to skip the
   tools of your mise config. They ask a pure helper:
-  `Declared.yours_mise_key` (before step 12, a helper of `config_files` did
-  this). `MiseDoc` keeps tool entries apart from
-  the base text and renders them into the final base. If `set_base` brings a
+  `Declared.yours_mise_key`. `MiseDoc` keeps tool entries apart from the
+  base text and renders them into the final base. If `set_base` brings a
   key that a committed entry already has, that is a conflict (strict mode
   raises).
 - **Settings come after `set_base`.** Unlike tool entries, setting edits
@@ -410,9 +431,9 @@ The document types:
   `set_base`, edits the settings that come from your config, right after
   it.
 - `add_tool` inserts at the end of `[tools]`, or creates `[tools]`
-  (today's `insert_tools`, `plan.py:286-299`). Render checks that the result
-  parses with `tomllib`. If it does not, the render falls back to the base
-  text and lists the tools as a to-do (today's `plan.py:814-821`).
+  (`docs.insert_tools`). Render checks that the result parses with
+  `tomllib`. If it does not, `Docs.render` falls back to the base text and
+  lists the tools as a to-do under "mise".
 - **Settings are values, not merged lists.** mise merges `[settings]` key by
   key, and an array in a higher layer replaces the whole array
   (`minimum_release_age_excludes` is the one key that mise appends).
@@ -428,13 +449,13 @@ The document types:
   it changes nothing, and the caller then writes a to-do.
 
 `ShellRcDoc` details: the header is the template `config/zsh/zshrc`, or the
-fixed headers of `plan.py:566-577`. Parts follow with their `# From ~/<file>.`
-line. Secrets go to `local/<name>.<shell>` (mode 0600, directory 0700), with
-the `source` block in front (`plan.py:559-564`). `ensure()` covers a layer
-file that exists but carries nothing: the repository file still has to exist,
-so that the link moves the old file aside (`plan.py:578-586`). The `syntax`
-check (`check_syntax`, `zsh -n`/`bash -n`) is done by the `shell` migrator
-before it adds the text, as today (`plan.py:524-538`).
+fixed headers of `docs._SHELL_HEADERS`. Parts follow with their
+`# From ~/<file>.` line. Secrets go to `local/<name>.<shell>` (mode 0600,
+directory 0700), with the `source` block in front (`ShellRcDoc.render`).
+`ensure()` covers a layer file that exists but carries nothing: the
+repository file still has to exist, so that the link moves the old file
+aside. The syntax check (`facts.check_syntax`, `zsh -n`/`bash -n`) is done
+by the `shell` migrator before it adds the text (`shell.planned`).
 
 ### 4.5 Declared
 
@@ -452,6 +473,7 @@ class Declared:
     def yours_mise_key(self, key: str) -> bool               # your mise config only
     def tool(self, name: str) -> bool                        # a command that the base or the repository has,
                                                              # from Nix, Homebrew, or mise (BREW_ALIASES, mise_short)
+    def tool_source(self, name: str) -> Optional[str]        # what has it, for the report: "bat (from Nix)"
     def tap(self, name: str) -> bool
     def mas_id(self, app_id: int) -> bool
     def mas_name(self, name: str) -> bool                    # a name that is taken: the raw names of
@@ -467,9 +489,10 @@ class Declared:
 - **`for_repo` only:** the repository's `nix/packages.txt`, `nix/brews.txt`,
   `nix/casks.txt`, `nix/taps.txt`, `nix/mas.txt` and `config/mise.toml`, plus
   the `taps` and `masApps` that `dotkit` evaluates from the configuration
-  (`dotkit:308-310`). The evaluated values already include `nix/taps.txt`
-  and `nix/mas.txt`, and any entries that someone wrote into `homebrew.*` by
-  hand. Adopt only ever writes to the two list files.
+  (`dotkit:309-311`), passed as `--declared`. The evaluated values already
+  include `nix/taps.txt` and `nix/mas.txt`, and any entries that someone
+  wrote into `homebrew.*` by hand. Adopt only ever writes to the two list
+  files.
 
 How the migrators use it. The skips are the same in setup and in adopt; the
 report sentences below are written in setup only. Adopt skips a declared
@@ -493,9 +516,10 @@ item silently, so that a second run with nothing new outputs nothing.
   default, not a version of yours, so an nvm `node 20` is still offered and
   added.
 
-`yours_mise_key` replaces `config_files.user_mise_tools`, which goes. This
-replaces `Planner.brew_split` (`plan.py:110-118`) and `adopt.missing`
-(`adopt.py:31-74`).
+`Declared` replaced `Planner.brew_split` (`plan.py:110-118`) and
+`adopt.missing` (`adopt.py:31-74`) of the old code, and the helpers
+`config_files.layered_mise` (step 8) and `config_files.user_mise_tools`
+(step 9a) that came before it.
 
 A generated line can look like a secret only because of a name: the mise
 line `"pipx:detect-secrets" = "latest"`, or an App Store line `123 Token:
@@ -515,9 +539,9 @@ the entry is added by hand: it is still missing.
 
 The `appstore` migrator gives an app the `<name> (<id>)` label (section
 12.3) when `Declared.mas_name` or the `nix/mas.txt` document already has its
-name. The `homebrew` migrator checks a tap with the same functions that
-`ListDoc` uses at add time. Until step 12, `plan.py` keeps `tap_lines` and
-`mas_lines` for adopt, and they call those `docs.py` functions.
+name (`appstore.add_app`, for setup and adopt). The `homebrew` migrator
+checks a tap with the same functions that `ListDoc` uses at add time
+(`docs.tap_problem`, `docs.tap_name_problem`).
 
 ### 4.6 Failure
 
@@ -527,11 +551,17 @@ class Failure:
     migrator: str            # "runtimes", or "identity"
     title: str
     phase: str               # "scan" | "pages" | "plan" | "adopt" | "skipped" | "conflict"
-    error: str               # "KeyError: 'versions'": at most 200 characters, the home as ~, masked (section 6)
-    where: str               # the last traceback frame inside dotkit_migrate: "migrators/runtimes.py:88 in plan"
+    error: str               # "KeyError: 'versions'": at most 200 characters, the home as ~, masked (section 6);
+                             # a conflict: what both owners wanted
+    where: str               # the last traceback frame inside dotkit_migrate: "migrators/runtimes.py:88 in plan";
+                             # a conflict: the document
     manual: str              # Migrator.manual_steps(ctx)
-    reason: str = ""         # for "skipped": "Shell lines failed"
+    reason: str = ""         # for "skipped": "Shell lines failed"; a conflict: the target, "npm:eslint"
 ```
+
+A conflict (section 4.4, rule 4) is a `Failure` of the migrator whose value
+was refused. The texts of the phases ("failed while planning") are
+`model.PHASE_TEXT`.
 
 ### 4.7 Session
 
@@ -544,21 +574,30 @@ class Session:
     def defaults(self, repo: str) -> Choices
     def build(self, choices: Choices) -> Plan        # fresh Docs on each call
     def adopt(self, repo: Path, nix_declared: dict, opts: AdoptOptions) -> AdoptResult
-    failures: List[Failure]
+    def scan_warning(self) -> str                    # the warning line of the first screen (section 8)
+    def trace(self, f: Failure) -> str               # the masked traceback, for --debug
+    failures: List[Failure]                          # of the scan and the pages
 ```
 
 `build()`:
 
 1. Create `Docs("setup")`.
 2. Run each migrator's `plan` in its own transaction (section 7).
-3. Write the core documents: `nix/user.nix`, the keymap.
-4. `writer.render` and the plan-time guard.
-5. `checks.py`.
-6. The summary and `MIGRATION.md`.
+3. In a core transaction: `nix/user.nix`, the keymap, the scan warnings,
+   and the "Login shell" to-do.
+4. The conflicts and failures, under "Problems during the migration".
+5. `writer.render` and the plan-time guard.
+6. `checks.check`.
+7. `MIGRATION.md` and the summary, masked.
 
-The wizard calls `build()` each time the review screen opens, and
-`__main__` calls it again before writing. Each call is deterministic for the
-same choices.
+`__main__` calls `build()` once after the scan (for the blockers), the
+wizard calls it each time the review screen opens, and `__main__` calls it
+again before writing. Each call is deterministic for the same choices.
+
+`adopt()` builds `Declared.for_repo`, runs each migrator's `adopt` in its
+own transaction on `Docs("adopt")`, and returns an `AdoptResult` (`model.py`):
+the changed files, the text each was read with (`before`), the output lines
+(masked), and the failures.
 
 ### 4.8 Plan and the writer
 
@@ -586,21 +625,20 @@ class Plan:
      `Docs.drop`, so that its links never reach `nix/home.nix`;
   2. the documents render;
   3. the file guard over the rendered tracked files;
-  4. if `local` is not empty, `.gitignore` gets the `/local/` block
-     (`plan.py:839-841`).
+  4. if `local` is not empty, `.gitignore` gets the `/local/` block.
 
   There is no separate public guard. After `render`, `checks.py` runs, and
-  then the report and the summary are rendered and masked (`mask_lines`):
-  in `_Build.render` until step 8, then in `Session.build`.
+  then `Session.build` renders the report and the summary and masks them
+  (`mask_lines`).
 - `write_new(plan, template)` for setup:
   1. copy the template into a temp directory next to the repository;
   2. add the copies, the files, and `local/`;
   3. write `.build/links-in-way`;
-  4. verify the staged tree (section 6);
+  4. verify the staged tree (`writer.verify`, section 6);
   5. `git init`;
   6. rename the directory to the repository path.
 
-  If anything fails, the temp directory is removed (today's `write.py`).
+  If anything fails, the temp directory is removed.
   The removal also works when a copy brought read-only directories (mode
   0555): on a permission error it makes the parent directory writable
   (0o700), and the path itself when it is a directory, and tries again
@@ -608,28 +646,30 @@ class Plan:
   still remains, a note on stderr names it.
 - `apply_edits(result, repo)` for adopt:
   1. check that each file still has the text that the plan was built from
-     (otherwise stop: "<file> changed since the scan; run dotkit migrate
-     again"); resolve a list file that is a link to its target, which must
-     be inside the repository (otherwise stop with an error); then write
-     every changed file as a temp file next to its target;
-  2. verify them: only lines that the file did not have before count, so a
-     repository that already holds a line that looks like a secret can
-     still be adopted into;
+     (otherwise stop with `AdoptStopped`: "<file> changed since the scan;
+     run dotkit migrate again"); resolve a list file that is a link to its
+     target, which must be inside the repository (otherwise stop with an
+     error); then write every changed file as a temp file next to its
+     target;
+  2. verify them (`writer.verify_edits`): only lines that the file did not
+     have before count, so a repository that already holds a line that
+     looks like a secret can still be adopted into;
   3. `os.replace` them one by one;
   4. if one replace fails, write back the old texts kept in memory.
 
-`checks.py` holds today's `link_targets`, `moved_aside`, `links_in_the_way`
-and `summary` (`plan.py:900-1002`). It works on `LinksDoc` and the file
-system, and adds the blockers (`~/.config` is a link) and `move_links`. It is
-core: it runs whatever the migrators did.
+`checks.py` has `check`, `link_targets`, `moved_aside`, `links_in_the_way`,
+and `summary` (the old `plan.py:900-1002`). It works on `LinksDoc` and the
+file system, and adds the blockers (`~/.config` is a link) and `move_links`.
+It is core: it runs whatever the migrators did.
 
 ## 5. Report
 
-`MIGRATION.md` keeps today's shape (`report.py:70-103`): "Carried over"
-(one row per accepted contribution, in `MIGRATORS` order), then "To do" with
-sections in `report.SECTIONS` order. `SECTIONS` is the one ordered list of
-titles. A section that is not in it raises in strict mode, and a test checks
-every migrator's `sections`. The order:
+`MIGRATION.md` keeps the shape of the old report (`report.render`):
+"Carried over" (one row per accepted contribution, in `MIGRATORS` order),
+then "To do" with sections in `report.SECTIONS` order. `SECTIONS` is the
+one ordered list of titles. `ReportDoc.todo` raises `ValueError` for a
+section that is not in it (a failure of that migrator; strict mode
+re-raises), and a test checks every migrator's `sections`. The order:
 
 1. Problems during the migration
 2. Secrets
@@ -652,39 +692,34 @@ every migrator's `sections`. The order:
 19. Other config that stays out of the repository
 20. Scan warnings
 
-Until step 11, the last section is called "Scan errors", and "Problems
-during the migration" does not exist yet; "Leftovers that can still take
-effect" arrives in step 13. Each of those steps changes `SECTIONS` and its
-goldens.
-
 A command in the report that names a path quotes it for the shell, with a
 leading `~/` outside the quotes so that the shell still expands it:
 `rm -rf ~/'Library/Application Support/fnm'`. A path without special
-characters stays as it is (`rm ~/go/bin/hey`). One helper builds these
-paths for every migrator.
+characters stays as it is (`rm ~/go/bin/hey`). One helper,
+`context.shell_path`, builds these paths for every migrator.
 
 The summary (the review screen, `--dry-run`, the plain prompts) starts with
-the problems line when there are failures (section 7.4), then today's lines
-(`plan.py:978-1002`).
+the problems line when there are failures (section 7.4), then the lines of
+`checks.summary`.
 
 ## 6. Secrets
 
 Secrets are handled at five points:
 
 1. **Detection during the scan.** Every config file the scan finds gets its
-   `secrets`, including `~/.config/mise/config.toml`. Planning no longer
-   calls `secrets.has_secret` (today's `plan.py:220`, `707`).
+   `secrets`, including `~/.config/mise/config.toml`. Planning does not call
+   `secrets.has_secret` (the old `plan.py:220` and `707` did).
 2. **Routing in the migrators.** `ShellRcDoc.add_secret` routes secret
    statements (rcparse's `SecretLine`) to `local/`. A config file with a
    secret gets only `keep`/`dotkit`. `other_config` does not offer an entry
    with a secret.
-3. **The plan-time guard (core, inside `writer.render`).** Today's `guard_copies`
-   and `guard_files` run over every tracked rendered file and every copy
+3. **The plan-time guard (core, inside `writer.render`).** `_guard_copies`
+   and `_guard_files` run over every tracked rendered file and every copy
    source. A shell file is split by statement, never in the middle of one.
-   Other files are masked line by line. Then the rendered report and adopt's
-   output are masked line by line (`mask_lines`, in `plan.py` until step 6
-   moves it to `writer.py`). From step 6, the summary is masked the same way. The guard changes the plan and reports what it did, so
-   dry-run and the review screen show its result.
+   Other files are masked line by line. Then the rendered report, the
+   summary, and adopt's output are masked line by line
+   (`writer.mask_lines`). The guard changes the plan and reports what it
+   did, so dry-run and the review screen show its result.
 4. **Write-time verification (core, in `writer`).** Before the rename or
    `os.replace`, scan the staged tracked files (copies included; `local/`,
    `.build/`, and `.git` excluded, because Git does not track them). It uses
@@ -697,19 +732,23 @@ Secrets are handled at five points:
    which aborts the write and leaves nothing behind. A directory that the
    verification cannot read also aborts it: it fails closed. `__main__` prints
    "dotkit setup: <message>. Nothing was written." (or "dotkit migrate: …")
-   and exits 2; `--debug` (from step 11) adds the traceback.
+   and exits 2; `--debug` adds the traceback.
 5. **Failure text.** `Failure.error` and the `--debug` traceback pass through
    `secrets.line_secret` line by line. A line with a secret becomes "(this
    line has a secret; not shown)".
 
 Rules that keep this enforceable:
 
-- **Migrators cannot write files.** An AST test over `migrators/` fails on
-  `open(…)` with a write or append mode, `.write_text`, `.write_bytes`,
-  `shutil.copy*`, `shutil.copytree`, `os.replace`, `os.rename`, `os.remove`,
-  `os.unlink`, and `subprocess`, and on an import of `proc`, `subprocess`,
-  `writer`, `ui`, or `curses` (section 3). Commands run only through
-  `ctx.runner` (read-only by contract).
+- **Migrators cannot write files.** An AST test over `migrators/`
+  (`tests/test_registry.py`) fails on `open(…)` or `Path.open(…)` with a
+  write or append mode; on the `Path` methods `write_text`, `write_bytes`,
+  `unlink`, `rename`, `touch`, `mkdir`, `rmdir`, `symlink_to`,
+  `hardlink_to`, and `chmod`; on `shutil.copy*`, `shutil.copytree`,
+  `shutil.move`, `shutil.rmtree`, `os.replace`, `os.rename`, `os.remove`,
+  `os.unlink`, `os.system`, `os.popen`, `os.symlink`, `os.makedirs`, and
+  `subprocess`; and on an import of `proc`, `subprocess`, `writer`, `ui`, or
+  `curses` (section 3). Commands run only through `ctx.runner` (read-only by
+  contract).
 - **The guard and the verification fail closed.** If either raises, the run
   stops and nothing is written (section 7.2).
 - **A property test:** a home directory with a `fake.TOKENS` value in every
@@ -769,8 +808,9 @@ a migrator crashes:
   continues.
 
 ```python
+# Session._plans
 for m in self.migrators:
-    if m.key in self.excluded:          # failed earlier, or skipped (7.3)
+    if m.key in out:                    # failed earlier, or skipped (7.3)
         continue
     txn = docs.begin(m.key)
     try:
@@ -778,7 +818,9 @@ for m in self.migrators:
         txn.commit()
     except Exception as e:
         txn.rollback()
-        self.fail(m, "plan", e)         # records the Failure; re-raises in strict mode
+        self._fail(m, "plan", e, failures)   # records the Failure; re-raises in strict mode
+        out.add(m.key)
+        return False                    # build() starts again without it
 ```
 
 **A crash in `pages` or `plan` starts again without that migrator.** Other
@@ -802,9 +844,11 @@ shown after curses has restored the terminal.
 ### 7.3 Migrators that depend on others
 
 A migrator that reads other facts through `facts.get()` must handle `None`
-and do less. For example, `frameworks` without the shell facts leaves out the
-line counts. A migrator that cannot work without another lists it in
-`needs`. If that one failed, it does not run, and the Session records
+and do less. For example, `leftovers` without the shell facts finds no
+carried PATH lines (`shell.carried_paths` returns nothing), and still lists
+the old copies in `~/.local/bin` and the Homebrew directories. A migrator
+that cannot work without another lists it in `needs` (no migrator has
+one yet). If that one failed, it does not run, and the Session records
 `Failure(phase="skipped", reason="<title> failed")`. `needs` is only for
 skipping. It never changes the order.
 
@@ -833,15 +877,16 @@ example `other_config.adopted(facts, choices, rel)`, which `shell` asks for
 - **The UI:** section 8.
 - **Exit code:** 0 when migrators failed. Setup goes on to build; the
   failures are on stderr, in the summary, and in MIGRATION.md. Exit codes for
-  other errors stay as today (`__main__.py`: 2 for a bad path, a missing
-  terminal, or blockers; 1 for quit).
+  other errors (`__main__.py`): 2 for a bad path, a missing terminal,
+  blockers, or a stopped write (a secret found by the verification, or in
+  adopt a file that changed since the scan); 1 for quit.
 - **`dotkit migrate`:** adds what the working migrators found, and prints
   "Could not check: runtimes (…); nothing of it was added."
 
 ### 7.5 `manual_steps` for `shell` and `config_files`
 
 These two must describe what the template does without them. That behavior
-comes from `nix/home.nix:118-158`, `templates/default/nix/home.nix`, and
+comes from `nix/home.nix:118-160`, `templates/default/nix/home.nix`, and
 Home Manager's `backupFileExtension = "before-dotkit"` (`flake.nix:84-88`).
 Generate the file lists from `base.SHELL_LAYERS` and `base.LINKS`, so the
 text stays true.
@@ -886,39 +931,40 @@ a hidden `--strict` flag. Production runs are never strict.
 ## 8. UI
 
 Screens are data. `ui/screens.py` builds a list of `Screen(kind, id, title,
-intro, note, dest, lines, rows, get, set, detail)` from the Session (`note`
-and `dest` come from the page; `lines` is the review text). The curses and plain
-frontends render the same screens.
+intro, rows, get, set, detail, note, dest, lines, problems, warning)` from
+the Session (`note` and `dest` come from the page; `lines` is the review
+text; `problems` is the review's Problems block; `warning` is the warning
+line of the first screen). The curses and plain frontends render the same
+screens.
 
 The sequence:
 
 1. Where the repository goes (`text`).
 2. The zsh keymap (`radio`).
-3. One screen per page, in `MIGRATORS` order. Pages without items are
-   skipped.
+3. One screen per page, in `MIGRATORS` order (`checklist` or `choices`).
+   Pages without items are skipped.
 4. The plan (`review`).
 
-The header shows `step/total` (today's `wizard.py:128-130`) for the screens
-that are shown.
+The header shows `step/total` (`UI.frame`) for the screens that are shown.
 
-| Widget | Today's code | Keys |
+| Screen kind | In `ui/curses_ui.py` (old code at `d91296a`) | Keys |
 |---|---|---|
-| `TextInput` | `UI.repo` (`wizard.py:137-184`) | type, Backspace, Ctrl+U, Enter, Esc quits |
-| `Radio` | `UI.keymap` (`wizard.py:186-214`) | ↑↓/space select, Enter, b back |
-| `CheckList` | `UI.toggles` (`wizard.py:216-255`) | ↑↓/j k move, space toggles one item, `a` all or none, Enter next, b back, q quit; the detail line shows `Item.detail`, the page note shows under the intro |
-| `ChoiceList` | `UI.files` (`wizard.py:276-320`) | ↑↓ move, space/→/l next option, ←/h previous, Enter, b |
-| `Pager` | `UI.review` (`wizard.py:338-364`) | ↑↓ scroll, Enter create (or print), b back |
+| `text` | `UI.text_input` (`wizard.py:137-184`) | type, Backspace, Ctrl+U, Enter, Esc quits |
+| `radio` | `UI.radio` (`wizard.py:186-214`) | ↑↓/space select, Enter, b back |
+| `checklist` | `UI.checklist` (`wizard.py:216-255`) | ↑↓/j k move, space toggles one item, `a` all or none, Enter next, b back, q quit; the detail line shows `Item.detail`, the page note shows under the intro |
+| `choices` | `UI.choice_list` (`wizard.py:276-320`) | ↑↓ move, space/→/l next option, ←/h previous, Enter, b |
+| `review` | `UI.pager` (`wizard.py:338-364`) | ↑↓ scroll, Enter create (or print), b back |
 
-The input handling, the escape-sequence fix (`wizard.py:68-103`), colors, and
-the minimum size stay as they are.
+The input handling, the escape-sequence fix (`UI._escape`), colors, and the
+minimum size are those of the old wizard.
 
 Plain prompts (`ui/plain.py`): a checklist page prints its numbered items
 and their state. The answer is Enter (keep), numbers or ranges to toggle
 (`1 3-5`), `a` (all), or `n` (none), one answer per page; an answer that
 does not parse asks again. A choices page asks per item, as the old
-`prompts.py:54-65` did. The plain prompts have no way back; end of input
-quits, and nothing is written. `--plain` and an unusable terminal
-(`wizard.available`, `wizard.py:397-417`) select it.
+prompts did. The plain prompts have no way back; end of input quits, and
+nothing is written. `--plain` and an unusable terminal
+(`curses_ui.available()`) select it.
 
 Problems in the UI:
 
@@ -944,14 +990,23 @@ Problems in the UI:
 |---|---|---|
 | Migrator unit | `tests/migrators/test_<key>.py` | `scan` on `fake.Home` + `FakeRunner` gives the expected facts; `pages` gives the expected items and defaults; `plan` on an in-memory `Docs` gives the expected entries and report rows; `adopt` against a `Declared` |
 | Document | `tests/test_docs.py` | per type: load, add, render; conflicts; `add()` checks; `render()` never raises on accepted entries; `MiseDoc.replace_setting` refusals and the parse-compare undo; `commit()`/`rollback()`; a second `begin()` asserts |
-| Writer and checks | `tests/test_writer.py`, `tests/test_checks.py` | guard behavior (today's `test_guard`, `test_final_guard_keeps_secret_shell_statements_whole`); write-time verification aborts with nothing left; atomic adopt with a fault in the second replace; links in the way (today's tests) |
-| Golden plans | `tests/test_golden.py`, `tests/golden/*.json` | the full `Plan` (all fields; normalized: in `Path` values the home directory is `~`; in text it is `<HOME>` and the rest of the temp directory is `<TMP>`, so a `~` in text means the code wrote `~` itself; fixed user, date, and hostname; fake tokens as their placeholders; a fake `check_syntax`) for an empty Mac, `used_mac` (`tests/test_plan.py:27-56`), and a kitchen-sink Mac; the adopt output and the edited files. `DOTKIT_MIGRATE_REGOLD=1` rewrites them. A golden diff is how every behavior change is reviewed |
+| Writer and checks | `tests/test_writer.py`, `tests/test_checks.py` | guard behavior (`test_guard`, `test_final_guard_keeps_secret_shell_statements_whole`); write-time verification aborts with nothing left; links in the way; the masked summary |
+| Session and adopt | `tests/test_session.py`, `tests/test_adopt.py`, `tests/test_declared.py`, `tests/test_failed_scans.py` | whole plans on `used_mac` and other fake Macs; the identity scan; `Session.adopt` and `writer.apply_edits` (apply twice, a fault in the second replace, old and new secret lines, a changed file, links); `Declared`; a failed scan of each source that adopt reads |
+| Golden plans | `tests/test_golden.py`, `tests/golden/*.json` | the full `Plan` (all fields; normalized: in `Path` values the home directory is `~`; in text it is `<HOME>` and the rest of the temp directory is `<TMP>`, so a `~` in text means the code wrote `~` itself; fixed user, date, and hostname; fake tokens as their placeholders; a fake `check_syntax`) for an empty Mac, `used_mac` (`tests/test_session.py`), and a kitchen-sink Mac, each with the default choices, and the last two also with deselected items; the adopt output and the edited files of the kitchen-sink Mac, with and without `--all`. `DOTKIT_MIGRATE_REGOLD=1` rewrites them. A golden diff is how every behavior change is reviewed |
 | Registry invariants | `tests/test_registry.py` | unique page keys and item-id prefixes; `sections` ⊆ `SECTIONS`; an empty home gives no warnings and no contributions; the AST no-write test; the secret property test (section 6) |
 | Isolation | `tests/test_isolation.py` | for every migrator M and every phase P, M.P raising (for `plan`: after real work, so it has pending entries) gives the same plan as the registry without M, plus one `Failure`, plus `skipped` entries for its `needs` dependents; strict mode re-raises; a token in an exception message is not in the report, summary, stderr, or `--debug` output; a core failure (a document render, the guard) gives no repository directory |
 | UI flow | `tests/test_ui_flow.py` with a `ScriptedFrontend` that answers screens by id and item id | page order, skipped empty pages, defaults, per-item selection, the warning line, the Problems block |
 | PTY | `tests/test_wizard_pty.py`, `tests/wizard_child.py` | curses mechanics: keys, keypad sequences, resize, small window, quit, the plain prompts with answer counts taken from the Session; one test where `wizard_child.py` adds a migrator that crashes, and the wizard still finishes |
 | Start and grammar | `tests/test_start.py` | `-I -B` isolation; the Python 3.9 grammar |
-| e2e | `tests/e2e/migrated.sh` in CI | a used macOS runner, strict mode; each new migration adds a fixture to the e2e job and a check here |
+| Temp directories | `tests/__init__.py` (`load_tests`), `tests/test_tempdirs.py` | a run of the suite leaves no `dotkit-migrate-*` directory in `$TMPDIR`; the tests make their `dotkit-migrate-*` directories with `fake.tempdir()` and remove them with `fake.remove()` |
+| e2e | `tests/e2e/migrated.sh` (at the top of the repository, not in `migrate/tests`) in CI | a used macOS runner, strict mode; each new migration adds a fixture to the e2e job and a check here |
+
+Other focused tests: `tests/test_catalog.py` (the generated rcparse rules),
+`tests/test_rcparse.py`, `tests/test_secrets.py`, `tests/test_context.py`,
+`tests/test_base.py` (the tables against `nix/home.nix`),
+`tests/test_main.py` (the CLI in a child process),
+`tests/test_nix_lists.py` and `tests/test_dotkit_pkg.py` (the list readers
+and `dotkit add mas:ID`; skipped without nix or `scripts/`).
 
 The standard checks for every step (called STD below):
 
@@ -968,10 +1023,19 @@ diff /tmp/dk-before.txt /tmp/dk-after.txt
 
 1. **Catalog:** add entries to `catalog.py` if the migration is a family
    (a version manager, a framework, a package source rule). rcparse picks up
-   new words, variables, and PATH markers from it.
-2. **Module:** add `migrators/<key>.py` with a facts dataclass, `scan`,
-   `pages` (stable, prefixed item ids; safe defaults), `plan`, `adopt` if
-   `dotkit migrate` should add it, `manual_steps`, and `sections`.
+   new words, variables, and PATH markers from it. A new framework or
+   version manager is only a catalog entry: `frameworks`, `runtimes`, and
+   `node_tools` loop over the catalog, so skip step 2. The catalog tests
+   check every entry generically; the pinned literals of the old rcparse
+   cover only the old entries (from step 14a).
+2. **Module:** add `migrators/<key>.py` with a `Migrator` subclass (`key`,
+   `title`, `sections`, `needs` if it cannot work without another), a facts
+   dataclass and its `facts_of` accessor, `scan`, `pages` (stable, prefixed
+   item ids; safe defaults), `plan`, `adopt` if `dotkit migrate` should add
+   it, and `manual_steps` (`tests/test_registry.py` checks that it has one).
+   A tool source that moves to mise reuses `migrators/tools.py`, and
+   (from step 14a) implements `mise_commands(facts)` (the commands of each mise key it can
+   add), which the leftovers report uses to find shadowed binaries.
 3. **Outputs:** reuse document types. Add a document type to `docs.py` only
    for a new kind of output file, with its add-time checks and its tests.
 4. **Report:** add new section titles to `report.SECTIONS`, in their place.
@@ -981,8 +1045,10 @@ diff /tmp/dk-before.txt /tmp/dk-after.txt
    (`add_secret`, restricted options). Never copy a file the scan did not
    check.
 7. **Tests:** `tests/migrators/test_<key>.py`; extend the kitchen-sink
-   fixture and regenerate the goldens (review the diff); the invariant and
-   isolation tests cover it without new code.
+   fixture (`kitchen_sink` in `tests/test_golden.py`) and regenerate the
+   goldens (review the diff); the invariant and isolation tests cover it
+   without new code: they take their lists from `MIGRATORS` (from step
+   14a; for example the adopters are the migrators that override `adopt`).
 8. **e2e:** add a fixture to the CI e2e job and a check in
    `tests/e2e/migrated.sh`.
 9. **Docs:** update the README table "On the Mac / In the repository".
@@ -994,8 +1060,9 @@ The wizard never removes anything. Most leftovers are dead wood:
 - dotkit links its own `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, and
   `~/.bash_profile`, so the old files (renamed `.before-dotkit`) are not
   read.
-- rcparse never carries framework or version-manager lines (`rcparse.py:61-99`,
-  `118-121`).
+- rcparse never carries framework or version-manager lines (`SKIP_VARS`,
+  `_RULES`, and `_PATH_VERSION_MANAGERS` in `rcparse.py`, built from
+  `catalog.py`).
 - So `~/.nvm`, `~/.pyenv`, `~/.rbenv`, `~/.asdf`, `~/.volta`, `~/.sdkman`,
   `~/.oh-my-zsh`, and the like just sit on disk.
 
@@ -1010,7 +1077,7 @@ How PATH works, for mise 2026.10.3, from its source and a local test:
   (the default), mise's hook-env keeps directories that were added to PATH
   *after* activation in front of mise's tool directories. Directories that
   were on PATH *before* activation go behind mise's tools at the first
-  prompt. That includes all of `DOTKIT_TOOL_PATH` (`nix/home.nix:92-101`:
+  prompt. That includes all of `DOTKIT_TOOL_PATH` (`nix/home.nix:92-103`:
   the Nix profiles, `~/.local/bin`, `/opt/homebrew/bin`, `/opt/homebrew/sbin`).
   Source: `src/cli/hook_env.rs`, `build_path_operations`, around L338-523.
   - So a carried PATH line in `config/zsh/zshrc` (`~/.zshrc.local`) that adds
@@ -1037,10 +1104,11 @@ What the migrator reports:
 
 1. **Carried PATH lines that add a new directory.** For each one in
    `config/zsh/zshrc`, list the file and line. "New" means not in this set:
-   the `DOTKIT_TOOL_PATH` entries (a constant in `base.py`, checked by
-   `test_base` against `nix/home.nix`), `rcparse._PATH_DONE`
-   (`rcparse.py:113-117`), the system directories, and the directories
-   carried into `config/zsh/zshenv` or `config/zsh/zprofile`. Each such line
+   the `DOTKIT_TOOL_PATH` entries (`base.TOOL_PATH`, checked by
+   `test_base` against `nix/home.nix`), the entries that
+   `rcparse.path_done` leaves out (`rcparse._PATH_DONE`), the system
+   directories, and the directories carried into `config/zsh/zshenv` or
+   `config/zsh/zprofile`. Each such line
    is listed, also when nothing in its directory shadows a tool now, in a
    block of its own: it puts the directory in front of mise's tools.
 2. **Shadowed tools.** If such a directory, or `~/.local/bin`,
@@ -1088,7 +1156,7 @@ What the migrator reports:
 5. **Homebrew packages that are not in the lists** need no block here. A
    deselected one is under "Not carried, by your choice", whose Homebrew
    intro also says that `dotkit upgrade brew` upgrades only the declared
-   packages (`dotkit:250-256`), so it goes stale, and that
+   packages (`dotkit:251-257`), so it goes stale, and that
    `homebrew.onActivation.cleanup = "uninstall"` would uninstall it. One
    that dotkit or your mise config provides is under "Homebrew copies of
    dotkit tools". A dependency formula, which `brew leaves` does not show,
@@ -1102,15 +1170,17 @@ What the migrator reports:
 
 The facts this needs:
 
-- `Package.commands`: the command names of each package. npm: `bin` in
-  `package.json` (`scan.py:345-352`); pipx: the apps in `pipx_metadata.json`;
-  uv: the receipt's entry points; cargo: `bins` in `.crates2.json`; Go: the
-  file name; runtimes: `node`, `npm`, `npx`, `python3`, `python`, `pip3`,
-  `ruby`, `gem`.
+- `Package.commands` (`migrators/tools.py`): the command names of each
+  package. npm: `bin` in `package.json`; pipx: the apps in
+  `pipx_metadata.json`; uv: the receipt's entry points; cargo: `bins` in
+  `.crates2.json`; Go: the file name. The mise tools with more commands
+  than their name are in `catalog.MISE_COMMANDS`: `node`, `npm`, `npx`;
+  `python3`, `python`, `pip3`; `ruby`, `gem`; `uv`.
 - The `shell` scan runs rcparse (pure) at scan time, and lists the
   executables of each existing directory in a carried PATH line.
 - The `leftovers` scan lists the executables of `~/.local/bin`,
-  `<brew_prefix>/bin`, and `<brew_prefix>/sbin` (names only).
+  `<brew_prefix>/bin`, and `<brew_prefix>/sbin` (names and link targets;
+  no file is opened).
 
 ## 12. Worked sketches
 
@@ -1127,7 +1197,7 @@ VersionManagerSpec(
     npm_globs=(("versions/node/*/lib/node_modules", -3),),   # (glob, index of the version in the path parts)
 )
 # Line-only specs (detect=False) keep rcparse's words for rvm, nodenv, goenv, chruby, tfenv, conda,
-# mamba, micromamba (rcparse.py:91-93).
+# mamba, micromamba (the old rcparse.py:91-93).
 # The manager's directory: catalog.manager_dir(spec, home, env). If env[spec.env_var], stripped,
 # is an absolute path, or is ~ or starts with ~/ (expanded against the scanned home), it is the
 # directory, and dirs are not tried. When it does not exist, is a file, or is the home or a parent
@@ -1145,10 +1215,10 @@ class Runtimes(Migrator):
 
     def scan(self, ctx):
         return RuntimeFacts([detect(spec, ctx) for spec in catalog.VERSION_MANAGERS if spec.detect],
-                            mise_extra=extra_mise_files(ctx))          # today's scan_mise (scan.py:462-472)
+                            mise_extra=extra_mise_files(ctx))          # in the code: _managers, _mise_extra
 
     def pages(self, f):
-        lines = runtime_lines(facts_of(f))                              # today's plan.py:123-141
+        lines = runtime_lines(facts_of(f))                              # the old plan.py:123-141
         return [Page("runtimes", self.title, "config/mise.toml", INTRO, "checklist",
                      [Item(f"runtime:{t}", f"{t} {', '.join(v)}", default=False) for t, v in lines.items()],
                      note="off: mise installs them; the base has " + base_runtimes(f.base))]
@@ -1163,12 +1233,14 @@ class Runtimes(Migrator):
                        #  not added; `mise use -g <tool>@<version>` for one you need"
             elif txn.mise().add_tool(tool, versions if len(versions) > 1 else versions[0]):
                 ...    # carried row; the item says "config/mise.toml has these versions now"
-        for vm in facts_of(f).managers:                                 # today's plan.py:468-493
-            lines = [x for x in shell.findings(f) if x.source == vm.name]   # None-safe helper
-            txn.report.todo("Version managers", intro(f.base), [step_text(vm, lines, c)])
+        for vm in facts_of(f).managers:                                 # the old plan.py:468-493
+            txn.report.todo("Version managers", intro(f.base), [step_text(vm, c)])
+            # step_text ends: "Then remove its lines from the shell files (the report lists them).
+            # Before <before_removal(vm.path)>." The lines are under "Shell lines: Version manager".
 
 # migrators/config_files.py: the idiomatic settings. It owns your mise config, so it writes the union
-# right after set_base (settings come after set_base, section 4.4).
+# right after set_base (settings come after set_base, section 4.4). In the code: _idiomatic(f, txn,
+# settings, layered), with the settings that the scan parsed from your config.
 IDIOMATIC = ("idiomatic_version_file_enable_tools", "idiomatic_version_file_disable_files")
 
 def mise_settings(f, c, txn, user):                     # user: your parsed ~/.config/mise/config.toml
@@ -1200,18 +1272,20 @@ def mise_settings(f, c, txn, user):                     # user: your parsed ~/.c
 ```
 
 - **`Base.mise_settings`** reads `[settings]` of the base `config/mise.toml`,
-  as `Base.mise` reads `[tools]` (`base.py:123-130`). Nothing hard-codes the
-  base value. Today the base enables `["node", "python", "ruby", "rust"]` and
-  disables `["ruby:Gemfile", "node:package.json"]`.
+  as `Base.mise` reads `[tools]` (`base._mise_table`). Nothing hard-codes
+  the base value. Today the base enables `["node", "python", "ruby", "rust"]`
+  and disables `["ruby:Gemfile", "node:package.json"]`.
 - **No hard-coded runtime versions in text.** The intro's "The base has Node
-  24, Python 3.14, and Ruby 3.4" (`plan.py:490-493`) and the page note
-  (`plan.py:181`) come from `Base.mise` (`base_runtimes()`), so a base
-  change can't make them wrong. The display name of a tool comes from one
-  function in `catalog.py` (today `key.capitalize()`: `node` → `Node`,
-  `go` → `Go`); a name that needs another spelling gets an entry there.
-- **The project-file hint** (`rcparse.py:43-44`) is correct for the current
-  base, which reads `.nvmrc`, `.node-version`, `.python-version`, and
-  `.ruby-version`. Keep it, and mention that `.tool-versions` is always read.
+  24, Python 3.14, and Ruby 3.4" (the old `plan.py:490-493`) and the page
+  note (the old `plan.py:181`) come from `Base.mise`
+  (`runtimes.base_runtimes()`), so a base change can't make them wrong. The
+  display name of a tool comes from one function, `catalog.display_name`
+  (today `key.capitalize()`: `node` → `Node`, `go` → `Go`); a name that
+  needs another spelling gets an entry there.
+- **The project-file hint** (the `VERSION_MANAGER` entry of
+  `rcparse.CATEGORIES`) is correct for the current base, which reads
+  `.nvmrc`, `.node-version`, `.python-version`, and `.ruby-version`, and it
+  says that `.tool-versions` is always read.
 - **The union never adds tools of its own.** It is dotkit's list plus yours.
 
 ### 12.2 Oh My Zsh (`frameworks`, report only)
@@ -1223,19 +1297,20 @@ FrameworkSpec(name="Oh My Zsh", paths=(".oh-my-zsh",),
 
 class Frameworks(Migrator):
     key = "frameworks"; title = "Shell frameworks"; sections = ("Shell frameworks",)
-    def scan(self, ctx):  return FrameworkFacts([found(spec, ctx) for spec in catalog.FRAMEWORKS])  # scan.py:511-517
+    def scan(self, ctx):  return FrameworkFacts([found(spec, ctx) for spec in catalog.FRAMEWORKS])  # old scan.py:511-517
     def pages(self, f):   return []
     def plan(self, f, c, txn):
-        for fw in facts_of(f).found:
-            n = sum(1 for x in shell.findings(f) if x.source == fw.name)
-            txn.report.todo("Shell frameworks", INTRO,
-                [f"{fw.name} ({fw.path}): dotkit's zsh does not load it. {n} lines of your shell files used it "
-                 f"(see \"Shell lines: Shell framework\"). Before `rm -rf {fw.path}`, check that nothing points "
-                 f"into it."])
+        fw = facts_of(f)
+        if fw is not None and fw.found:
+            txn.report.todo("Shell frameworks",
+                            "dotkit's zsh does not load them. Remove each one when you no longer need it.",
+                            [f"{n}: before {before_removal(p)}." for n, p in fw.found.items()])
+            # before_removal(): the reference check and the quoted `rm -rf` (sections 5 and 11).
+            # The framework lines of your shell files are listed under "Shell lines: Shell framework".
 ```
 
 `ZDOTDIR` is a core zsh variable. An assignment of it is reported as a
-framework line, as today, but it is not attributed to any framework
+framework line, as before the refactor, but it is not attributed to any framework
 (`Finding.source` is empty): `catalog.UNATTRIBUTED_FRAMEWORK_VARS`.
 
 Advanced configs are handled by hand. There is no carrying of `$ZSH_CUSTOM`,
@@ -1246,7 +1321,7 @@ no plugin mapping, and no abbreviations. `ShellNixDoc` has only the keymap.
 ```python
 class AppStore(Migrator):
     key = "appstore"; title = "App Store apps"; sections = ("App Store apps", "Not carried, by your choice")
-    def scan(self, ctx):  ...       # `mas list`, or the _MASReceipt names without mas (scan.py:267-283)
+    def scan(self, ctx):  ...       # `mas list`, or the _MASReceipt names without mas (old scan.py:267-283)
     def pages(self, f):
         return [Page("mas", self.title, "nix/mas.txt", INTRO, "checklist",
                      [Item(f"mas:{i}", n) for i, n in facts_of(f).apps])]
@@ -1256,21 +1331,24 @@ class AppStore(Migrator):
                 txn.list("nix/mas.txt").add(f"{i} {n}")
             else:
                 ...                                                     # "Not carried, by your choice"
-        if facts_of(f).receipts_only:
-            txn.report.todo("App Store apps", "...run `dotkit add brew:mas`...", facts_of(f).receipts_only)
+        if facts_of(f).store_apps:                                   # names only, without mas
+            txn.report.todo("App Store apps", "...run `dotkit add brew:mas`...", facts_of(f).store_apps)
     def adopt(self, f, declared, txn, opts):
         for i, n in facts_of(f).apps:
             if not declared.mas_id(i):
                 txn.list("nix/mas.txt").add(f"{i} {n}")
+# In the code, setup and adopt add an app through one add_app(), which also gives the
+# `<name> (<id>)` label and skips a flagged line (section 4.5).
 ```
 
 `nix/mas.txt` format: one app per line, `<id> <name>`, where the name is the
 rest of the line, trimmed (it can contain spaces, `#`, and Unicode). A line
 whose first non-blank character is `#` is a comment, and blank lines are
-ignored. If two lines have the same name, the first one wins (as
-`plan.py:803-805` does today). `nix/taps.txt` format: `<owner/repo>` or
-`<owner/repo> <clone URL>`, with the comments of `nix/read-list.nix`; a line
-with a URL becomes `{ name; clone_target; }`.
+ignored. If two lines have the same name, the first one wins (as the old
+`plan.py:803-805` did; `nix/read-mas.nix` and `base.read_mas` read it so).
+`nix/taps.txt` format: `<owner/repo>` or `<owner/repo> <clone URL>`, with
+the comments of `nix/read-list.nix`; a line with a URL becomes
+`{ name; clone_target; }` (`nix/read-taps.nix`).
 
 The nix module reads both files through two options, `dotkit.lists.taps` and
 `dotkit.lists.masApps` (lists of files, default `[ ]`), and sets
@@ -1283,9 +1361,40 @@ run `dotkit add brew:mas` first.
 
 ## 13. Refactor steps
 
-The base fix for mise's idiomatic version files is already done
-(`config/mise.toml`), and the existing project-file hints are correct. The
-code in `migrate/` is unchanged since `d91296a`, so the line references hold.
+**Status: done.** Every step below has landed on the branch
+`migrate-architecture`, in the commits after `24f0778` (the first version
+of this file): `77bb6c5` revised this file, then `d743d97` (step 1) to
+`18d2c60` (step 12a), then step 14, which brings this file in line with the
+code and points the package docstring here. `git log --oneline 24f0778..`
+lists them. Step 12a landed after step 13. The table is the record of what each
+step did. Its file and line references point to the code before that step
+(mostly `d91296a`), and the modules it names, such as `plan.py`, `scan.py`,
+`adopt.py`, and `migrators/_rest.py`, are gone. Sections 1 to 12 describe
+the code as it is now.
+
+| Step | Commits |
+|---|---|
+| 1 | `d743d97` |
+| 1a | `0e87003` (this file), `f6f4515`, `5a61848` (goldens) |
+| 2 | `701c93b`, `430886f`, `db8b862`, `8a17045`, `a28f307` (goldens) |
+| 3 | `a75562e` |
+| 4 | `fa2e7ed` |
+| 5 | `c204079` |
+| 6 | `d0007d5` |
+| 7 | `dcf3bcc`, `36624da` (goldens) |
+| 8 | `40762b4`, `ea0e687`, `48c1616`, `dba4fb4`, `d1d8996`, `6bed73f`, `a091bbc`, `e432212`, `9532dc8`, `83313bd`, `fabd2d4`, `1224237` |
+| 9 | `4994260`, `5232199` (goldens), `4a67d2e`, `12126e6` (goldens) |
+| 9a | `ae27423` |
+| 10 | `b2c94b8` |
+| 10a | `313c802` |
+| 11 | `58f434f`, `096fa2c` (goldens) |
+| 12 | `f687385`, `5867282` (goldens), `d27d3d0`, `9841e00` (goldens) |
+| 13 | `9681715`, `6f9d8d9` (goldens), `1d6b608`, `2f6e09e` (goldens) |
+| 12a | `18d2c60` |
+| 14 | this commit ("Point the migration docstrings and README to ARCHITECTURE.md") |
+
+Before step 1, the base fix for mise's idiomatic version files was already
+done (`config/mise.toml`), and the project-file hints were correct.
 
 Rules for every step:
 
@@ -1323,10 +1432,11 @@ Rules for every step:
 | 12 | **Adopt unification.** `Declared` (section 4.5); `adopt()` for homebrew, appstore, node_tools, python_tools, built_tools; `Session.adopt`; `writer.apply_edits`; adopt output from the documents' `added()` and the report; `adopt.py` removed; the pnpm rule applies to npm packages only (today `adopt.py` skips a package named `pnpm` from any backend). Setup now also skips a formula that your mise config provides, and an npm, pipx, cargo, or Go tool that the base has (`Declared.tool`), as adopt does; runtimes ask `Declared.yours_mise_key` only (section 4.5) | de-duplication change; the adopt list comment becomes `# Added by dotkit migrate on <host>.` | 11 | goldens updated and reviewed (adopt and plan goldens); `adopt.py` is gone; tests: your mise config has `jq` and brew has `jq` → skipped in setup and adopt; `cargo:bat` with `bat` in the base → not offered in setup, not added in adopt, with the "dotkit has" item; an nvm `node 20` with the base's `node = "24"` is still offered and added; a repository with an existing secret-looking line can still be adopted into, and a new secret line still aborts; apply twice → the second run adds nothing; a fault in the second replace restores the first file |
 | 12a | **Tests leave no temp directories.** Every test that makes a temporary directory (`fake.Home`, the PTY and `main_child` children, the writer tests with 0555 directories) removes it, also after a failure and when parts of it are read-only (the same make-writable-and-retry removal as `write_new`). A child process cleans up its own directories, or the parent removes them. Test-only: no production code changes | no change | 12 | STD; a test (or a `unittest` `load_tests`/module hook) runs the suite's temp-directory makers and checks that `$TMPDIR` has no new `dotkit-migrate-*` entries afterwards; a full run of the suite leaves none |
 | 13 | **Leftovers report** (section 11). `Package.commands`; executable listings in the `shell` and `leftovers` scans; `base.TOOL_PATH` checked against `nix/home.nix`; report-only parsing of `~/.bashrc`, `~/.zlogin`, `~/.zlogout`, `~/.profile`; the shadowing warnings with their context and fixes; the stale and cleanup sentences in the Homebrew intro of "Not carried, by your choice" (no separate Homebrew block); binaries matched to their package by link target; the reference check next to every `rm`; the `check_syntax` results are cached per build, so `zsh -n` runs once per text | new report text | 8 | goldens updated and reviewed; fixtures: `~/.npm-global/bin` with `tsc` carried from `~/.zshrc` while `npm:typescript` moves to mise → "interactive shells" warning with file and line; `~/.local/bin/ruff` while `pipx:ruff` moves → "GUI apps" warning; `source ~/.nvm/nvm.sh` in `~/.bashrc` → "still runs"; `~/bin` carried into `config/zsh/zprofile` from `~/.zprofile` and added again in `~/.zshrc` → no new-directory item; `/opt/homebrew/bin/node` (a link into `Cellar/node/`) → "GUI apps" warning with `brew uninstall node`, from the base's `node` |
-| 14 | **Package docstring.** `dotkit_migrate/__init__.py` points to this file and keeps the Python 3.9 rules; README "Work on dotkit" mentions it | no change | all | review |
+| 14 | **Package docstring.** `dotkit_migrate/__init__.py` points to this file and keeps the Python 3.9 rules; README "Work on dotkit" mentions it; the `migrators/__init__.py` docstring lists the import rule of section 3; a consistency pass brings this file in line with the code (stale names, paths, and line references; the status note and commit table of this section) | no change | all | review |
+| 14a | **Extension points without hard-coded lists.** Tests: `test_isolation.py`'s adopters are the migrators that override `adopt`, and `test_failed_scans.py`'s sources come from `MIGRATORS`; `test_catalog.py` compares the generated rcparse rules with the old literals only for the old entries, and checks every entry generically (its words and PATH markers compile and match an example, its variables are names, a detected spec has `dirs`, `env_var` is unique). Code: `Migrator.mise_commands(facts) -> Dict[str, Tuple[str, ...]]` (default empty), which the tool migrators implement; the Session merges the results into `Facts.mise_commands` after the scans (a hook that raises fails its migrator, as its scan would), and `leftovers.mise_tools` reads that instead of the four facts it names today (`leftovers.py:88-92`) | no change | 14 | STD; goldens unchanged; a test adds a fake catalog entry and a fake tool migrator, and the catalog, invariant, isolation, and leftovers tests pass without editing a test list |
 
 Order: 1 → 1a → 2 → 3 and 4 (in either order) → 5 → 6 → 7 → 8. After 8: 9 (then
-9a), 10 (then 10a), and 13 in any order; 11 needs 10a; 12 needs 11; 12a (tests only) can land any time after 12, in parallel with 13. Land each step that changes
+9a), 10 (then 10a), and 13 in any order; 11 needs 10a; 12 needs 11; 12a (tests only) can land any time after 12, in parallel with 13. 14 comes after all of them, and 14a after 14. Land each step that changes
 behavior (1a, 2, 7, 9, 9a, 10a, 11, 12, 13) on its own, so that each golden diff can be
 reviewed by itself.
 
@@ -1334,7 +1444,13 @@ reviewed by itself.
 
 None block the work.
 
-Two things were not verified and limit what the report may claim in step 13:
-how mise's PATH handling works in nested shells, and its order relative to
-direnv's hook. If someone checks them later, extend section 11 and the step
-13 fixtures.
+- Two things were not verified and limit what the leftovers report may
+  claim (section 11): how mise's PATH handling works in nested shells, and
+  its order relative to direnv's hook. If someone checks them later, extend
+  section 11 and the step 13 fixtures.
+- Not planned, possible later: the framework and version-manager items
+  could name their own shell lines, using `Finding.source`, which today only
+  the leftovers report shows.
+- `dotkit add mas:ID` takes the name of an app that is not installed from
+  the first line of `mas info`. That format was not checked against a real
+  `mas` (`mas_name` in `scripts/dotkit-pkg`).
