@@ -14,6 +14,9 @@ import time
 import unittest
 from pathlib import Path
 
+from tests import fake
+from tests.test_plan import used_mac
+
 CHILD = Path(__file__).resolve().parent / "wizard_child.py"
 UP, DOWN, LEFT, RIGHT = "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C"
 ENTER, SPACE, CTRL_U = "\r", " ", "\x15"
@@ -84,53 +87,89 @@ def drive(keys, term="xterm-256color", rows=30, cols=100, timeout=30.0):
     return json.loads(out.read_text()), text
 
 
+def pages():
+    """The pages of the fake Mac of wizard_child.py, from the planner: the key sequences follow them."""
+    h = fake.Home()
+    try:
+        p = fake.planner(fake.scanner(h, used_mac(h)).run())
+        return p.pages(), p.defaults("~/.dotfiles").to_json()
+    finally:
+        h.cleanup()
+
+
 class WizardPtyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.pages, cls.defaults = pages()
+        # The fixture must have a page of each kind for these tests to mean something.
+        cls.keys = [page.key for page in cls.pages]
+        for key in ("formulae", "casks", "taps", "mas", "cargo", "shell", "files", "other"):
+            assert key in cls.keys, key
+        cls.total = len(cls.pages) + 3  # the path, the keymap, the pages, the plan
+
     def run_wizard(self, keys, **kw):
         return drive(keys, **kw)
 
+    def page_keys(self, per_page):
+        """Enter on each page, after the keys of per_page for that page."""
+        out = []
+        for key in self.keys:
+            out += [*per_page.get(key, []), ENTER]
+        return out
+
     def test_defaults(self):
-        # repo, keymap, what to carry, config files, other config, plan
-        result, screen = self.run_wizard([ENTER] * 6)
+        result, screen = self.run_wizard([ENTER] * self.total)
         self.assertEqual(result["mode"], "curses", screen[-2000:])
         self.assertTrue(result["ok"], screen[-2000:])
-        c = result["choices"]
-        self.assertEqual((c["repo"], c["keymap"]), ("~/.dotfiles", "emacs"))
-        self.assertTrue(c["groups"]["formulae"] and c["groups"]["shell"])
-        self.assertFalse(c["groups"]["cargo"])
-        self.assertEqual(c["files"][".npmrc"], "keep")
-        self.assertEqual(c["adopt"], [])
-        for title in ("Where the dotfiles repository goes", "The zsh keymap", "What to carry over",
-                      "Your config files", "Other config to keep in the repository", "The plan"):
+        self.assertEqual(result["choices"], self.defaults)
+        # curses redraws only what changed, so only whole titles are in the output.
+        for title in ("Where the dotfiles repository goes", "The zsh keymap", self.pages[0].title, "The plan"):
             self.assertIn(title, screen)
+        self.assertIn(f"1/{self.total}", screen)
+        self.assertNotIn("Not carried, by your choice", screen)
 
     def test_changes(self):
         keys = [
             CTRL_U, *"/tmp/elsewhere", ENTER,  # outside the home directory: refused
             CTRL_U, *"~/dots", ENTER,
             DOWN, ENTER,  # vi
-            SPACE, DOWN, SPACE, "x", ENTER,  # formulae and casks off; x does nothing
-            SPACE, DOWN, RIGHT, ENTER,  # ghostty: layer -> replace; starship: replace -> dotkit
-            SPACE, ENTER,  # adopt ~/.config/nvim
+            *self.page_keys({
+                "formulae": [DOWN, SPACE, "x"],  # the second formula off; x does nothing
+                "casks": ["a"],  # all selected: a selects none
+                "taps": ["a", "a"],  # none, then all
+                "mas": ["j", "k", SPACE],  # the first app off
+                "cargo": [SPACE],  # off by default: on
+                "shell": [DOWN, SPACE],  # ~/.zshrc off
+                "files": [SPACE, DOWN, RIGHT],  # ghostty: layer -> replace; starship: replace -> dotkit
+                "other": [SPACE],  # ~/.config/nvim
+            }),
             "b", ENTER,  # back from the plan to other config, then on
             ENTER,  # the plan
         ]
-        result, screen = self.run_wizard(keys)
+        # A tall window: the plan screen shows the lines of what you left out.
+        result, screen = self.run_wizard(keys, rows=50)
         self.assertTrue(result["ok"], screen[-2000:])
         c = result["choices"]
         self.assertEqual((c["repo"], c["keymap"]), ("~/dots", "vi"))
-        self.assertFalse(c["groups"]["formulae"])
-        self.assertFalse(c["groups"]["casks"])
-        self.assertTrue(c["groups"]["taps"])
-        self.assertEqual(c["files"][".config/ghostty/config"], "replace")
-        self.assertEqual(c["files"][".config/starship.toml"], "dotkit")
-        self.assertEqual(c["adopt"], [".config/nvim"])
+        picked = c["picked"]
+        self.assertEqual(picked["formulae"], ["brew:wget"])
+        self.assertEqual(picked["casks"], [])
+        self.assertEqual(picked["taps"], self.defaults["picked"]["taps"])
+        self.assertEqual(picked["mas"], ["mas:1289583905"])
+        self.assertEqual(picked["cargo"], ["cargo:bat"])
+        self.assertEqual(picked["shell"], ["shell:.bash_profile", "shell:.zprofile"])
+        self.assertEqual(picked["other"], ["other:.config/nvim"])
+        self.assertEqual(c["options"]["file:.config/ghostty/config"], "replace")
+        self.assertEqual(c["options"]["file:.config/starship.toml"], "dotkit")
         self.assertIn("Use a directory in", screen)
+        self.assertIn("Not carried, by your choice:", screen)
 
     def test_keypad_keys(self):
         """Terminals in keypad mode, as curses asks, send ESC O B for the down arrow."""
         result, screen = self.run_wizard([ENTER, "\x1bOB", ENTER, "\x1bOB", SPACE, "q"])
+        self.assertFalse(result["ok"], screen[-2000:])
         self.assertEqual(result["choices"]["keymap"], "vi", screen[-2000:])
-        self.assertFalse(result["choices"]["groups"]["casks"])
+        self.assertEqual(result["choices"]["picked"]["formulae"], ["brew:wget"])
 
     def test_quit(self):
         result, screen = self.run_wizard([ENTER, "q"])
@@ -141,18 +180,59 @@ class WizardPtyTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Make the window larger", screen)
 
+    def test_resize_on_a_page(self):
+        """A smaller window redraws the page, and its keys still work."""
+        keys = [ENTER, ENTER, ("resize", 18, 64), DOWN, SPACE, ("resize", 30, 100), ENTER]
+        keys += [ENTER] * (self.total - 3)
+        result, screen = self.run_wizard(keys)
+        self.assertTrue(result["ok"], screen[-2000:])
+        self.assertEqual(result["choices"]["picked"]["formulae"], ["brew:wget"])
+
+    def plain_answers(self, per_page):
+        """One answer per checklist page, one per item of a choices page: the counts come from the planner."""
+        out = []
+        for page in self.pages:
+            if page.kind == "checklist":
+                out.append(per_page.get(page.key, ""))
+            else:
+                answers = per_page.get(page.key, {})
+                out += [answers.get(i.id, "") for i in page.items]
+        return out
+
     def test_plain_prompts(self):
-        # repo, keymap, 9 groups (casks off), 6 config files, other config, the plan.
-        lines = ["", "vi", "", "n", *[""] * 7, *[""] * 6, "nvim", "y"]
+        lines = ["", "vi", *self.plain_answers({
+            "formulae": "2",  # toggle the second
+            "casks": "n",
+            "taps": "1-2",  # both off
+            "mas": "a",
+            "cargo": "1",
+            "shell": "1 3",  # ~/.zprofile and ~/.bash_profile off
+            "files": {"file:.config/ghostty/config": "replace"},
+            "other": "1",
+        }), "y"]
         result, screen = self.run_wizard([line + "\r" for line in lines], term="dumb")
         self.assertEqual(result["mode"], "plain")
         self.assertTrue(result["ok"], screen[-3000:])
         c = result["choices"]
         self.assertEqual(c["keymap"], "vi")
-        self.assertTrue(c["groups"]["formulae"])
-        self.assertFalse(c["groups"]["casks"])
-        self.assertEqual(c["adopt"], [".config/nvim"])
+        picked = c["picked"]
+        self.assertEqual(picked["formulae"], ["brew:wget"])
+        self.assertEqual(picked["casks"], [])
+        self.assertEqual(picked["taps"], [])
+        self.assertEqual(picked["mas"], self.defaults["picked"]["mas"])
+        self.assertEqual(picked["cargo"], ["cargo:bat"])
+        self.assertEqual(picked["shell"], ["shell:.zshrc"])
+        self.assertEqual(picked["other"], ["other:.config/nvim"])
+        self.assertEqual(c["options"]["file:.config/ghostty/config"], "replace")
+        self.assertEqual(c["options"]["file:.npmrc"], "keep")
         self.assertIn("The plan:", screen)
+        self.assertIn("Not carried, by your choice:", screen)
+
+    def test_plain_prompts_no_at_the_end(self):
+        lines = ["", "", *self.plain_answers({}), "n"]
+        result, screen = self.run_wizard([line + "\r" for line in lines], term="dumb")
+        self.assertFalse(result["ok"], screen[-3000:])
+        self.assertEqual(result["choices"], self.defaults)
 
 
 if __name__ == "__main__":

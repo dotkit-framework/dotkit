@@ -254,9 +254,35 @@ class Choices:                           # plain data; JSON for tests and wizard
     def defaults(cls, repo: str, pages: List[Page]) -> "Choices": ...
 ```
 
-A migrator reports every deselected item under "Not carried, by your choice":
-it stays installed or in place, dotkit does not manage it, and with
-`homebrew.onActivation.cleanup = "uninstall"` activation would uninstall it.
+An item that is on by default and that you deselect goes to "Not carried,
+by your choice". It stays installed or in place, and dotkit does not manage
+it. Each item there gives its next step, as the to-do of that kind did
+before: `dotkit add brew:<name>`, `dotkit add cask:<name>`, `dotkit add
+mas:<id>`, the line for nix/taps.txt, `mise use -g <spec>`, or, for a shell
+file, how many lines could be carried (and the names of lines with secrets,
+never their values). For Homebrew formulae and casks, the intro adds that
+with `homebrew.onActivation.cleanup = "uninstall"` activation would
+uninstall them. An item that is off by default (cargo, Go, runtimes, other
+config) and that stays off keeps the to-do of its kind, which already says
+why it is off. These to-dos replace the old texts for a whole group that
+was off ("They stay tapped…", "Add the ones you want…", "You chose not to
+carry shell lines…", and the section "Homebrew packages that are not in the
+lists").
+
+A shell file that has only lines with secrets is an item too, on by
+default: its lines go to `local/` (section 6).
+
+The variables that rcparse tracks pass from one shell file to the next
+(`.zshenv` → `.zprofile` → `.zshrc`, each with its `.local` file). A file
+that is not carried passes on nothing: the next file starts with the
+variables known before the skipped file. An export or PATH line that uses
+a variable of a skipped file is then reported, not carried. Aliases and
+functions are carried as written, as before; rcparse does not check the
+variables in them (a known limit: an alias in double quotes expands such a
+variable when the shell defines it). The page labels count from the full
+chain; the plan parses again with the chain of the selected files (rcparse
+is pure and cheap). The "Not carried, by your choice" item of a deselected
+shell file also uses the full chain, so it says what the page offered.
 
 ### 4.4 Documents and transactions
 
@@ -552,13 +578,12 @@ every migrator's `sections`. The order:
 12. mise
 13. Leftovers that can still take effect
 14. Homebrew copies of dotkit tools
-15. Homebrew packages that are not in the lists
-16. Not carried, by your choice
-17. Homebrew taps
-18. App Store apps
-19. Other config
-20. Other config that stays out of the repository
-21. Scan warnings
+15. Not carried, by your choice
+16. Homebrew taps
+17. App Store apps
+18. Other config
+19. Other config that stays out of the repository
+20. Scan warnings
 
 The summary (the review screen, `--dry-run`, the plain prompts) starts with
 the problems line when there are failures (section 7.4), then today's lines
@@ -740,7 +765,8 @@ a hidden `--strict` flag. Production runs are never strict.
 ## 8. UI
 
 Screens are data. `ui/screens.py` builds a list of `Screen(kind, id, title,
-intro, rows, get, set, detail)` from the Session. The curses and plain
+intro, note, dest, lines, rows, get, set, detail)` from the Session (`note`
+and `dest` come from the page; `lines` is the review text). The curses and plain
 frontends render the same screens.
 
 The sequence:
@@ -767,8 +793,10 @@ the minimum size stay as they are.
 
 Plain prompts (`ui/plain.py`): a checklist page prints its numbered items
 and their state. The answer is Enter (keep), numbers or ranges to toggle
-(`1 3-5`), `a` (all), or `n` (none). A choices page asks per item, as
-today's `prompts.py:54-65`. `--plain` and an unusable terminal
+(`1 3-5`), `a` (all), or `n` (none), one answer per page; an answer that
+does not parse asks again. A choices page asks per item, as the old
+`prompts.py:54-65` did. The plain prompts have no way back; end of input
+quits, and nothing is written. `--plain` and an unusable terminal
 (`wizard.available`, `wizard.py:397-417`) select it.
 
 Problems in the UI:
@@ -783,7 +811,9 @@ Problems in the UI:
   effect. `b` goes back. If the crash depends on a choice, changing that
   choice and returning rebuilds the plan, and the problem can go away.
 - **Skipped dependents** are listed in the same block.
-- The review shows "Not carried, by your choice: N" per page.
+- The review lists "Not carried, by your choice: N" for each checklist page
+  with N > 0, after the summary. N counts the items that were on by default
+  and that you deselected, the same rule as the report section.
 - **`--yes` and `--dry-run`** have no screens. Defaults come from
   `Choices.defaults`, and problems go to stderr and to the printed summary.
 
@@ -1111,7 +1141,7 @@ Rules for every step:
 | 5 | **Documents and transactions.** `docs.py` with every type of section 4.4 (`ListDoc` covers brews, casks, taps, and mas); `MiseDoc` settings API; `Base.mise_settings`; `_Build` writes through one `Txn` instead of `self.brews`, `self.mise_lines`, `self.plan`; its `render()` becomes document renders | no change, except three ruled cases that no golden reaches: a copy to a taken repository path is not made and gets a to-do (the old code let the last copy win, behind both links); a mise config with a secret forced to "layer" no longer suppresses tools; a tap name with whitespace is not written and gets the to-do | 2, 4 | STD; `tests/test_docs.py` (load/add/render, conflicts, add-time checks, `replace_setting` refusals and undo, commit/rollback) |
 | 6 | **Writer and checks.** `writer.py` (render, plan-time guard, `write_new` with write-time verification) replaces `write.py`; `checks.py` (links, moved aside, blockers, summary); `mask_lines` moves to `writer.py`, which also masks the summary; `SecretInRepository` ends the run with a clean error and exit 2; a repository path inside a copied directory, or one that a copied directory would contain, counts as taken (rule 4) | no change on the goldens; two ruled cases that no golden reaches: a summary line with a secret is masked, and an overlapping directory copy is not made and gets the `other_config` to-do | 5 | STD; `write.py` is gone; a test that stages a secret past the guard aborts with no directory left; a summary line with a token is masked; `~/.config/bash` selected for adoption next to a carried `~/.bash_profile` is not copied, has no link, and gets the to-do, and a copied directory that would contain `config/zsh/zshrc` is refused the same way |
 | 7 | **Pages, per-item choices, and the new UI.** `Page`/`Item`/`Choices` of section 4.3 (Homebrew as three pages; one shell item per file); the planner returns pages instead of `groups`/`file_items`/`adoptable`, and `_Build` reads `Choices.picked`/`options`; "Not carried, by your choice"; `ui/screens.py`, `ui/curses_ui.py`, `ui/plain.py` replace `wizard.py` and `prompts.py`; `ScriptedFrontend`; `wizard_child.py` writes the new `Choices` JSON; PTY tests rewritten for the new screens, plain-prompt counts taken from the planner | UI and Choices change; default-choice goldens unchanged | 6 | STD; `wizard.py` and `prompts.py` are gone; new goldens with deselected items; UI flow tests |
-| 8 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session`. The first commit replaces `Planner` with `Session` and switches `ui/`, `__main__`, and the tests to it; the code that is not yet split runs as a private last entry of the registry. Then one migrator per commit, in `MIGRATORS` order: its scan step and its `Scan` fields, its `_Build` part, its pages, and its tests (into `tests/migrators/`) move together. rcparse parsing moves into the `shell` scan. `Facts.get`, `needs` | no change (scan warnings now come in `MIGRATORS` order; only visible when several steps fail) | 7 | STD per commit; at the end `plan.py`, `scan.py`, the `Scan` dataclass, `_Build`, and the private registry entry are gone |
+| 8 | **Migrators and the registry.** The `Migrator` base, `MIGRATORS`, `Session`. The first commit replaces `Planner` with `Session` and switches `ui/`, `__main__`, and the tests to it; the code that is not yet split runs as a private last entry of the registry. Then one migrator per commit, in `MIGRATORS` order: its scan step and its `Scan` fields, its `_Build` part, its pages, and its tests (into `tests/migrators/`) move together. rcparse parsing moves into the `shell` scan, for the page labels; `plan` parses again with the selection-aware chain (section 4.3). `Facts.get`, `needs` | no change (scan warnings now come in `MIGRATORS` order; only visible when several steps fail) | 7 | STD per commit; at the end `plan.py`, `scan.py`, the `Scan` dataclass, `_Build`, and the private registry entry are gone |
 | 9 | **Runtimes rules.** The union rule for both idiomatic settings (section 12.1); runtime versions in report text and page note from `Base.mise` (replaces `plan.py:181`, `490-493`); `.tool-versions` in the hint; `VersionManagerSpec.env_var` (`NVM_DIR`, `FNM_DIR`, `PYENV_ROOT`, …) is respected by detection and by the npm scan, and `npm_globs` become relative to the manager's directory; the version-manager item says "config/mise.toml has these versions now" only for tools that `MiseDoc.add_tool` accepted, and for a tool that your mise config already has it says "config/mise.toml has <tool> from your mise config already, so these versions were not added; `mise use -g <tool>@<version>` for one you need" (today `plan.py:482-483` checks only that the page is on) | changes report text and possibly `config/mise.toml` | 8 | goldens updated and reviewed; tests: pyenv with `python` in your mise config gets the second text; your config without the keys writes nothing; a single-line key gets the union and parses; a multi-line or dotted key gives the to-do; base values come from the base file |
 | 10 | **Registry invariants.** Unique page keys and item-id prefixes; `sections` ⊆ `SECTIONS` (`ORDER` becomes `SECTIONS`); the empty home; the AST no-write test; the secret property test; every static section intro and rcparse hint passes `secrets.line_secret(...) is None` | no change | 8 | the tests pass; a migrator that writes a file, or copies a token file, fails them; an intro with "password manager" in it fails |
 | 11 | **Crash isolation.** One transaction per migrator; isolated `scan` and `pages`; `Failure`; the identity pseudo-migrator; `manual_steps` for every migrator (section 7.5 texts for `shell` and `config_files`); "Problems during the migration"; summary and stderr lines; `--debug`; masking; strict mode (`fake.session` default, `DOTKIT_MIGRATE_STRICT=1` in the e2e job, hidden `--strict`); exit code 0 with failures; in the UI, the warning line and the review Problems block (section 8) | the scan catch-all (`scan.py:648-651`, by then inside the migrators) becomes isolation; plan crashes are newly isolated | 10 | `tests/test_isolation.py`; UI flow tests for the warning line and the Problems block; goldens unchanged (no faults in the fixtures) |

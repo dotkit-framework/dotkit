@@ -7,6 +7,63 @@ from pathlib import Path
 
 
 @dataclass
+class Item:
+    """One thing on a page that the person selects, or chooses an option for."""
+
+    id: str  # stable and prefixed, for example brew:wget or file:.npmrc
+    label: str
+    detail: str = ""  # shown for the highlighted row
+    default: bool = True  # checklist pages
+    options: tuple[str, ...] = ()  # choices pages, for example ("layer", "replace", "dotkit", "keep")
+    default_option: str = ""
+    option_text: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class Page:
+    """One screen of questions: the items of one source."""
+
+    key: str
+    title: str  # names the source: "Homebrew formulae"
+    dest: str  # where selected items go: "nix/brews.txt"
+    intro: str
+    kind: str  # "checklist" or "choices"
+    items: list[Item] = field(default_factory=list)
+    note: str = ""  # for example why the items are off by default
+
+
+@dataclass
+class Choices:
+    """What the person chose. Plain data; tests and tests/wizard_child.py write it as JSON."""
+
+    repo: str
+    keymap: str = "emacs"
+    picked: dict[str, set[str]] = field(default_factory=dict)  # page key -> selected item ids
+    options: dict[str, str] = field(default_factory=dict)  # item id -> option (choices pages)
+
+    def selected(self, page: str, item_id: str) -> bool:
+        return item_id in self.picked.get(page, ())
+
+    def option(self, item_id: str) -> str:
+        return self.options.get(item_id, "")
+
+    @classmethod
+    def defaults(cls, repo: str, pages: list[Page]) -> "Choices":
+        c = cls(repo=repo)
+        for page in pages:
+            if page.kind == "checklist":
+                c.picked[page.key] = {i.id for i in page.items if i.default}
+            else:
+                c.options.update({i.id: i.default_option for i in page.items})
+        return c
+
+    def to_json(self) -> dict:
+        return {"repo": self.repo, "keymap": self.keymap,
+                "picked": {k: sorted(v) for k, v in sorted(self.picked.items())},
+                "options": dict(sorted(self.options.items()))}
+
+
+@dataclass
 class Plan:
     repo: Path
     keymap: str

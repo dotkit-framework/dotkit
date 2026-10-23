@@ -1,24 +1,21 @@
-"""The setup wizard: a few curses screens that edit the choices.
+"""The full-screen wizard: curses widgets for the screens of screens.py.
 
-Keys: arrows move, space toggles, enter goes on, b goes back, q quits.
-The screens only change the Choices object; plan.py has the rules. Nothing
-on the Mac changes until the caller writes the plan after the last screen.
+Keys: arrows move, space selects, enter goes on, b goes back, q quits. The
+widgets only change the Choices through the screens.
 """
 
 from __future__ import annotations
 
 import curses
 import os
+import sys
 import textwrap
 
-from .context import expand, repo_error, tilde
-from .plan import OPTION_TEXT, Choices, Planner
+from ..model import Choices
+from . import screens as screens_mod
+from .screens import Quit, Screen
 
 MIN_H, MIN_W = 16, 60
-
-
-class Quit(Exception):
-    pass
 
 
 def _enter(key) -> bool:
@@ -37,13 +34,10 @@ def _back(key) -> bool:
     return key in ("b", "B", curses.KEY_LEFT) or key == "\x1b"
 
 
-class UI:
-    def __init__(self, scr, planner: Planner, c: Choices, dry_run: bool):
+class UI(screens_mod.Frontend):
+    def __init__(self, scr, dry_run: bool):
         self.scr = scr
-        self.p = planner
-        self.c = c
         self.dry_run = dry_run
-        self.home = planner.scan.home
         try:
             curses.curs_set(0)
         except curses.error:
@@ -63,6 +57,11 @@ class UI:
             except curses.error:
                 pass
         self.dim = curses.A_DIM
+
+    def show(self, screen: Screen, step: int, total: int) -> int:
+        widget = {"text": self.text_input, "radio": self.radio, "checklist": self.checklist,
+                  "choices": self.choice_list, "review": self.pager}[screen.kind]
+        return widget(screen, step, total)
 
     # --- Input and drawing
 
@@ -133,10 +132,21 @@ class UI:
         self.put(h - 1, 2, keys, self.dim)
         return h, w
 
-    # --- Screens. Each returns 1 (next) or -1 (back).
+    def page_head(self, screen: Screen, size, extra: str = "") -> int:
+        """The intro, the page note, and where the items go. Returns the next free line."""
+        y = self.para(4, screen.intro, limit=3)
+        if screen.note:
+            y = self.para(y, screen.note[:1].upper() + screen.note[1:] + ".", self.dim, limit=1)
+        if screen.dest or extra:
+            self.put(y, 2, "   ".join(x for x in (f"-> {screen.dest}" if screen.dest else "", extra) if x),
+                     self.dim)
+            y += 1
+        return y + 1
 
-    def repo(self, step: int, total: int) -> int:
-        value = tilde(self.c.repo, self.home)
+    # --- Widgets. Each returns 1 (next) or -1 (back).
+
+    def text_input(self, screen: Screen, step: int, total: int) -> int:
+        value = screen.get(screen.id)
         error = ""
         try:
             curses.curs_set(1)
@@ -144,12 +154,9 @@ class UI:
             pass
         try:
             while True:
-                size = self.frame(step, total, "Where the dotfiles repository goes",
-                                  "type a path   enter next   esc quit")
+                size = self.frame(step, total, screen.title, "type a path   enter next   esc quit")
                 if size:
-                    y = self.para(4, "Setup creates a new Git repository with your settings, lists, and a "
-                                     "report of what needs your attention. Nothing on this Mac changes before "
-                                     "the last screen.")
+                    y = self.para(4, screen.intro)
                     self.put(y + 1, 4, "Path: ", curses.A_BOLD)
                     self.put(y + 1, 10, value + " ", curses.A_UNDERLINE)
                     if error:
@@ -167,10 +174,8 @@ class UI:
                 if k == "\x1b":
                     raise Quit()
                 if _enter(k):
-                    path = expand(value or "~/.dotfiles", self.home)
-                    error = repo_error(path, self.home) or ""
+                    error = screen.set(screen.id, value)
                     if not error:
-                        self.c.repo = path
                         return 1
                 elif k in (curses.KEY_BACKSPACE, "\x7f", "\b"):
                     value, error = value[:-1], ""
@@ -184,59 +189,55 @@ class UI:
             except curses.error:
                 pass
 
-    def keymap(self, step: int, total: int) -> int:
-        options = [("emacs", "Ctrl+A, Ctrl+E, Ctrl+R, as in most terminals"),
-                   ("vi", "Esc for command mode, as in vim")]
-        pos = 0 if self.c.keymap == "emacs" else 1
+    def radio(self, screen: Screen, step: int, total: int) -> int:
+        rows = screen.rows
+        pos = next((i for i, r in enumerate(rows) if screen.get(r.id)), 0)
         while True:
-            size = self.frame(step, total, "The zsh keymap", "↑↓ select   enter next   b back   q quit")
+            size = self.frame(step, total, screen.title, "↑↓ select   enter next   b back   q quit")
             if size:
-                y = self.para(4, "How the command line edits text. nix/shell.nix has it, and you can change "
-                                 "it later.")
-                for i, (name, desc) in enumerate(options):
+                y = self.para(4, screen.intro)
+                for i, r in enumerate(rows):
                     mark = "(•)" if i == pos else "( )"
                     attr = curses.A_REVERSE if i == pos else 0
-                    self.put(y + 1 + i, 4, f"{mark} {name:6} {desc}", attr)
+                    self.put(y + 1 + i, 4, f"{mark} {r.id:6} {r.label}", attr)
                 self.scr.refresh()
             k = self.key()
             if k is None or not size:
                 continue
             if _up(k):
-                pos = 0
+                pos = max(0, pos - 1)
             elif _down(k):
-                pos = 1
+                pos = min(len(rows) - 1, pos + 1)
             elif k == " ":
-                pos = 1 - pos
-            elif _enter(k):
-                self.c.keymap = options[pos][0]
-                return 1
-            elif _back(k):
-                self.c.keymap = options[pos][0]
-                return -1
+                pos = (pos + 1) % len(rows)
+            elif _enter(k) or _back(k):
+                screen.set(rows[pos].id, True)
+                return 1 if _enter(k) else -1
 
-    def toggles(self, step: int, total: int, title: str, intro: str, rows, get, flip, detail) -> int:
-        """A list of rows with a check box each. rows: labels; get(i) -> bool; flip(i); detail(i) -> text."""
+    def checklist(self, screen: Screen, step: int, total: int) -> int:
+        rows = screen.rows
         pos = top = 0
         while True:
-            size = self.frame(step, total, title, "↑↓ move   space select   enter next   b back   q quit")
+            size = self.frame(step, total, screen.title,
+                              "↑↓ move   space select   a all or none   enter next   b back   q quit")
             if size:
                 h, w = size
-                y = self.para(4, intro, limit=3)
-                y += 1
-                view = max(3, min(len(rows), (h - y - 2) // 2))
+                chosen = sum(1 for r in rows if screen.get(r.id))
+                y = self.page_head(screen, size, f"{chosen} of {len(rows)} selected")
+                view = max(3, min(len(rows), h - y - 4))
                 top = max(0, min(top, pos, len(rows) - view))
                 if pos >= top + view:
                     top = pos - view + 1
                 for i in range(top, min(len(rows), top + view)):
-                    mark = "[x]" if get(i) else "[ ]"
+                    mark = "[x]" if screen.get(rows[i].id) else "[ ]"
                     attr = curses.A_REVERSE if i == pos else 0
-                    self.put(y + i - top, 4, f"{mark} {rows[i]}", attr)
+                    self.put(y + i - top, 4, f"{mark} {rows[i].label}", attr)
                 if top > 0:
                     self.put(y, 2, "↑", self.dim)
                 if top + view < len(rows):
                     self.put(y + view - 1, 2, "↓", self.dim)
                 yy = y + view + 1
-                lines = textwrap.wrap(detail(pos), w - 8) if rows else []
+                lines = textwrap.wrap(screen.detail(rows[pos].id), w - 8) if rows else []
                 for line in lines[: max(1, h - yy - 2)]:
                     self.put(yy, 6, line, self.dim)
                     yy += 1
@@ -249,103 +250,68 @@ class UI:
             elif _down(k):
                 pos = min(len(rows) - 1, pos + 1)
             elif k == " " and rows:
-                flip(pos)
+                screen.set(rows[pos].id, not screen.get(rows[pos].id))
+            elif k in ("a", "A") and rows:
+                screens_mod.toggle_all(screen)
             elif _enter(k):
                 return 1
             elif _back(k):
                 return -1
 
-    def groups(self, step: int, total: int) -> int:
-        groups = self.p.groups()
-        rows = [f"{g.label} ({g.size}) -> {g.dest}" for g in groups]
-
-        def detail(i: int) -> str:
-            g = groups[i]
-            names = ", ".join(g.items[:40]) + (", …" if len(g.items) > 40 else "")
-            return (g.note + ". " if g.note else "") + names
-
-        def flip(i: int) -> None:
-            self.c.groups[groups[i].key] = not self.c.groups.get(groups[i].key)
-
-        intro = ("What this Mac has that the repository can list. Homebrew packages stay installed; tools of "
-                 "npm, pipx, and others move to mise. Everything else goes to MIGRATION.md.")
-        if not groups:
-            intro = "The scan found no packages or shell lines to carry over."
-        return self.toggles(step, total, "What to carry over", intro, rows,
-                            lambda i: self.c.groups.get(groups[i].key, False), flip, detail)
-
-    def files(self, step: int, total: int) -> int:
-        items = self.p.file_items()
+    def choice_list(self, screen: Screen, step: int, total: int) -> int:
+        rows = screen.rows
         pos = 0
         while True:
-            size = self.frame(step, total, "Your config files",
+            size = self.frame(step, total, screen.title,
                               "↑↓ move   space or ←→ change   enter next   b back   q quit")
             if size:
                 h, w = size
-                y = self.para(4, "dotkit has its own file for each of these. Choose which one each tool reads.",
-                              limit=2) + 1
-                width = min(40, max(len(tilde(f"{self.home}/{i.target}", self.home)) for i in items) + 2)
-                view = max(3, min(len(items), h - y - 6))
+                y = self.para(4, screen.intro, limit=2) + 1
+                width = min(40, max(len(r.label) for r in rows) + 2)
+                view = max(3, min(len(rows), h - y - 6))
                 top = 0 if pos < view else pos - view + 1
-                for i in range(top, min(len(items), top + view)):
-                    item = items[i]
-                    choice = self.c.files.get(item.target, item.default)
-                    name = tilde(f"{self.home}/{item.target}", self.home)
+                for i in range(top, min(len(rows), top + view)):
+                    r = rows[i]
                     attr = curses.A_REVERSE if i == pos else 0
-                    self.put(y + i - top, 4, f"{name:<{width}} < {OPTION_TEXT[choice]} >", attr)
-                item = items[pos]
+                    self.put(y + i - top, 4, f"{r.label:<{width}} < {r.option_text[screen.get(r.id)]} >", attr)
+                r = rows[pos]
                 yy = y + view + 1
-                if item.note:
-                    yy = self.para(yy, item.note, self.dim, x=6)
-                cur = self.c.files.get(item.target, item.default)
-                choices = "   ".join(f"[{o}]" if o == cur else o for o in item.options)
+                note = screen.detail(r.id)
+                if note:
+                    yy = self.para(yy, note, self.dim, x=6)
+                cur = screen.get(r.id)
+                choices = "   ".join(f"[{o}]" if o == cur else o for o in r.options)
                 self.para(yy, "Choices: " + choices, self.dim, limit=max(1, h - yy - 2), x=6)
                 self.scr.refresh()
             k = self.key()
             if k is None or not size:
                 continue
-            item = items[pos]
-            options = item.options
-            cur = self.c.files.get(item.target, item.default)
+            r = rows[pos]
+            options = r.options
+            cur = screen.get(r.id)
             if _up(k):
                 pos = max(0, pos - 1)
             elif _down(k):
-                pos = min(len(items) - 1, pos + 1)
+                pos = min(len(rows) - 1, pos + 1)
             elif k in (" ", curses.KEY_RIGHT, "l"):
-                self.c.files[item.target] = options[(options.index(cur) + 1) % len(options)]
+                screen.set(r.id, options[(options.index(cur) + 1) % len(options)])
             elif k == curses.KEY_LEFT or k == "h":
-                self.c.files[item.target] = options[(options.index(cur) - 1) % len(options)]
+                screen.set(r.id, options[(options.index(cur) - 1) % len(options)])
             elif _enter(k):
                 return 1
             elif k in ("b", "B", "\x1b"):
                 return -1
 
-    def other(self, step: int, total: int) -> int:
-        rels = self.p.adoptable()
-
-        def flip(i: int) -> None:
-            self.c.adopt ^= {rels[i]}
-
-        def detail(i: int) -> str:
-            o = next(o for o in self.p.scan.other_config if o.rel == rels[i])
-            what = (f"a directory with {o.files} file" + ("s" if o.files != 1 else "")) if o.is_dir else "a file"
-            return f"~/{o.rel}: {what}. It goes to config/ and is linked back."
-
-        return self.toggles(step, total, "Other config to keep in the repository",
-                            "These are not part of dotkit. By default they stay in place and keep working. "
-                            "Select the ones to copy into the repository.",
-                            [f"~/{r}" for r in rels], lambda i: rels[i] in self.c.adopt, flip, detail)
-
-    def review(self, step: int, total: int) -> int:
+    def pager(self, screen: Screen, step: int, total: int) -> int:
         top = 0
         action = "print the plan" if self.dry_run else "create the repository"
-        plan = self.p.build(self.c)
+        text = screen.lines() if screen.lines else []
         while True:
-            size = self.frame(step, total, "The plan", f"enter {action}   ↑↓ scroll   b back   q quit")
+            size = self.frame(step, total, screen.title, f"enter {action}   ↑↓ scroll   b back   q quit")
             if size:
                 h, w = size
                 lines: list[str] = []
-                for line in plan.summary:
+                for line in text:
                     lines += textwrap.wrap(line, w - 6, subsequent_indent="    ") or [""]
                 view = max(1, h - 6)
                 top = max(0, min(top, len(lines) - view))
@@ -365,31 +331,12 @@ class UI:
                 return -1
 
 
-def screens(p: Planner) -> list[str]:
-    out = ["repo", "keymap", "groups"]
-    if p.file_items():
-        out.append("files")
-    if p.adoptable():
-        out.append("other")
-    out.append("review")
-    return out
-
-
-def run(planner: Planner, c: Choices, dry_run: bool = False) -> bool:
+def run(planner, c: Choices, home: str, dry_run: bool = False) -> bool:
     """Shows the wizard. False when the person quits."""
+    screens = screens_mod.build(planner, c, home)
 
     def main(scr) -> bool:
-        ui = UI(scr, planner, c, dry_run)
-        names = screens(planner)
-        i = 0
-        try:
-            while True:
-                move = getattr(ui, names[i])(i + 1, len(names))
-                if move > 0 and i == len(names) - 1:
-                    return True
-                i = max(0, min(len(names) - 1, i + move))
-        except Quit:
-            return False
+        return screens_mod.run(UI(scr, dry_run), screens)
 
     os.environ.setdefault("ESCDELAY", "25")
     return curses.wrapper(main)
@@ -397,8 +344,6 @@ def run(planner: Planner, c: Choices, dry_run: bool = False) -> bool:
 
 def available() -> bool:
     """True when curses can drive this terminal. Tries xterm-256color for an unknown TERM."""
-    import sys
-
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return False
     term = os.environ.get("TERM", "")

@@ -9,7 +9,7 @@ from unittest import mock
 
 from dotkit_migrate import docs, report, secrets, writer
 from tests import fake, test_golden
-from tests.test_plan import used_mac
+from tests.test_plan import other_config, pick, used_mac
 
 TEMPLATE = fake.ROOT / "templates/default"
 
@@ -116,9 +116,9 @@ class WriteTests(unittest.TestCase):
         for rel in (".config/nvim/.DS_Store", ".config/nvim/nested/.DS_Store"):
             h.write(rel).write_bytes(b"metadata\0binary")
         p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
-        self.assertIn(".config/nvim", p.adoptable())
+        self.assertIn(".config/nvim", other_config(p))
         c = p.defaults(str(h.home / ".dotfiles"))
-        c.adopt.add(".config/nvim")
+        pick(c, "other:.config/nvim")
         result = p.build(c)
         self.assertIn("config/nvim", result.copies, "the final guard agrees with assessment")
         writer.write_new(result, TEMPLATE)
@@ -152,7 +152,7 @@ class VerifyTests(unittest.TestCase):
         s = fake.scanner(self.h, used_mac(self.h)).run()
         p = fake.planner(s)
         c = p.defaults(str(self.h.home / ".dotfiles"))
-        c.adopt.add(".config/nvim")
+        pick(c, "other:.config/nvim")
         self.plan = p.build(c)
         self.assertIn("config/nvim", self.plan.copies)
 

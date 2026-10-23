@@ -4,7 +4,8 @@ scan.py reads the Mac and changes nothing. plan.py turns a scan and the
 choices into a plan: the files of the new repository and the report.
 writer.py renders the documents into a plan, guards it against secrets, and
 writes it; checks.py checks the plan against the Mac and makes the summary.
-wizard.py and prompts.py ask for the choices.
+ui/ asks for the choices: ui/screens.py has the screens as data, and
+ui/curses_ui.py and ui/plain.py show them.
 
 The wizard runs with the macOS Python of the Xcode Command Line Tools, which
 is Python 3.9 in the current tools (see ../dotkit-migrate). Keep the code compatible with 3.9: use

@@ -7,9 +7,9 @@ diff of tests/golden/ for review.
 The Macs:
   - empty: nothing installed, no files.
   - used-mac: tests/test_plan.py's used_mac, with the default choices.
-  - kitchen-sink: every source the scan knows, every group on, every
-    adoptable config carried, the vi keymap, and a few file choices that
-    are not the defaults.
+  - kitchen-sink: every source the scan knows, every item of every
+    checklist page selected (so every adoptable config is carried), the vi
+    keymap, and a few file choices that are not the defaults.
 Adopt runs on the kitchen-sink Mac against a small repository, once with
 the defaults and once with --all. Its golden has the describe() lines and
 the text of each file that apply() changed.
@@ -48,6 +48,7 @@ from pathlib import Path
 from unittest import mock
 
 from dotkit_migrate import adopt, base, plan
+from dotkit_migrate.model import Choices
 from tests import fake
 from tests.test_plan import used_mac
 
@@ -219,12 +220,12 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     return runner, {"SHELL": "/bin/bash"}
 
 
-def kitchen_sink_choices(p: plan.Planner, repo: str) -> plan.Choices:
+def kitchen_sink_choices(p: plan.Planner, repo: str) -> Choices:
+    """Every item of every checklist page selected, and two file choices that are not the defaults."""
     c = p.defaults(repo)
     c.keymap = "vi"
-    c.groups = {g.key: True for g in p.groups()}
-    c.adopt = set(p.adoptable())
-    c.files.update({".config/uv/uv.toml": "dotkit", ".gemrc": "keep"})
+    c.picked = {page.key: {i.id for i in page.items} for page in p.pages() if page.kind == "checklist"}
+    c.options.update({"file:.config/uv/uv.toml": "dotkit", "file:.gemrc": "keep"})
     return c
 
 

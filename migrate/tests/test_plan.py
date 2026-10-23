@@ -2,8 +2,9 @@ import shutil
 import subprocess
 import unittest
 
-from dotkit_migrate import adopt, secrets, writer
+from dotkit_migrate import adopt, plan, scan, secrets, writer
 from dotkit_migrate._compat import tomllib
+from dotkit_migrate.ui import screens
 from tests import fake
 
 TOKEN = fake.TOKENS["@GH@"]
@@ -19,6 +20,22 @@ if [[ -f ~/.work ]]; then
   source ~/.work
 fi
 """
+
+
+def other_config(p) -> list[str]:
+    """The paths of the items of the "other" page: the config that can be copied into the repository."""
+    return [i.id[len("other:"):] for page in p.pages() if page.key == "other" for i in page.items]
+
+
+def pick(c, *item_ids: str) -> None:
+    """Selects items, as the person does on their page."""
+    for item_id in item_ids:
+        c.picked.setdefault(PAGE_OF[item_id.split(":")[0]], set()).add(item_id)
+
+
+# The page of each item-id prefix.
+PAGE_OF = {"brew": "formulae", "cask": "casks", "tap": "taps", "mas": "mas", "npm": "npm", "pipx": "pipx",
+           "cargo": "cargo", "go": "go", "runtime": "runtimes", "shell": "shell", "other": "other"}
 
 
 def used_mac(h: fake.Home) -> fake.FakeRunner:
@@ -64,28 +81,44 @@ class PlanTests(unittest.TestCase):
         self.p = fake.planner(self.scan)
         self.repo = str(self.h.home / ".dotfiles")
 
-    def build(self, **changes):
+    def build(self, picked=None, options=None, **changes):
+        """The plan with the defaults, and these changes: picked replaces the selection of a page."""
         c = self.p.defaults(self.repo)
+        c.picked.update(picked or {})
+        c.options.update(options or {})
         for k, v in changes.items():
-            if k == "groups" or k == "files":
-                getattr(c, k).update(v)
-            else:
-                setattr(c, k, v)
+            setattr(c, k, v)
         return self.p.build(c)
 
     def test_defaults(self):
-        groups = {g.key: (g.default, g.items) for g in self.p.groups()}
-        self.assertEqual(groups["formulae"], (True, ["wget", "hashicorp/tap/terraform"]))
-        self.assertEqual(groups["casks"], (True, ["raycast"]))
-        self.assertEqual(groups["taps"], (True, ["hashicorp/tap", "acme/tools"]))
-        self.assertEqual(groups["mas"], (True, ["Xcode", "Pixelmator Pro"]))
-        self.assertEqual(groups["npm"], (True, ["typescript"]))
-        self.assertEqual(groups["pipx"], (True, ["ruff"]))
-        self.assertEqual(groups["cargo"], (False, ["bat"]))
-        self.assertEqual(groups["runtimes"], (False, ["node 20"]))
-        self.assertTrue(groups["shell"][0])
-        files = {f.target: f.default for f in self.p.file_items()}
-        self.assertEqual(files, {
+        pages = {page.key: page for page in self.p.pages()}
+        self.assertEqual(list(pages), ["formulae", "casks", "taps", "mas", "npm", "pipx", "cargo", "runtimes",
+                                       "shell", "files", "other"])
+        items = {k: [(i.id, i.default) for i in page.items] for k, page in pages.items()}
+        self.assertEqual(items["formulae"], [("brew:wget", True), ("brew:hashicorp/tap/terraform", True)])
+        self.assertEqual(items["casks"], [("cask:raycast", True)])
+        self.assertEqual(items["taps"], [("tap:hashicorp/tap", True), ("tap:acme/tools", True)])
+        self.assertEqual(items["mas"], [("mas:497799835", True), ("mas:1289583905", True)])
+        self.assertEqual(items["npm"], [("npm:typescript", True)])
+        self.assertEqual(items["pipx"], [("pipx:ruff", True)])
+        self.assertEqual(items["cargo"], [("cargo:bat", False)])
+        self.assertEqual(items["runtimes"], [("runtime:node", False)])
+        self.assertEqual([i.label for i in pages["runtimes"].items], ["node 20"])
+        # One item per shell file, not per statement.
+        self.assertEqual(items["shell"], [("shell:.zprofile", True), ("shell:.zshrc", True),
+                                          ("shell:.bash_profile", True)])
+        self.assertEqual([i.label for i in pages["shell"].items],
+                         ["~/.zprofile: 1 line", "~/.zshrc: 2 lines and 1 line with a secret",
+                          "~/.bash_profile: 1 line"])
+        self.assertEqual(items["other"], [("other:.config/nvim", False), ("other:.bashrc", False)])
+        self.assertTrue(all(page.kind == "checklist" for k, page in pages.items() if k != "files"))
+        self.assertEqual(pages["files"].kind, "choices")
+        c = self.p.defaults(self.repo)
+        self.assertEqual(c.picked["cargo"], set())
+        self.assertEqual(c.picked["formulae"], {"brew:wget", "brew:hashicorp/tap/terraform"})
+        files = {i.id: i.default_option for i in pages["files"].items}
+        self.assertEqual(files, c.options)
+        self.assertEqual({k[len("file:"):]: v for k, v in files.items()}, {
             ".config/ghostty/config": "layer",
             ".config/starship.toml": "replace",
             ".npmrc": "keep",
@@ -93,7 +126,7 @@ class PlanTests(unittest.TestCase):
             ".gitconfig": "adopt",
             ".config/mise/config.toml": "layer",
         })
-        self.assertEqual(self.p.adoptable(), [".config/nvim", ".bashrc"])
+        self.assertEqual(other_config(self.p), [".config/nvim", ".bashrc"])
 
     def test_default_plan(self):
         p = self.build()
@@ -193,9 +226,9 @@ class PlanTests(unittest.TestCase):
                                          'export AWS_PROFILE=MyCompanyProd2024Admin')) + "\n")
         self.h.write(".config/msmtp/config", "account default\npassword hunter2hunter2\n")
         p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
-        self.assertNotIn(".config/msmtp", p.adoptable())
+        self.assertNotIn(".config/msmtp", other_config(p))
         c = p.defaults(self.repo)
-        c.adopt.add(".config/msmtp")
+        pick(c, "other:.config/msmtp")
         result = p.build(c)
         local = result.local["local/zshrc.zsh"]
         for statement in (alias, pwd, function, continued_alias):
@@ -244,11 +277,11 @@ class PlanTests(unittest.TestCase):
         p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
         for name in configs:
             with self.subTest(name=name):
-                self.assertNotIn(f".config/{name}", p.adoptable())
-        self.assertIn(".config/clean", p.adoptable())
+                self.assertNotIn(f".config/{name}", other_config(p))
+        self.assertIn(".config/clean", other_config(p))
         c = p.defaults(self.repo)
         # A forced choice must not bypass the assessment or the final guard.
-        c.adopt = {f".config/{name}" for name in configs} | {".config/clean"}
+        pick(c, *[f"other:.config/{name}" for name in configs], "other:.config/clean")
         result = p.build(c)
         for name in configs:
             self.assertNotIn(f"config/{name}", result.copies)
@@ -269,22 +302,182 @@ class PlanTests(unittest.TestCase):
         result = p.build(p.defaults(self.repo))
         self.assertIn(source, result.report)
 
-    def test_groups_off(self):
-        off = {k: False for k in ("formulae", "casks", "taps", "mas", "npm", "pipx", "shell")}
-        p = self.build(groups=off)
+    def test_pages_off(self):
+        """Every item of the pages that are on by default deselected: each one is "Not carried, by your choice"."""
+        off = {k: set() for k in ("formulae", "casks", "taps", "mas", "npm", "pipx", "shell")}
+        p = self.build(picked=off)
         self.assertNotIn("nix/brews.txt", p.files)
         self.assertNotIn("nix/casks.txt", p.files)
         self.assertNotIn("nix/taps.txt", p.files)
         self.assertNotIn("nix/mas.txt", p.files)
         self.assertEqual(tomllib.loads(p.files["config/mise.toml"])["tools"], {"jq": "latest"})
         self.assertNotIn("export EDITOR", p.files["config/zsh/zshrc"])
-        self.assertIn("`wget`: `dotkit add brew:wget`", p.report)
-        self.assertIn("`typescript` (nvm v20.11.0): `mise use -g npm:typescript`", p.report)
-        self.assertIn("You chose not to carry shell lines", p.report)
         self.assertEqual(p.local, {})
-        self.assertIn("`GITHUB_TOKEN` has a secret. You chose not to carry shell lines", p.report)
-        self.assertIn("`acme/tools git@gitlab.com:acme/homebrew-tools.git`", p.report)
-        self.assertIn("`Xcode`: `dotkit add mas:497799835`", p.report)
+        section = p.report[p.report.index("### Not carried, by your choice\n"):]
+        section = section[:section.index("\n### ", 1)]
+        # The cleanup warning is for formulae and casks only.
+        brew, rest = section.split(plan.NOT_CARRIED)
+        self.assertIn(plan.NOT_CARRIED_BREW, brew)
+        self.assertNotIn("cleanup", rest)
+        for text in ("- `wget` (formula): `dotkit add brew:wget`\n",
+                     "- `raycast` (cask): `dotkit add cask:raycast`\n"):
+            self.assertIn(text, brew)
+        for text in ("- `acme/tools` (tap): add `acme/tools git@gitlab.com:acme/homebrew-tools.git` to "
+                     "nix/taps.txt\n",
+                     "- `Xcode` (App Store app): `dotkit add mas:497799835`\n",
+                     "- `typescript` (nvm v20.11.0): `mise use -g npm:typescript`\n",
+                     "- `ruff` (pipx): `mise use -g pipx:ruff`\n",
+                     "- ~/.zprofile: 1 line that could be carried to config/zsh/zprofile. Copy the ones you need.\n",
+                     "- ~/.zshrc: 2 lines that could be carried to config/zsh/zshrc. Copy the ones you need. Its "
+                     "lines with secrets are not carried: `GITHUB_TOKEN` (line 4). Keep them out of files that Git "
+                     "tracks.\n"):
+            self.assertIn(text, rest)
+        # The secret by name only, and nowhere else.
+        self.assertEqual(p.report.count("GITHUB_TOKEN"), 1)
+        self.assertNotIn(TOKEN, p.report)
+        # Off by default: their own to-dos, as with the defaults.
+        self.assertNotIn("bat", section)
+        self.assertIn("- `bat` (cargo install): `mise use -g cargo:bat`\n", p.report)
+        self.assertNotIn("Homebrew packages that are not in the lists", p.report)
+
+    def test_a_shell_file_with_only_secrets(self):
+        """It is an item, on by default: its lines go to local/, and the repository file sources them."""
+        self.h.write(".zshrc", f"export GITHUB_TOKEN={TOKEN}\n")
+        for name in (".zprofile", ".bash_profile"):
+            (self.h.home / name).unlink()
+        p = fake.planner(fake.scanner(self.h, fake.brew_runner()).run())
+        shell = next(page for page in p.pages() if page.key == "shell")
+        self.assertEqual([(i.id, i.label, i.default) for i in shell.items],
+                         [("shell:.zshrc", "~/.zshrc: 1 line with a secret", True)])
+        result = p.build(p.defaults(self.repo))
+        self.assertEqual(result.local, {"local/zshrc.zsh": f"# From ~/.zshrc.\nexport GITHUB_TOKEN={TOKEN}\n"})
+        self.assertIn('source "$HOME/.dotfiles/local/zshrc.zsh"', result.files["config/zsh/zshrc"])
+        # Deselected: one item under "Not carried, by your choice", as the review counts it.
+        c = p.defaults(self.repo)
+        c.picked["shell"] = set()
+        result = p.build(c)
+        self.assertEqual(result.local, {})
+        self.assertIn("- ~/.zshrc: Its lines with secrets are not carried: `GITHUB_TOKEN` (line 1). Keep them out "
+                      "of files that Git tracks.\n", result.report)
+        self.assertNotIn(TOKEN, result.report)
+
+    def test_variables_pass_only_through_carried_files(self):
+        """A deselected file passes on no variables: a line that uses one is reported, not carried."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        h.write(".zshenv", "export DEV=~/dev\n")
+        h.write(".zprofile", "export WORK=~/work\n")
+        h.write(".zshrc", 'export GOPATH="$DEV/go"\nalias g="cd $DEV"\nexport TOOLS="$WORK/tools"\n')
+        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        repo = str(h.home / ".dotfiles")
+        # The page counts from the full chain.
+        shell = next(page for page in p.pages() if page.key == "shell")
+        self.assertEqual([i.label for i in shell.items],
+                         ["~/.zshenv: 1 line", "~/.zprofile: 1 line", "~/.zshrc: 3 lines"])
+        everything = p.build(p.defaults(repo))
+        zshrc = everything.files["config/zsh/zshrc"]
+        for line in ('export GOPATH="$DEV/go"', 'alias g="cd $DEV"', 'export TOOLS="$WORK/tools"'):
+            self.assertIn(line, zshrc)
+        c = p.defaults(repo)
+        c.picked["shell"].discard("shell:.zshenv")
+        result = p.build(c)
+        zshrc = result.files["config/zsh/zshrc"]
+        self.assertNotIn("GOPATH", zshrc)
+        self.assertIn('alias g="cd $DEV"', zshrc, "aliases are not expanded, as before")
+        # .zprofile is carried, so its variable still reaches .zshrc.
+        self.assertIn('export TOOLS="$WORK/tools"', zshrc)
+        self.assertNotIn("config/zsh/zshenv", result.files)
+        exports = result.report[result.report.index("### Shell lines: Exports with commands or other variables"):]
+        self.assertIn('- ~/.zshrc:1 `export GOPATH="$DEV/go"`', exports.split("\n### ")[0])
+        self.assertIn("2 lines of ~/.zshrc -> config/zsh/zshrc (~/.zshrc.local)", result.summary)
+        self.assertIn("- ~/.zshenv: 1 line that could be carried to config/zsh/zshenv.", result.report)
+        # The full chain is unchanged by the other build: the cache is per selection.
+        self.assertEqual(p.build(p.defaults(repo)).files, everything.files)
+
+    def test_a_deselected_file_says_what_its_page_offered(self):
+        """Both files deselected: the ~/.zshrc item counts from the full chain, as its page label does."""
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        h.write(".zshenv", "export DEV=~/dev\n")
+        h.write(".zshrc", 'export GOPATH="$DEV/go"\n')
+        p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
+        c = p.defaults(str(h.home / ".dotfiles"))
+        shell = next(page for page in p.pages() if page.key == "shell")
+        self.assertEqual([i.label for i in shell.items], ["~/.zshenv: 1 line", "~/.zshrc: 1 line"])
+        c.picked["shell"] = set()
+        result = p.build(c)
+        self.assertIn("- ~/.zshrc: 1 line that could be carried to config/zsh/zshrc. Copy the ones you need.\n",
+                      result.report)
+        self.assertIn("- ~/.zshenv: 1 line that could be carried to config/zsh/zshenv. Copy the ones you need.\n",
+                      result.report)
+        self.assertEqual(screens.not_carried(p.pages(), c), [(shell, 2)])
+        lines = screens.review_lines(p, p.pages(), c)
+        self.assertEqual(lines[lines.index("Not carried, by your choice:") + 1:], ["  Shell lines: 2"])
+        for rel, text in result.files.items():
+            if rel.startswith("config/zsh/"):
+                self.assertNotIn("DEV", text, rel)
+                self.assertNotIn("GOPATH", text, rel)
+
+    def test_one_item_for_a_package_in_two_places(self):
+        """A package twice in the scan (the npm scan keeps the first; pages() does not rely on it): one row."""
+        s = fake.scanner(self.h, used_mac(self.h)).run()
+        s.npm.append(scan.Package("typescript", "5.5.0", "nvm v22.1.0"))
+        p = fake.planner(s)
+        npm = next(page for page in p.pages() if page.key == "npm")
+        self.assertEqual([i.id for i in npm.items], ["npm:typescript"])
+        result = p.build(p.defaults(self.repo))
+        self.assertIn("1 npm tool -> config/mise.toml", result.summary)
+        c = p.defaults(self.repo)
+        c.picked["npm"] = set()
+        self.assertEqual(p.build(c).report.count("`mise use -g npm:typescript`"), 2, "both copies stay")
+
+    def test_part_of_the_runtimes(self):
+        """The carried row names the managers of the selected tools; the to-do says what is still to do."""
+        self.h.mkdir(".pyenv/versions/3.12.2")
+        self.h.write(".pyenv/version", "3.12.2\n")
+        self.h.mkdir(".asdf/installs/ruby/3.3.0")
+        p = fake.planner(fake.scanner(self.h, used_mac(self.h)).run())
+        runtimes = next(page for page in p.pages() if page.key == "runtimes")
+        self.assertEqual({i.id for i in runtimes.items}, {"runtime:node", "runtime:python", "runtime:ruby"})
+        c = p.defaults(self.repo)
+        c.picked["runtimes"] = {"runtime:python"}
+        result = p.build(c)
+        self.assertIn("runtime versions of pyenv -> config/mise.toml", result.summary)
+        tools = tomllib.loads(result.files["config/mise.toml"])["tools"]
+        self.assertEqual(tools["python"], "3.12.2")
+        self.assertNotIn("node", tools)
+        self.assertIn("pyenv (~/.pyenv): python 3.12.2 (default 3.12.2). config/mise.toml has these versions now.",
+                      result.report)
+        self.assertIn("nvm (~/.nvm): node v20.11.0 (default 20). With mise: `mise use -g node@20`.", result.report)
+        c.picked["runtimes"] = set()
+        self.assertFalse(any(line.startswith("runtime versions") for line in p.build(c).summary))
+
+    def test_single_items(self):
+        """Items are selected one by one; the rest of their page is carried."""
+        p = self.build(picked={"formulae": {"brew:wget"}, "taps": {"tap:acme/tools"}, "mas": {"mas:1289583905"},
+                               "shell": {"shell:.zshrc", "shell:.bash_profile"}, "other": {"other:.config/nvim"},
+                               "runtimes": {"runtime:node"}})
+        self.assertTrue(p.files["nix/brews.txt"].endswith("\nwget\n"))
+        self.assertTrue(p.files["nix/taps.txt"].endswith("\nacme/tools git@gitlab.com:acme/homebrew-tools.git\n"))
+        self.assertTrue(p.files["nix/mas.txt"].endswith("\n1289583905 Pixelmator Pro\n"))
+        self.assertIn("export EDITOR=vim", p.files["config/zsh/zshrc"])
+        self.assertNotIn("config/zsh/zprofile", p.files)
+        self.assertIn("export BASH_THING=1", p.files["config/bash/bash_profile"])
+        self.assertEqual(p.links[".config/nvim"], "config/nvim")
+        self.assertNotIn(".bashrc", p.links)
+        self.assertEqual(tomllib.loads(p.files["config/mise.toml"])["tools"]["node"], "20")
+        for text in ("1 Homebrew formula -> nix/brews.txt", "1 Homebrew tap -> nix/taps.txt",
+                     "1 App Store app -> nix/mas.txt", "runtime versions of nvm -> config/mise.toml",
+                     "1 other config file or directory -> config/, linked with dotkit.links"):
+            self.assertIn(text, p.summary)
+        for text in ("- `hashicorp/tap/terraform` (formula): `dotkit add brew:hashicorp/tap/terraform`\n",
+                     "- `hashicorp/tap` (tap): add `hashicorp/tap` to nix/taps.txt\n",
+                     "- `Xcode` (App Store app): `dotkit add mas:497799835`\n",
+                     "- ~/.zprofile: 1 line that could be carried to config/zsh/zprofile. Copy the ones you need.\n",
+                     "nvm (~/.nvm): node v20.11.0 (default 20). config/mise.toml has these versions now."):
+            self.assertIn(text, p.report)
+        self.assertIn("- `acme/tools`: git@gitlab.com:acme/homebrew-tools.git\n", p.report)
+        self.assertNotIn("~/.config/nvim\n", p.report.split("### Other config\n")[1])
 
     def test_taps_and_apps_that_cannot_go_into_the_lists(self):
         runner = fake.brew_runner(taps=[
@@ -357,8 +550,8 @@ class PlanTests(unittest.TestCase):
                {"name": "typescript", "version": "5.4.0", "bin": {"tsc": "bin/tsc"}})
         p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
         c = p.defaults(str(h.home / ".dotfiles"))
-        self.assertEqual(c.files[".config/mise/config.toml"], "keep")
-        c.files[".config/mise/config.toml"] = "layer"
+        self.assertEqual(c.option("file:.config/mise/config.toml"), "keep")
+        c.options["file:.config/mise/config.toml"] = "layer"
         result = p.build(c)
         self.assertEqual(tomllib.loads(result.files["config/mise.toml"])["tools"], {"npm:typescript": "latest"})
         self.assertIsNone(result.links[".config/mise/config.toml"])
@@ -368,7 +561,7 @@ class PlanTests(unittest.TestCase):
         """A copy goes only to a free repository path; the other file stays in place, with a to-do."""
         cases = {
             "an earlier copy": ({".npmrc": "prefix=${HOME}/.local\n", ".config/npmrc": "color=false\n"},
-                                {".npmrc": "replace"}, ".config/npmrc", "config/npmrc", "~/.npmrc"),
+                                {"file:.npmrc": "replace"}, ".config/npmrc", "config/npmrc", "~/.npmrc"),
             "a merged file": ({".config/git/config": "[pull]\n\trebase = true\n", ".gitconfig": "[core]\n",
                                ".config/gitconfig": "[x]\n"},
                               {}, ".config/gitconfig", "config/gitconfig", "~/.config/git/config and ~/.gitconfig"),
@@ -380,10 +573,10 @@ class PlanTests(unittest.TestCase):
                 for name, text in files.items():
                     h.write(name, text)
                 p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
-                self.assertIn(rel, p.adoptable())
+                self.assertIn(rel, other_config(p))
                 c = p.defaults(str(h.home / ".dotfiles"))
-                c.files.update(choices)
-                c.adopt.add(rel)
+                c.options.update(choices)
+                pick(c, f"other:{rel}")
                 result = p.build(c)
                 self.assertNotIn(rel, result.links)
                 if why == "an earlier copy":
@@ -406,9 +599,9 @@ class PlanTests(unittest.TestCase):
         h.write(".config/bash/aliases", "alias ll='ls -la'\n")
         h.write(".config/bash2/aliases", "alias la='ls -A'\n")
         p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
-        self.assertIn(".config/bash", p.adoptable())
+        self.assertIn(".config/bash", other_config(p))
         c = p.defaults(str(h.home / ".dotfiles"))
-        c.adopt |= {".config/bash", ".config/bash2"}
+        pick(c, "other:.config/bash", "other:.config/bash2")
         result = p.build(c)
         self.assertIn("export BASH_THING=1", result.files["config/bash/bash_profile"])
         self.assertNotIn("config/bash", result.copies)
@@ -428,9 +621,9 @@ class PlanTests(unittest.TestCase):
         h.write(".config/home/settings", "x = 1\n")
         h.write(".vimrc", "set number\n")
         p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
-        self.assertEqual(p.adoptable(), [".config/home", ".vimrc"])
+        self.assertEqual(other_config(p), [".config/home", ".vimrc"])
         c = p.defaults(str(h.home / ".dotfiles"))
-        c.adopt |= {".config/home", ".vimrc"}
+        pick(c, "other:.config/home", "other:.vimrc")
         result = p.build(c)
         self.assertEqual(result.copies, {"config/home": h.home / ".config/home"})
         self.assertNotIn(".vimrc", result.links)
@@ -446,9 +639,9 @@ class PlanTests(unittest.TestCase):
         h.write(".config/Home/settings", "x = 1\n")
         h.write(".vimrc", "set number\n")
         p = fake.planner(fake.scanner(h, fake.brew_runner()).run())
-        self.assertEqual(p.adoptable(), [".config/Home", ".config/Zsh", ".vimrc"])
+        self.assertEqual(other_config(p), [".config/Home", ".config/Zsh", ".vimrc"])
         c = p.defaults(str(h.home / ".dotfiles"))
-        c.adopt |= set(p.adoptable())
+        pick(c, *[f"other:{rel}" for rel in other_config(p)])
         result = p.build(c)
         self.assertEqual(result.copies, {"config/Home": h.home / ".config/Home"})
         self.assertEqual({t: s for t, s in result.links.items() if s and s.startswith("config/")},
@@ -465,14 +658,15 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(sorted(x.name for x in (result.repo / "config").iterdir()), ["Home", "mise.toml", "zsh"])
 
     def test_runtimes_and_cargo_on(self):
-        p = self.build(groups={"runtimes": True, "cargo": True})
+        p = self.build(picked={"runtimes": {"runtime:node"}, "cargo": {"cargo:bat"}})
         tools = tomllib.loads(p.files["config/mise.toml"])["tools"]
         self.assertEqual(tools["node"], "20")
         self.assertEqual(tools["cargo:bat"], "latest")
 
     def test_file_choices(self):
-        p = self.build(files={".config/ghostty/config": "replace", ".config/starship.toml": "dotkit",
-                              ".npmrc": "keep", ".gitconfig": "keep", ".config/mise/config.toml": "keep"},
+        p = self.build(options={"file:.config/ghostty/config": "replace", "file:.config/starship.toml": "dotkit",
+                                "file:.npmrc": "keep", "file:.gitconfig": "keep",
+                                "file:.config/mise/config.toml": "keep"},
                        keymap="vi")
         self.assertEqual(p.links[".config/ghostty/config"], "config/ghostty.conf")
         self.assertNotIn(".config/starship.toml", p.links)
@@ -482,16 +676,18 @@ class PlanTests(unittest.TestCase):
         self.assertIn('    keymap = "vi";', p.files["nix/shell.nix"])
 
     def test_a_file_with_a_secret_cannot_go_into_the_repository(self):
-        npmrc = next(f for f in self.p.file_items() if f.target == ".npmrc")
-        self.assertEqual(npmrc.options, ["keep", "dotkit"])
+        files = next(page for page in self.p.pages() if page.key == "files")
+        npmrc = next(i for i in files.items if i.id == "file:.npmrc")
+        self.assertEqual(npmrc.options, ("keep", "dotkit"))
+        self.assertEqual(npmrc.default_option, "keep")
         # Also when a choice says so: the build keeps the file in place.
-        p = self.build(files={".npmrc": "replace"})
+        p = self.build(options={"file:.npmrc": "replace"})
         self.assertIsNone(p.links[".npmrc"])
         self.assertNotIn("config/npmrc", p.copies)
 
     def test_adopt_other_config(self):
         c = self.p.defaults(self.repo)
-        c.adopt = {".config/nvim", ".bashrc"}
+        pick(c, "other:.config/nvim", "other:.bashrc")
         p = self.p.build(c)
         self.assertEqual(p.links[".config/nvim"], "config/nvim")
         self.assertEqual(p.links[".bashrc"], "config/home/bashrc")
@@ -511,8 +707,7 @@ class PlanTests(unittest.TestCase):
         self.addCleanup(h.cleanup)
         s = fake.scanner(h, fake.FakeRunner()).run()
         p = fake.planner(s)
-        self.assertEqual(p.groups(), [])
-        self.assertEqual(p.file_items(), [])
+        self.assertEqual(p.pages(), [])
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertEqual(sorted(result.files), ["MIGRATION.md", "nix/user.nix"])
         self.assertIn("Nothing.", result.report)

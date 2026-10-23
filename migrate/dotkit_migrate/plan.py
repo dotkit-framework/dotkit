@@ -12,7 +12,6 @@ import copy
 import os
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import base as base_mod
@@ -20,37 +19,13 @@ from . import catalog, checks, rcparse, secrets, writer
 from . import docs as docs_mod
 from . import report as report_mod
 from .docs import mas_label, mas_problem, nix_string, tap_name_problem, tap_problem
-from .model import Plan
+from .model import Choices, Item, Page, Plan
 from .report import plural
 from . import scan as scan_mod
 from .context import expand, tilde
 from .scan import Scan, ShellFile
 
 # --- The choices
-
-
-@dataclass
-class Group:
-    key: str
-    label: str
-    dest: str  # where the items go
-    items: list[str]
-    default: bool
-    note: str = ""  # one line for the wizard, for example why it is off
-    count: int = -1  # what the wizard shows; -1: the number of items
-
-    @property
-    def size(self) -> int:
-        return len(self.items) if self.count < 0 else self.count
-
-
-@dataclass
-class FileItem:
-    target: str  # relative to the home directory
-    options: list[str]
-    default: str
-    note: str = ""
-
 
 OPTION_TEXT = {
     "layer": "yours, read after the dotkit file",
@@ -60,14 +35,17 @@ OPTION_TEXT = {
     "adopt": "yours, in the repository",
 }
 
+# The intros of "Not carried, by your choice": items that were on by default and that you deselected.
+# Homebrew formulae and casks get the first one.
+NOT_CARRIED_BREW = ("You left these out of the lists. They stay on this Mac, and dotkit does not manage them. "
+                    "With `homebrew.onActivation.cleanup = \"uninstall\"` in nix/darwin.nix, activation would "
+                    "uninstall them.")
+NOT_CARRIED = "You left these out. They stay where they are, and dotkit does not manage them."
 
-@dataclass
-class Choices:
-    repo: str
-    keymap: str = "emacs"
-    groups: dict[str, bool] = field(default_factory=dict)
-    files: dict[str, str] = field(default_factory=dict)
-    adopt: set[str] = field(default_factory=set)
+
+def _file_item(target: str, options: list[str], default: str, note: str) -> Item:
+    return Item(f"file:{target}", f"~/{target}", note, options=tuple(options), default_option=default,
+                option_text={o: OPTION_TEXT[o] for o in options})
 
 
 class Planner:
@@ -77,7 +55,8 @@ class Planner:
         self.base = base or base_mod.Base()
         # check_syntax(shell, text): True when the text parses. None: no check.
         self.check_syntax = check_syntax
-        self._rc: dict[str, rcparse.Result] | None = None
+        # The parsed shell files, by the set of the deselected ones (see rc_results).
+        self._rc: dict[frozenset[str], dict[str, rcparse.Result]] = {}
 
     # --- What the wizard shows
 
@@ -90,9 +69,6 @@ class Planner:
             else:
                 keep.append(n)
         return keep, redundant
-
-    def npm_tools(self) -> list[str]:
-        return [p.name for p in self.scan.npm if p.ok and p.name not in catalog.NPM_NOT_IN_MISE]
 
     def runtime_lines(self) -> dict[str, list[str]]:
         """mise tool -> versions, default first, for the version managers mise can replace."""
@@ -114,10 +90,16 @@ class Planner:
                         out[tool].append(v)
         return out
 
-    def rc_results(self) -> dict[str, rcparse.Result]:
-        """The parsed shell files, by name. Layer files that were not read before are not parsed."""
-        if self._rc is None:
-            self._rc = {}
+    def rc_results(self, skipped: frozenset[str] = frozenset()) -> dict[str, rcparse.Result]:
+        """The parsed shell files, by name. Layer files that were not read before are not parsed.
+
+        The variables that the carried lines set pass on to the next file. A
+        file in `skipped` (deselected) is parsed too, for its findings and the
+        names of its secret lines, but it passes on nothing: the next file starts
+        with the variables known before it. The pages use the full chain.
+        """
+        if skipped not in self._rc:
+            out: dict[str, rcparse.Result] = {}
             files = {f.name: f for f in self.scan.shell_files if not f.managed}
             for shell, names in (("zsh", (".zshenv", ".zshenv.local", ".zprofile", ".zprofile.local",
                                           ".zshrc", ".zshrc.local")),
@@ -129,42 +111,102 @@ class Planner:
                     if f is None or not f.read:
                         continue
                     r = parser.parse(name, f.text, known)
-                    known = r.variables
-                    self._rc[name] = r
-        return self._rc
+                    if name not in skipped:
+                        known = r.variables
+                    out[name] = r
+            self._rc[skipped] = out
+        return self._rc[skipped]
 
-    def groups(self) -> list[Group]:
+    def pages(self) -> list[Page]:
+        """The questions, one page per source, in the order of the plan. Pages without items are left out."""
         s = self.scan
+        out: list[Page] = []
+
+        def checklist(key: str, title: str, dest: str, intro: str, items: list[Item], note: str = "") -> None:
+            unique: dict[str, Item] = {}
+            for i in items:  # a package in two places is one item
+                unique.setdefault(i.id, i)
+            out.append(Page(key, title, dest, intro, "checklist", list(unique.values()), note))
+
         formulae, _ = self.brew_split(s.formulae, "formula")
         casks, _ = self.brew_split(s.casks, "cask")
-        rc = self.rc_results()
-        carried = sum(r.statements for r in rc.values())
-        out = [
-            Group("formulae", "Homebrew formulae", "nix/brews.txt", formulae, True),
-            Group("casks", "Homebrew casks", "nix/casks.txt", casks, True),
-            Group("taps", "Homebrew taps", "nix/taps.txt", [t.name for t in s.taps], True),
-            Group("mas", "App Store apps", "nix/mas.txt", [n for _, n in s.mas_apps], True),
-            Group("npm", "npm, pnpm, and bun tools", "config/mise.toml", self.npm_tools(), True),
-            Group("pipx", "pipx and uv tools", "config/mise.toml", [p.name for p in s.pipx if p.ok], True),
-            Group("cargo", "cargo install tools", "config/mise.toml", [p.name for p in s.cargo if p.ok], True),
-            Group("go", "Go tools", "config/mise.toml", [p.name for p in s.go if p.ok], True),
-            Group("runtimes", "Runtime versions of version managers", "config/mise.toml",
-                  [f"{t} {', '.join(v)}" for t, v in self.runtime_lines().items()], False,
-                  "off: mise installs them; the base has Node, Python, and Ruby"),
-            Group("shell", "Shell lines", "config/zsh, config/bash",
-                  [f"~/{n}: {r.statements}" for n, r in rc.items() if r.statements], True, count=carried),
-        ]
-        if carried == 0:
-            out[-1].items = []
-        # Off by default: the cargo and go groups above.
-        for g in out:
-            if g.key in catalog.BUILT_FROM_SOURCE:
-                g.default, g.note = False, f"off: mise builds them from source with {g.key}"
-        return [g for g in out if g.items]
+        checklist("formulae", "Homebrew formulae", "nix/brews.txt",
+                  "The formulae that you installed with Homebrew. The selected ones go to the list; all of them "
+                  "stay installed. MIGRATION.md lists the ones that the dotkit base has already.",
+                  [Item(f"brew:{n}", n, f"`dotkit add brew:{n}` adds it later.") for n in formulae])
+        checklist("casks", "Homebrew casks", "nix/casks.txt",
+                  "The apps that you installed with Homebrew. The selected ones go to the list; all of them stay "
+                  "installed. MIGRATION.md lists the ones that the dotkit base has already.",
+                  [Item(f"cask:{n}", n, f"`dotkit add cask:{n}` adds it later.") for n in casks])
+        lines, _ = tap_lines(s.taps, set())
+        checklist("taps", "Homebrew taps", "nix/taps.txt",
+                  "The taps of Homebrew. The selected ones go to the list, so that a new Mac has them too.",
+                  [Item(f"tap:{line.split()[0]}", line.split()[0],
+                        f"From {line.split()[1]}" if " " in line else "") for line in lines])
+        checklist("mas", "App Store apps", "nix/mas.txt",
+                  "The apps that mas lists. The selected ones go to the list, and a new Mac installs them from "
+                  "the App Store.",
+                  [Item(f"mas:{i}", n.strip(), f"ID {i}") for i, n in s.mas_apps if mas_problem(i, n.strip()) is None])
+        for key, title, pkgs, intro in (
+            ("npm", "npm, pnpm, and bun tools", [p for p in s.npm if p.name not in catalog.NPM_NOT_IN_MISE],
+             "Global tools of npm, pnpm, and bun. The selected ones move to mise; the old copies stay until you "
+             "remove them."),
+            ("pipx", "pipx and uv tools", s.pipx,
+             "Tools of pipx and uv tool. The selected ones move to mise; the old copies stay until you remove "
+             "them."),
+            ("cargo", "cargo install tools", s.cargo,
+             "Tools of cargo install. The selected ones move to mise; the old copies stay until you remove them."),
+            ("go", "Go tools", s.go,
+             "The tools in your Go bin directory. The selected ones move to mise; the old copies stay until you "
+             "remove them."),
+        ):
+            off = key in catalog.BUILT_FROM_SOURCE
+            checklist(key, title, "config/mise.toml", intro,
+                      [Item(f"{key}:{p.name}", p.name, f"{p.version or 'installed'} in {p.where}", default=not off)
+                       for p in pkgs if p.ok],
+                      f"off: mise builds them from source with {key}" if off else "")
+        managers: dict[str, list[str]] = {}
+        for vm in s.version_managers:
+            for tool in vm.versions:
+                managers.setdefault(tool, []).append(vm.name)
+        checklist("runtimes", "Runtime versions of version managers", "config/mise.toml",
+                  "The versions that your version managers have. The selected ones go to config/mise.toml, and "
+                  "mise installs them.",
+                  [Item(f"runtime:{t}", f"{t} {', '.join(v)}", "From " + ", ".join(managers.get(t, [])),
+                        default=False) for t, v in self.runtime_lines().items()],
+                  "off: mise installs them; the base has Node, Python, and Ruby")
+        shell_items = []
+        for name, r in self.rc_results().items():
+            if not (r.statements or r.secrets):
+                continue
+            main = name.removesuffix(".local")
+            layer, repo_file = base_mod.SHELL_LAYERS[main]
+            parts = [plural(r.statements, "line")] if r.statements else []
+            detail = f"To {repo_file} (~/{layer})."
+            if r.secrets:
+                parts.append(plural(len(r.secrets), "line") + " with a secret")
+                detail += " The lines with a secret go to local/, which Git ignores."
+            label = f"~/{name}: " + " and ".join(parts)
+            shell_items.append(Item(f"shell:{name}", label, detail))
+        checklist("shell", "Shell lines", "config/zsh, config/bash",
+                  "The lines of your shell files that dotkit can carry, by file. MIGRATION.md lists the lines "
+                  "that it cannot carry.", shell_items)
+        out.append(Page("files", "Your config files", "config/", "dotkit has its own file for each of these. "
+                        "Choose which one each tool reads.", "choices", self._file_items()))
+        other = []
+        for o in s.other_config:
+            if o.adoptable:
+                what = (f"a directory with {plural(o.files, 'file')}") if o.is_dir else "a file"
+                other.append(Item(f"other:{o.rel}", f"~/{o.rel}",
+                                  f"~/{o.rel}: {what}. It goes to config/ and is linked back.", default=False))
+        checklist("other", "Other config to keep in the repository", "config/",
+                  "These are not part of dotkit. By default they stay in place and keep working. Select the ones "
+                  "to copy into the repository.", other)
+        return [p for p in out if p.items]
 
-    def file_items(self) -> list[FileItem]:
+    def _file_items(self) -> list[Item]:
         s = self.scan
-        items: list[FileItem] = []
+        items: list[Item] = []
         for c in s.config_files:
             link = next(link for link in base_mod.LINKS if link.target == c.target)
             options = []
@@ -183,33 +225,27 @@ class Planner:
                 default, note = "dotkit", "the same as the dotkit file"
             else:
                 default = options[0]
-            items.append(FileItem(c.target, options, default, note))
+            items.append(_file_item(c.target, options, default, note))
         if s.gitconfig:
             g = s.gitconfig
             if g.secrets:
-                items.append(FileItem(".gitconfig", ["keep"], "keep",
-                                      "has secrets: " + ", ".join(sorted({x.what for x in g.secrets})) +
-                                      ". It stays out of the repository"))
+                items.append(_file_item(".gitconfig", ["keep"], "keep",
+                                        "has secrets: " + ", ".join(sorted({x.what for x in g.secrets})) +
+                                        ". It stays out of the repository"))
             else:
-                items.append(FileItem(".gitconfig", ["adopt", "keep"], "adopt", "Git reads it after the dotkit file"))
+                items.append(_file_item(".gitconfig", ["adopt", "keep"], "adopt",
+                                        "Git reads it after the dotkit file"))
         if s.mise_config:
             if secrets.has_secret(s.mise_config):
-                items.append(FileItem(".config/mise/config.toml", ["keep"], "keep",
-                                      "has secrets. It stays out of the repository"))
+                items.append(_file_item(".config/mise/config.toml", ["keep"], "keep",
+                                        "has secrets. It stays out of the repository"))
             else:
-                items.append(FileItem(".config/mise/config.toml", ["layer", "keep"], "layer",
-                                      "your global mise tools; goes to config/mise.toml"))
+                items.append(_file_item(".config/mise/config.toml", ["layer", "keep"], "layer",
+                                        "your global mise tools; goes to config/mise.toml"))
         return items
 
     def defaults(self, repo: str) -> Choices:
-        return Choices(
-            repo=repo,
-            groups={g.key: g.default for g in self.groups()},
-            files={f.target: f.default for f in self.file_items()},
-        )
-
-    def adoptable(self) -> list[str]:
-        return [o.rel for o in self.scan.other_config if o.adoptable]
+        return Choices.defaults(repo, self.pages())
 
     # --- The plan
 
@@ -290,7 +326,8 @@ class _Build:
         self.c = c
         self.home = self.s.home
         self.repo = Path(expand(c.repo, self.home))
-        self.on = lambda key: c.groups.get(key, False)
+        # The items of the pages: a deselected item that was on by default is "Not carried, by your choice".
+        self.items = {i.id: i for page in planner.pages() for i in page.items}
         self.template = self.base.template
         # The planning steps write only through this transaction; render() turns the documents into the plan.
         self.docs = docs_mod.Docs("setup", self.template, self.repo, home=self.home, host=self.s.hostname)
@@ -301,6 +338,18 @@ class _Build:
 
     def t(self, path: str | Path) -> str:
         return tilde(path, self.home)
+
+    def picked(self, page: str, item_id: str) -> bool:
+        return self.c.selected(page, item_id)
+
+    def left_out(self, item_id: str) -> bool:
+        """True for an item that was on by default and that you deselected. Off by default: its own to-do."""
+        item = self.items.get(item_id)
+        return item is not None and item.default
+
+    def not_carried(self, intro: str, items: list[str]) -> None:
+        if items:
+            self.r.todo("Not carried, by your choice", intro, items)
 
     def run(self) -> Plan:
         # Your mise config first: the tools that it has are not added again.
@@ -324,19 +373,20 @@ class _Build:
         s, r = self.s, self.r
         if not s.brew:
             return
+        left: list[str] = []
         for kind, names, key, dest in (("formula", s.formulae, "formulae", "nix/brews.txt"),
                                        ("cask", s.casks, "casks", "nix/casks.txt")):
             keep, redundant = self.p.brew_split(names, kind)
             flag = "--cask " if kind == "cask" else ""
-            if keep and self.on(key):
-                for n in keep:
-                    self.txn.list(dest).add(n)
-                r.carried(plural(len(keep), "Homebrew formula" if kind == "formula" else "Homebrew cask",
+            prefix = "cask" if kind == "cask" else "brew"
+            chosen = [n for n in keep if self.picked(key, f"{prefix}:{n}")]
+            for n in chosen:
+                self.txn.list(dest).add(n)
+            if chosen:
+                r.carried(plural(len(chosen), "Homebrew formula" if kind == "formula" else "Homebrew cask",
                                   "Homebrew formulae" if kind == "formula" else "Homebrew casks"), dest)
-            elif keep:
-                r.todo("Homebrew packages that are not in the lists",
-                       "They stay installed. dotkit does not manage them.",
-                       [f"`{n}`: `dotkit add {'cask' if kind == 'cask' else 'brew'}:{n}`" for n in keep])
+            left += [f"`{n}` ({kind}): `dotkit add {prefix}:{n}`" for n in keep
+                     if n not in chosen and self.left_out(f"{prefix}:{n}")]
             if redundant:
                 r.todo("Homebrew copies of dotkit tools",
                        "The dotkit base has these tools, so they are not in your lists. The Homebrew copy "
@@ -344,17 +394,19 @@ class _Build:
                        "formula depends on it.",
                        [f"`{n}`: dotkit has {what}. `brew uninstall {flag}{n}`" for n, what in redundant.items()])
         lines, todos = tap_lines(s.taps, set())
-        if lines and self.on("taps"):
-            for line in lines:
-                self.txn.list("nix/taps.txt").add(line)
-            r.carried(plural(len(lines), "Homebrew tap"), "nix/taps.txt")
-            custom = [t for t in s.taps if t.custom and tap_line_problem(t) is None]
+        chosen = [line for line in lines if self.picked("taps", f"tap:{line.split()[0]}")]
+        for line in chosen:
+            self.txn.list("nix/taps.txt").add(line)
+        if chosen:
+            r.carried(plural(len(chosen), "Homebrew tap"), "nix/taps.txt")
+            names = {line.split()[0] for line in chosen}
+            custom = [t for t in s.taps if t.custom and t.name in names]
             if custom:
                 r.todo("Homebrew taps", "These taps are not on GitHub, so the list has their URL. Check it.",
                        [f"`{t.name}`: {t.remote}" for t in custom])
-        elif lines:
-            r.todo("Homebrew taps", "They stay tapped. Add their lines to nix/taps.txt for a new Mac.",
-                   [f"`{line}`" for line in lines])
+        self.not_carried(NOT_CARRIED_BREW, left)
+        self.not_carried(NOT_CARRIED, [f"`{line.split()[0]}` (tap): add `{line}` to nix/taps.txt" for line in lines
+                                       if line not in chosen and self.left_out(f"tap:{line.split()[0]}")])
         if todos:
             r.todo("Homebrew taps", "", todos)
         if s.old_taps:
@@ -363,17 +415,18 @@ class _Build:
 
     def app_store(self) -> None:
         s, r = self.s, self.r
-        if s.mas_apps and self.on("mas"):
-            apps, notes, todos = mas_lines(s.mas_apps, {}, set())
-            for i, n in apps:
-                self.txn.list("nix/mas.txt").add(f"{i} {n}")
-            if apps:
-                r.carried(plural(len(apps), "App Store app"), "nix/mas.txt")
-            if notes or todos:
-                r.todo("App Store apps", "", notes + todos)
-        elif s.mas_apps:
-            r.todo("App Store apps", "They stay installed. Add the ones you want to nix/mas.txt.",
-                   [f"`{n}`: `dotkit add mas:{i}`" for i, n in s.mas_apps])
+        # The apps that cannot go into the list are not items; mas_lines() writes their to-dos.
+        chosen = [(i, n) for i, n in s.mas_apps
+                  if self.picked("mas", f"mas:{i}") or f"mas:{i}" not in self.items]
+        apps, notes, todos = mas_lines(chosen, {}, set())
+        for i, n in apps:
+            self.txn.list("nix/mas.txt").add(f"{i} {n}")
+        if apps:
+            r.carried(plural(len(apps), "App Store app"), "nix/mas.txt")
+        if notes or todos:
+            r.todo("App Store apps", "", notes + todos)
+        self.not_carried(NOT_CARRIED, [f"`{n.strip()}` (App Store app): `dotkit add mas:{i}`"
+                                       for i, n in s.mas_apps if (i, n) not in chosen and self.left_out(f"mas:{i}")])
         if s.store_apps:
             r.todo("App Store apps",
                    "These apps came from the App Store. dotkit installs App Store apps with mas, which was not "
@@ -386,7 +439,7 @@ class _Build:
     def mise_layered(self) -> bool:
         """Your mise config goes into the repository: config/mise.toml is your file."""
         s = self.s
-        return bool(s.mise_config and self.c.files.get(".config/mise/config.toml") == "layer"
+        return bool(s.mise_config and self.c.option("file:.config/mise/config.toml") == "layer"
                     and not secrets.has_secret(s.mise_config))
 
     def tools(self) -> None:
@@ -404,7 +457,7 @@ class _Build:
             ("go", s.go, "go", "# From ~/go/bin, see MIGRATION.md.", "rm {where}"),
         )
         for key, pkgs, backend, comment, remove in groups:
-            carried, manual, old = [], [], []
+            carried, manual, old, left = [], [], [], []
             for p in pkgs:
                 if key == "npm" and p.name in catalog.NPM_NOT_IN_MISE:
                     manual.append(f"`{p.name}` ({p.where}): {catalog.NPM_NOT_IN_MISE[p.name]}")
@@ -413,7 +466,7 @@ class _Build:
                     manual.append(f"`{p.name}` ({p.where}): {p.note}. Add it to config/mise.toml by hand.")
                     continue
                 spec = f"{backend}:{p.name}"
-                if self.on(key):
+                if self.picked(key, f"{key}:{p.name}"):
                     if add(spec, comment):
                         carried.append(p)
                         rm = remove.format(name=p.name, where=p.where,
@@ -421,8 +474,11 @@ class _Build:
                                            + p.name)
                         old.append(f"`{spec}`, was {p.version or 'installed'} in {p.where}. "
                                    f"Old copy: `{rm}`" + (f". Note: {p.note}" if p.note else ""))
+                elif self.left_out(f"{key}:{p.name}"):
+                    left.append(f"`{p.name}` ({p.where}): `mise use -g {spec}`")
                 else:
                     manual.append(f"`{p.name}` ({p.where}): `mise use -g {spec}`")
+            self.not_carried(NOT_CARRIED, left)
             if carried:
                 r.carried(plural(len(carried), f"{key} tool"), "config/mise.toml")
                 r.todo("Tools that moved to mise",
@@ -443,11 +499,15 @@ class _Build:
     def version_managers(self) -> None:
         s, r = self.s, self.r
         lines = self.p.runtime_lines()
-        if lines and self.on("runtimes"):
-            for tool, versions in lines.items():
+        picked = {t for t in lines if self.picked("runtimes", f"runtime:{t}")}
+        for tool, versions in lines.items():
+            if tool in picked:
                 self.txn.mise().add_tool(tool, versions[0] if len(versions) == 1 else versions)
-            r.carried("runtime versions of " + ", ".join(vm.name for vm in s.version_managers if vm.versions),
-                      "config/mise.toml")
+        if picked:
+            r.carried("runtime versions of " + ", ".join(
+                vm.name for vm in s.version_managers
+                if vm.versions and (not catalog.version_manager(vm.name).mise_replaces or picked & set(vm.versions))),
+                "config/mise.toml")
         items = []
         for vm in s.version_managers:
             parts = []
@@ -461,9 +521,14 @@ class _Build:
                         "`mise use -g java@<version>`")
             else:
                 tools = [t for t in vm.versions if t]
-                mise = ", ".join(f"`mise use -g {t}@{(lines.get(t) or ['<version>'])[0]}`" for t in tools)
-                if self.on("runtimes") and mise:
+                done = [t for t in tools if t in picked]
+                rest = [t for t in tools if t not in picked]
+                mise = ", ".join(f"`mise use -g {t}@{(lines.get(t) or ['<version>'])[0]}`" for t in rest)
+                if done and not rest:
                     mise = "config/mise.toml has these versions now"
+                elif done:
+                    names = ", ".join(done[:-1]) + " and " + done[-1] if len(done) > 1 else done[0]
+                    mise = f"config/mise.toml has the {names} versions now. With mise: " + mise
                 elif mise:
                     mise = "With mise: " + mise
             steps = ". ".join(x for x in (what, mise) if x)
@@ -482,9 +547,10 @@ class _Build:
 
     def shell(self) -> None:
         s, r = self.s, self.r
-        # A copy: a failed syntax check below changes the results.
-        results = copy.deepcopy(self.p.rc_results())
-        on = self.on("shell")
+        # The chain of the selected files. A copy: a failed syntax check below changes the results.
+        skipped = frozenset(n for n in self.p.rc_results()
+                            if f"shell:{n}" in self.items and not self.picked("shell", f"shell:{n}"))
+        results = copy.deepcopy(self.p.rc_results(skipped))
         unread = [f for f in s.shell_files if not f.managed and not f.read]
         by_repo: dict[str, list[tuple[ShellFile | None, rcparse.Result | None]]] = {}
         files = {f.name: f for f in s.shell_files if not f.managed}
@@ -503,6 +569,7 @@ class _Build:
             for f, res in entries:
                 if res is None:
                     continue
+                on = self.picked("shell", f"shell:{f.name}")
                 carried = res.carried_text() if on else ""
                 if carried and self.p.check_syntax and not self.p.check_syntax(shell, carried):
                     # Keep the lines that parse on their own; report the functions.
@@ -523,10 +590,7 @@ class _Build:
                     rc.add_part(f"# From ~/{f.name}. MIGRATION.md lists the lines that are not here.", carried)
                     written = True
                     r.carried(plural(res.statements, "line") + f" of ~/{f.name}", f"{repo_file} (~/{layer})")
-                if res.secrets and not on:
-                    r.todo("Secrets", "", [f"~/{f.name}:{x.lines[0]}: `{x.name}` has a secret. You chose not to "
-                                           "carry shell lines, so it is not carried." for x in res.secrets])
-                elif res.secrets:
+                if res.secrets and on:
                     rc.add_secret("\n".join([f"# From ~/{f.name}."] + [x.text for x in res.secrets]))
                     written = True
                     r.todo("Secrets", "These lines have a secret, so they are not in Git. They are in a file in "
@@ -535,11 +599,9 @@ class _Build:
                                       "passwords.",
                            [f"~/{f.name}:{x.lines[0]}: `{x.name}` -> {rc.local}"
                             for x in res.secrets])
-                if not on:
-                    lines = sum(1 for c in res.carried if c.kind != "comment")
-                    if lines:
-                        r.todo("Shell lines", "You chose not to carry shell lines. Copy the ones you need.",
-                               [f"~/{f.name}: {lines} lines that could be carried"])
+                if not on and self.left_out(f"shell:{f.name}"):
+                    # What the page offered: the full chain, as the page label counts it.
+                    self.not_carried(NOT_CARRIED, [_shell_left_out(f.name, self.p.rc_results()[f.name], repo_file)])
                 self.findings(f.name, res)
             # A file for each layer that exists, also when it carries nothing: the
             # link moves an old layer file out of the way, so that dotkit does not
@@ -554,7 +616,7 @@ class _Build:
                                        f"of it is carried. dotkit links its own ~/{f.name} and renames yours to "
                                        f"~/{f.name}.before-dotkit. Copy what you need."])
         for name in s.other_shell_files:
-            if name in self.c.adopt:
+            if self.picked("other", f"other:{name}"):
                 continue
             note = {
                 ".bashrc": "It stays in place. dotkit's ~/.bash_profile reads it in an interactive bash.",
@@ -598,13 +660,13 @@ class _Build:
     def config_files(self) -> None:
         s, r = self.s, self.r
         links = {link.target: link for link in base_mod.LINKS}
-        git_choice = self.c.files.get(".gitconfig", "adopt" if s.gitconfig else "")
+        git_choice = self.c.option("file:.gitconfig") or ("adopt" if s.gitconfig else "")
         if s.gitconfig and s.gitconfig.secrets:
             git_choice = "keep"
         git_parts: list[tuple[str, Path]] = []
         for c in s.config_files:
             link = links[c.target]
-            choice = self.c.files.get(c.target, "dotkit")
+            choice = self.c.option(f"file:{c.target}") or "dotkit"
             if c.secrets and choice not in ("keep", "dotkit"):
                 choice = "keep"
             where = self.t(c.path)
@@ -680,7 +742,7 @@ class _Build:
         r = self.r
         adopted, left, skipped, taken = [], [], [], []
         for o in self.s.other_config:
-            if o.rel in self.c.adopt and o.adoptable:
+            if self.picked("other", f"other:{o.rel}") and o.adoptable:
                 name = o.rel.removeprefix(".config/").lstrip(".")
                 dest = f"config/{name}" if o.rel.startswith(".config/") else f"config/home/{name}"
                 if self.txn.copies.add(dest, Path(self.home, o.rel)):
@@ -765,6 +827,19 @@ class _Build:
         plan.files["MIGRATION.md"] = plan.report
         plan.summary = writer.mask_lines(checks.summary(plan, docs.report, s.git_name, s.git_email))
         return plan
+
+
+def _shell_left_out(name: str, res: rcparse.Result, repo_file: str) -> str:
+    """The "Not carried, by your choice" item of a shell file: what could be carried, and the secrets by name."""
+    parts = []
+    if res.statements:
+        parts.append(f"{plural(res.statements, 'line')} that could be carried to {repo_file}. Copy the ones "
+                     "you need.")
+    if res.secrets:
+        names = ", ".join(f"`{x.name}` (line {x.lines[0]})" for x in res.secrets)
+        parts.append(f"Its lines with secrets are not carried: {names}. Keep them out of files that Git tracks.")
+    assert parts, f"~/{name} is a shell item, so it has lines or secrets"
+    return f"~/{name}: " + " ".join(parts)
 
 
 def _code(text: str) -> str:

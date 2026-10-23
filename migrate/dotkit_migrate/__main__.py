@@ -14,7 +14,8 @@ from . import adopt as adopt_mod
 from . import base as base_mod
 from . import context
 from . import plan as plan_mod
-from . import prompts, scan, wizard, writer
+from . import scan, writer
+from .ui import curses_ui, plain
 
 # make_context(home, base) -> the Context that the scan reads. Tests give a fake Mac.
 MakeContext = Callable[[Path, base_mod.Base], context.Context]
@@ -60,7 +61,8 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
         info("dotkit setup: " + "\n".join(blockers))
         return 2
     if interactive:
-        ok = wizard.run(p, c, a.dry_run) if (not a.plain and wizard.available()) else prompts.run(p, c, a.dry_run)
+        frontend = curses_ui if (not a.plain and curses_ui.available()) else plain
+        ok = frontend.run(p, c, home, a.dry_run)
         if not ok:
             info("Stopped. Nothing changed.")
             return 1

@@ -19,7 +19,7 @@ ORDER = (
     "Tools that are not in mise",
     "mise",
     "Homebrew copies of dotkit tools",
-    "Homebrew packages that are not in the lists",
+    "Not carried, by your choice",
     "Homebrew taps",
     "App Store apps",
     "Other config",
