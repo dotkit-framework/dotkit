@@ -4,7 +4,9 @@ import os
 import unittest
 from pathlib import Path
 
-from dotkit_migrate.migrators import built_tools, leftovers, node_tools, python_tools, shell
+from dotkit_migrate.migrators import built_tools, leftovers, node_tools, python_tools, shell, tools
+from dotkit_migrate.migrators.tools import Package
+from dotkit_migrate.model import Facts, Identity
 from tests import fake
 
 SECTION = "### Leftovers that can still take effect\n"
@@ -46,6 +48,21 @@ class CommandsTests(unittest.TestCase):
         b = built_tools.facts_of(facts)
         self.assertEqual([(p.name, p.commands) for p in b.cargo], [("bat", ["bat"])])
         self.assertEqual([(p.name, p.commands) for p in b.go], [("hey", ["hey"])])
+        # The tool migrators name them by mise key (Migrator.mise_commands), and the Session merges them.
+        self.assertEqual(facts.mise_commands, {
+            "npm:@scope/cli": ("cli",), "npm:typescript": ("tsc", "tsserver"), "pipx:httpie": ("http", "https"),
+            "pipx:ruff": ("ruff",), "cargo:bat": ("bat",), "go:hey": ("hey",)})
+        self.assertEqual(facts.without(["node_tools"]).mise_commands,
+                         {k: v for k, v in facts.mise_commands.items() if not k.startswith("npm:")})
+
+    def test_mise_commands_are_merged(self):
+        """A key from more than one migrator, or twice from one, has all of its commands once."""
+        facts = Facts(Identity("/h", "u"), None, commands_by_key={
+            "a": {"npm:x": ("x", "y"), "npm:z": ()}, "b": {"npm:x": ("y", "w")}})
+        self.assertEqual(facts.mise_commands, {"npm:x": ("x", "y", "w"), "npm:z": ()})
+        self.assertEqual(facts.without(["a"]).mise_commands, {"npm:x": ("y", "w")})
+        p = [Package("x", commands=["x"]), Package("x", commands=["x", "y"]), Package("q")]
+        self.assertEqual(tools.mise_commands("npm", p), {"npm:x": ("x", "y"), "npm:q": ()})
 
     def test_crates_toml(self):
         self.h.write(".cargo/.crates.toml", '[v1]\n"tokei 12.1.2 (registry+https://x)" = ["tokei"]\n')

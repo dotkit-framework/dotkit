@@ -89,6 +89,13 @@ class Migrator:
         """`dotkit migrate`: add to the repository's documents what it lacks, and what was not added to
         the report through txn. Default: nothing."""
 
+    def mise_commands(self, facts: Facts) -> Dict[str, Tuple[str, ...]]:
+        """The commands of each mise key that this migrator can add ("npm:typescript" -> ("tsc", "tsserver")),
+        from its own facts and facts.base only, never another migrator's, so the order of the hooks does
+        not matter. The Session merges them into Facts.mise_commands after the scans, for the leftovers
+        report; one that raises fails this migrator, as its scan would. Default: none."""
+        return {}
+
     def manual_steps(self, ctx: Context) -> str:
         """What a person does by hand when this migrator failed: what happens without it, and what to do.
 

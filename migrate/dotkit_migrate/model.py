@@ -83,25 +83,41 @@ class Facts:
     base and check_syntax are set by the Session. They are the only things
     from outside the facts that the migrators use: base is the dotkit base
     (read-only data), and check_syntax(shell, text) runs zsh -n or bash -n
-    (None: no check).
+    (None: no check). The Session also sets the results of
+    Migrator.mise_commands, by migrator key: mise_commands merges them.
     """
 
     def __init__(self, identity: Identity, base: Any, check_syntax: Callable[[str, str], bool] | None = None,
-                 by_key: dict[str, object] | None = None, warnings: list[str] | None = None):
+                 by_key: dict[str, object] | None = None, warnings: list[str] | None = None,
+                 commands_by_key: dict[str, dict[str, tuple[str, ...]]] | None = None):
         self.identity = identity
         self.base = base
         self.check_syntax = check_syntax
         self._by_key = dict(by_key or {})
         self.warnings = list(warnings or [])
+        self._commands_by_key = dict(commands_by_key or {})
+
+    @property
+    def mise_commands(self) -> dict[str, tuple[str, ...]]:
+        """The commands of each mise key that a migrator can add ("npm:typescript" -> ("tsc", "tsserver")),
+        from Migrator.mise_commands of every migrator, in their order. A key of more than one has all of
+        their commands."""
+        out: dict[str, tuple[str, ...]] = {}
+        for commands in self._commands_by_key.values():
+            for key, names in commands.items():
+                out[key] = tuple(dict.fromkeys(out.get(key, ()) + names))
+        return out
 
     def get(self, key: str) -> object | None:
         """The facts of one migrator, or None when its scan failed or did not run."""
         return self._by_key.get(key)
 
     def without(self, keys: Collection[str]) -> "Facts":
-        """The same facts, but the migrators of keys have none, and none of their warnings: they failed."""
+        """The same facts, but the migrators of keys have none, none of their warnings, and none of their
+        mise_commands: they failed."""
         kept = {k: v for k, v in self._by_key.items() if k not in keys}
-        return Facts(self.identity, self.base, self.check_syntax, kept, warnings_of(kept))
+        commands = {k: v for k, v in self._commands_by_key.items() if k not in keys}
+        return Facts(self.identity, self.base, self.check_syntax, kept, warnings_of(kept), commands)
 
 
 # The phases of a Failure in a sentence: "failed while planning". The UI and the report share them.

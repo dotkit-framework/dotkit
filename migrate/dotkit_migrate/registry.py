@@ -20,7 +20,7 @@ import socket
 import traceback
 from collections.abc import Callable
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from . import checks, secrets, writer
 from . import docs as docs_mod
@@ -28,7 +28,7 @@ from . import report as report_mod
 from .context import Context, expand, tilde
 from .declared import Declared
 from .docs import nix_string
-from .migrators import (appstore, built_tools, config_files, frameworks, homebrew, leftovers, logins, node_tools,
+from .migrators import (Migrator, appstore, built_tools, config_files, frameworks, homebrew, leftovers, logins, node_tools,
                         other_config, python_tools, runtimes, shell)
 from .model import AdoptOptions, AdoptResult, Choices, Facts, Failure, Identity, Page, Plan, warnings_of
 
@@ -129,10 +129,11 @@ def _short(text: str, limit: int = 60) -> str:
 
 
 class Session:
-    def __init__(self, ctx: Context, migrators=MIGRATORS, strict: bool = False,
+    def __init__(self, ctx: Context, migrators: Optional[Sequence[Migrator]] = None, strict: bool = False,
                  check_syntax: Optional[Callable[[str, str], bool]] = None):
         self.ctx = ctx
-        self.migrators = tuple(migrators)
+        # None: MIGRATORS as it is now, so that a test that patches registry.MIGRATORS reaches every Session.
+        self.migrators = tuple(MIGRATORS if migrators is None else migrators)
         # Strict: a crash, a conflict, or an unknown section raises where it happens (tests and CI).
         self.strict = strict
         # check_syntax(shell, text): True when the text parses. None: no check.
@@ -181,7 +182,12 @@ class Session:
     # --- The phases
 
     def scan(self) -> Facts:
-        """Every scan, once: the identity first, then the migrators in order. A failed scan has no facts."""
+        """Every scan, once: the identity first, then the migrators in order. A failed scan has no facts.
+
+        After the scans, each migrator's mise_commands, from these facts, go
+        into Facts.mise_commands. One that raises fails its migrator as its
+        scan would: a Failure of the scan, and no facts.
+        """
         if self._facts is None:
             ctx = self.ctx
             try:
@@ -198,7 +204,18 @@ class Session:
                     self._out.add(m.key)
                     continue
                 by_key[m.key] = found
-            self._facts = Facts(identity, ctx.base, self.check_syntax, by_key, warnings_of(by_key))
+            scanned = Facts(identity, ctx.base, self.check_syntax, by_key, warnings_of(by_key))
+            commands = {}
+            for m in self.migrators:
+                if m.key not in by_key:
+                    continue
+                try:
+                    commands[m.key] = {k: tuple(v) for k, v in m.mise_commands(scanned).items()}
+                except Exception as e:  # noqa: BLE001 - isolated: as a failed scan
+                    self._fail(m, "scan", e, self.failures)
+                    self._out.add(m.key)
+                    del by_key[m.key]
+            self._facts = Facts(identity, ctx.base, self.check_syntax, by_key, warnings_of(by_key), commands)
         return self._facts
 
     def pages(self) -> List[Page]:

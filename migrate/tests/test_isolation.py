@@ -74,7 +74,8 @@ class Isolated(unittest.TestCase):
         self.runner, self.env = kitchen_sink(self.h)
         self.repo = str(self.h.home / ".dotfiles")
 
-    def session(self, migrators=registry.MIGRATORS, strict: bool = False) -> registry.Session:
+    def session(self, migrators=None, strict: bool = False) -> registry.Session:
+        """A Session of the kitchen-sink Mac; by default with registry.MIGRATORS as it is when the test runs."""
         return registry.Session(fake.context_of(self.h, self.runner, self.env), migrators=migrators,
                                 strict=strict, check_syntax=check_syntax)
 
@@ -111,6 +112,25 @@ class EveryMigratorTests(Isolated):
 
     def build(self, s: registry.Session):
         return s.build(kitchen_sink_choices(s, self.repo))
+
+    def test_every_mise_commands_hook(self):
+        """Migrator.mise_commands raising fails its migrator as its scan would: the plan of the registry
+        without M, one Failure of the scan, no facts of M, and strict mode re-raises."""
+        for m in registry.MIGRATORS:
+            with self.subTest(migrator=m.key), crashing(m, "mise_commands", KeyError("versions")):
+                s = self.session()
+                c = kitchen_sink_choices(s, self.repo)
+                plan = s.build(c)
+                self.assertEqual([(f.migrator, f.phase, f.error) for f in plan.failures],
+                                 [(m.key, "scan", "KeyError: 'versions'")])
+                self.assertTrue(plan.failures[0].where.startswith("registry.py:"), plan.failures[0].where)
+                self.assertEqual(s.failures, plan.failures)
+                self.assertIsNone(s.scan().get(m.key))
+                rest = self.session(tuple(x for x in registry.MIGRATORS if x is not m), strict=True)
+                self.assertEqual(s.scan().mise_commands, rest.scan().mise_commands)
+                self.assertEqual(without_problems(plan), without_problems(rest.build(copy.deepcopy(c))))
+                with self.assertRaises(KeyError):
+                    self.session(strict=True).scan()
 
     def test_every_plan_fails(self):
         """Each failure starts the build again: one pass more than there are migrators, within the bound."""
@@ -443,14 +463,15 @@ class OutputTests(Isolated):
         self.assertTrue(plan.failures[0].error.endswith("…"))
 
 
-# The migrators that add to a repository in `dotkit migrate`.
-ADOPTERS = ("homebrew", "appstore", "node_tools", "python_tools", "built_tools")
+def adopters():
+    """The migrators that add to a repository in `dotkit migrate`: those that override Migrator.adopt."""
+    return [m for m in registry.MIGRATORS if type(m).adopt is not Migrator.adopt]
 
 
 class AdoptTests(Isolated):
     """`dotkit migrate`: a migrator whose adopt raises adds nothing, and the others still add."""
 
-    def adopt(self, migrators=registry.MIGRATORS, strict: bool = False):
+    def adopt(self, migrators=None, strict: bool = False):
         repo = self.h.home / ".dotfiles"
         for rel, text in ADOPT_REPO.items():
             self.h.write(f".dotfiles/{rel}", text)
@@ -459,9 +480,8 @@ class AdoptTests(Isolated):
     def test_every_adopter(self):
         full = self.adopt()
         self.assertEqual(full.failures, [])
-        for m in registry.MIGRATORS:
-            if m.key not in ADOPTERS:
-                continue
+        self.assertGreaterEqual(len(adopters()), 5)
+        for m in adopters():
             with self.subTest(migrator=m.key), crashing(m, "adopt", RuntimeError("boom")):
                 result = self.adopt()
                 self.assertEqual([(f.migrator, f.phase, f.error) for f in result.failures],

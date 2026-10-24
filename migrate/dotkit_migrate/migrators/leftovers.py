@@ -25,7 +25,7 @@ from ..base import mise_short
 from ..context import Context, executables, is_managed, read_text, shell_path, tilde
 from ..docs import Txn
 from ..model import Choices, Facts
-from . import Migrator, and_list, built_tools, node_tools, python_tools, shell
+from . import Migrator, and_list, shell
 
 SECTION = "Leftovers that can still take effect"
 
@@ -82,18 +82,13 @@ class MiseTool:
 
 def mise_tools(f: Facts, added: List[str]) -> List[MiseTool]:
     """The tools that this run added to config/mise.toml (`added`, in that order), then the tools of the base,
-    with their commands. A package tool has the commands of its package; another tool those of
-    catalog.MISE_COMMANDS, or its name."""
-    packages: Dict[str, List[List[str]]] = {}
-    n, p, b = node_tools.facts_of(f), python_tools.facts_of(f), built_tools.facts_of(f)
-    for key, pkgs in (("npm", n.packages if n else []), ("pipx", p.packages if p else []),
-                      ("cargo", b.cargo if b else []), ("go", b.go if b else [])):
-        for pkg in pkgs:
-            packages.setdefault(f"{key}:{pkg.name}", []).append(pkg.commands)
+    with their commands. A tool that a migrator can add has the commands it names (Facts.mise_commands, from
+    Migrator.mise_commands); another tool those of catalog.MISE_COMMANDS, or its name."""
+    packages = f.mise_commands
     out: List[MiseTool] = []
     for spec, base in [(k, False) for k in added] + [(k, True) for k in f.base.mise if k not in added]:
         if spec in packages:
-            commands = {x for cmds in packages[spec] for x in cmds}
+            commands = set(packages[spec])
         else:
             commands = set(catalog.MISE_COMMANDS.get(spec, (mise_short(spec),)))
         if commands:

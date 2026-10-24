@@ -10,7 +10,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .. import catalog
 from .._compat import tomllib
@@ -19,7 +19,7 @@ from ..declared import Declared
 from ..docs import Txn
 from ..model import AdoptOptions, Choices, Facts, Page
 from . import Migrator, config_files
-from .tools import Package, adopt_tools, env_path, page, plan_tools, tilde_path
+from .tools import Package, adopt_tools, env_path, mise_commands, page, plan_tools, tilde_path
 
 
 @dataclass
@@ -147,6 +147,10 @@ class BuiltTools(Migrator):
             txn.report.todo("Tools that are not in mise",
                             f"{' and '.join(catalog.BUILT_FROM_SOURCE.values())} tools, not added: mise builds them "
                             "from source. Use --all to add them:", left)
+
+    def mise_commands(self, f: Facts) -> Dict[str, Tuple[str, ...]]:
+        b = facts_of(f)
+        return {**mise_commands("cargo", b.cargo if b else []), **mise_commands("go", b.go if b else [])}
 
 
 def _needs(txn: Txn, kept: bool, line: str) -> None:

@@ -176,7 +176,12 @@ class Migrator:
         """`dotkit migrate`: add what the repository lacks. Default: nothing."""
 
     def mise_commands(self, facts: Facts) -> Dict[str, Tuple[str, ...]]:
-        """The commands of each mise key that this migrator can add (step 14a). Default: none."""
+        """The commands of each mise key that this migrator can add, from its facts:
+        {"npm:typescript": ("tsc", "tsserver")}. The Session merges them into
+        Facts.mise_commands after the scans, for the leftovers report. It reads only
+        its own facts (and facts.base), never another migrator's, so the order of
+        the hooks does not matter. It is part of the scan phase: if it raises, the
+        migrator fails "while scanning". Default: none."""
         return {}
 
     def manual_steps(self, ctx: Context) -> str:
@@ -567,7 +572,8 @@ was refused. The texts of the phases ("failed while planning") are
 
 ```python
 class Session:
-    def __init__(self, ctx: Context, migrators=MIGRATORS, strict: bool = False,
+    def __init__(self, ctx: Context, migrators: Optional[Sequence[Migrator]] = None,  # None: registry.MIGRATORS,
+                 strict: bool = False,                                               # read when constructed
                  check_syntax: Optional[Callable[[str, str], bool]] = None): ...
     def scan(self) -> Facts                          # isolated per migrator; cached
     def pages(self) -> List[Page]                    # isolated per migrator; cached
@@ -800,6 +806,9 @@ a migrator crashes:
 
 - **in `scan`:** its facts object and its warnings are thrown away, and
   `facts.get(key)` returns `None`;
+- **in `mise_commands`** (run by `Session.scan` after every scan): the same
+  as in `scan`, with a `Failure` of the scan, and none of its commands are in
+  `Facts.mise_commands`;
 - **in `pages`:** it has no pages, and its `plan` does not run (without pages
   there are no defaults and no choices);
 - **in `plan` or `adopt`:** its transaction is rolled back, so it contributes
@@ -991,10 +1000,11 @@ Problems in the UI:
 | Migrator unit | `tests/migrators/test_<key>.py` | `scan` on `fake.Home` + `FakeRunner` gives the expected facts; `pages` gives the expected items and defaults; `plan` on an in-memory `Docs` gives the expected entries and report rows; `adopt` against a `Declared` |
 | Document | `tests/test_docs.py` | per type: load, add, render; conflicts; `add()` checks; `render()` never raises on accepted entries; `MiseDoc.replace_setting` refusals and the parse-compare undo; `commit()`/`rollback()`; a second `begin()` asserts |
 | Writer and checks | `tests/test_writer.py`, `tests/test_checks.py` | guard behavior (`test_guard`, `test_final_guard_keeps_secret_shell_statements_whole`); write-time verification aborts with nothing left; links in the way; the masked summary |
-| Session and adopt | `tests/test_session.py`, `tests/test_adopt.py`, `tests/test_declared.py`, `tests/test_failed_scans.py` | whole plans on `used_mac` and other fake Macs; the identity scan; `Session.adopt` and `writer.apply_edits` (apply twice, a fault in the second replace, old and new secret lines, a changed file, links); `Declared`; a failed scan of each source that adopt reads |
+| Session and adopt | `tests/test_session.py`, `tests/test_adopt.py`, `tests/test_declared.py`, `tests/test_failed_scans.py` | whole plans on `used_mac` and other fake Macs; the identity scan; `Session.adopt` and `writer.apply_edits` (apply twice, a fault in the second replace, old and new secret lines, a changed file, links); `Declared`; a failed scan of each migrator that has facts of its own (setup, and `dotkit migrate` equal to the registry without it) |
 | Golden plans | `tests/test_golden.py`, `tests/golden/*.json` | the full `Plan` (all fields; normalized: in `Path` values the home directory is `~`; in text it is `<HOME>` and the rest of the temp directory is `<TMP>`, so a `~` in text means the code wrote `~` itself; fixed user, date, and hostname; fake tokens as their placeholders; a fake `check_syntax`) for an empty Mac, `used_mac` (`tests/test_session.py`), and a kitchen-sink Mac, each with the default choices, and the last two also with deselected items; the adopt output and the edited files of the kitchen-sink Mac, with and without `--all`. `DOTKIT_MIGRATE_REGOLD=1` rewrites them. A golden diff is how every behavior change is reviewed |
 | Registry invariants | `tests/test_registry.py` | unique page keys and item-id prefixes; `sections` ⊆ `SECTIONS`; an empty home gives no warnings and no contributions; the AST no-write test; the secret property test (section 6) |
-| Isolation | `tests/test_isolation.py` | for every migrator M and every phase P, M.P raising (for `plan`: after real work, so it has pending entries) gives the same plan as the registry without M, plus one `Failure`, plus `skipped` entries for its `needs` dependents; strict mode re-raises; a token in an exception message is not in the report, summary, stderr, or `--debug` output; a core failure (a document render, the guard) gives no repository directory |
+| Extension points | `tests/test_extension_points.py` | a fake tool migrator and fake catalog entries, defined only in the test: the catalog, invariant, failed-scan, isolation, and leftovers test classes run unchanged with them |
+| Isolation | `tests/test_isolation.py` | for every migrator M and every phase P (and `mise_commands`), M.P raising (for `plan`: after real work, so it has pending entries) gives the same plan as the registry without M, plus one `Failure`, plus `skipped` entries for its `needs` dependents; strict mode re-raises; a token in an exception message is not in the report, summary, stderr, or `--debug` output; a core failure (a document render, the guard) gives no repository directory |
 | UI flow | `tests/test_ui_flow.py` with a `ScriptedFrontend` that answers screens by id and item id | page order, skipped empty pages, defaults, per-item selection, the warning line, the Problems block |
 | PTY | `tests/test_wizard_pty.py`, `tests/wizard_child.py` | curses mechanics: keys, keypad sequences, resize, small window, quit, the plain prompts with answer counts taken from the Session; one test where `wizard_child.py` adds a migrator that crashes, and the wizard still finishes |
 | Start and grammar | `tests/test_start.py` | `-I -B` isolation; the Python 3.9 grammar |
@@ -1027,15 +1037,16 @@ diff /tmp/dk-before.txt /tmp/dk-after.txt
    version manager is only a catalog entry: `frameworks`, `runtimes`, and
    `node_tools` loop over the catalog, so skip step 2. The catalog tests
    check every entry generically; the pinned literals of the old rcparse
-   cover only the old entries (from step 14a).
+   cover only the old entries.
 2. **Module:** add `migrators/<key>.py` with a `Migrator` subclass (`key`,
    `title`, `sections`, `needs` if it cannot work without another), a facts
    dataclass and its `facts_of` accessor, `scan`, `pages` (stable, prefixed
    item ids; safe defaults), `plan`, `adopt` if `dotkit migrate` should add
    it, and `manual_steps` (`tests/test_registry.py` checks that it has one).
    A tool source that moves to mise reuses `migrators/tools.py`, and
-   (from step 14a) implements `mise_commands(facts)` (the commands of each mise key it can
-   add), which the leftovers report uses to find shadowed binaries.
+   implements `mise_commands(facts)` (the commands of each mise key it can
+   add, `tools.mise_commands`), which the leftovers report uses to find
+   shadowed binaries.
 3. **Outputs:** reuse document types. Add a document type to `docs.py` only
    for a new kind of output file, with its add-time checks and its tests.
 4. **Report:** add new section titles to `report.SECTIONS`, in their place.
@@ -1047,8 +1058,10 @@ diff /tmp/dk-before.txt /tmp/dk-after.txt
 7. **Tests:** `tests/migrators/test_<key>.py`; extend the kitchen-sink
    fixture (`kitchen_sink` in `tests/test_golden.py`) and regenerate the
    goldens (review the diff); the invariant and isolation tests cover it
-   without new code: they take their lists from `MIGRATORS` (from step
-   14a; for example the adopters are the migrators that override `adopt`).
+   without new code: they take their lists from `MIGRATORS` (for example
+   the adopters are the migrators that override `adopt`).
+   `tests/test_extension_points.py` shows it with a fake tool migrator and
+   fake catalog entries.
 8. **e2e:** add a fixture to the CI e2e job and a check in
    `tests/e2e/migrated.sh`.
 9. **Docs:** update the README table "On the Mac / In the repository".
@@ -1173,9 +1186,12 @@ The facts this needs:
 - `Package.commands` (`migrators/tools.py`): the command names of each
   package. npm: `bin` in `package.json`; pipx: the apps in
   `pipx_metadata.json`; uv: the receipt's entry points; cargo: `bins` in
-  `.crates2.json`; Go: the file name. The mise tools with more commands
-  than their name are in `catalog.MISE_COMMANDS`: `node`, `npm`, `npx`;
-  `python3`, `python`, `pip3`; `ruby`, `gem`; `uv`.
+  `.crates2.json`; Go: the file name. Each tool migrator names them by mise
+  key in its `mise_commands` (`tools.mise_commands`), and the Session
+  merges them into `Facts.mise_commands`, which `leftovers.mise_tools`
+  reads. The mise tools with more commands than their name are in
+  `catalog.MISE_COMMANDS`: `node`, `npm`, `npx`; `python3`, `python`,
+  `pip3`; `ruby`, `gem`; `uv`.
 - The `shell` scan runs rcparse (pure) at scan time, and lists the
   executables of each existing directory in a carried PATH line.
 - The `leftovers` scan lists the executables of `~/.local/bin`,
@@ -1364,9 +1380,9 @@ run `dotkit add brew:mas` first.
 **Status: done.** Every step below has landed on the branch
 `migrate-architecture`, in the commits after `24f0778` (the first version
 of this file): `77bb6c5` revised this file, then `d743d97` (step 1) to
-`18d2c60` (step 12a), then step 14, which brings this file in line with the
-code and points the package docstring here. `git log --oneline 24f0778..`
-lists them. Step 12a landed after step 13. The table is the record of what each
+`18d2c60` (step 12a), then step 14 (`45c09f8`), which brings this file in
+line with the code and points the package docstring here, then step 14a.
+`git log --oneline 24f0778..` lists them. Step 12a landed after step 13. The table is the record of what each
 step did. Its file and line references point to the code before that step
 (mostly `d91296a`), and the modules it names, such as `plan.py`, `scan.py`,
 `adopt.py`, and `migrators/_rest.py`, are gone. Sections 1 to 12 describe
@@ -1391,7 +1407,8 @@ the code as it is now.
 | 12 | `f687385`, `5867282` (goldens), `d27d3d0`, `9841e00` (goldens) |
 | 13 | `9681715`, `6f9d8d9` (goldens), `1d6b608`, `2f6e09e` (goldens) |
 | 12a | `18d2c60` |
-| 14 | this commit ("Point the migration docstrings and README to ARCHITECTURE.md") |
+| 14 | `45c09f8` |
+| 14a | this commit ("Take the extension points from MIGRATORS and the catalog") |
 
 Before step 1, the base fix for mise's idiomatic version files was already
 done (`config/mise.toml`), and the project-file hints were correct.

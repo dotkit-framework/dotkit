@@ -1,14 +1,16 @@
 """What the tool migrators share: npm, pipx, cargo, and Go tools that move to mise.
 
 node_tools, python_tools, and built_tools each scan their package managers
-into Packages; the page and the planning step are the same for all of them.
+into Packages; the page, the planning step, and the commands of each mise
+key (Migrator.mise_commands, for the leftovers report) are the same for all
+of them.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 from .. import catalog
 from ..context import Context
@@ -40,6 +42,16 @@ def tilde_path(ctx: Context, p: Path) -> str:
     """A path below the home directory with ~ for it; other paths as they are."""
     s, home = str(p), str(ctx.home)
     return "~" + s[len(home):] if s.startswith(home + "/") else s
+
+
+def mise_commands(key: str, pkgs: Optional[List[Package]]) -> Dict[str, Tuple[str, ...]]:
+    """The commands of each mise key of one package manager's packages, for Migrator.mise_commands:
+    "npm:typescript" -> ("tsc", "tsserver"). A package found twice has the commands of both."""
+    out: Dict[str, Tuple[str, ...]] = {}
+    for p in pkgs or []:
+        spec = f"{key}:{p.name}"
+        out[spec] = tuple(dict.fromkeys(out.get(spec, ()) + tuple(p.commands)))
+    return out
 
 
 def page(key: str, title: str, intro: str, pkgs: List[Package], declared: Declared) -> Page:

@@ -1,4 +1,11 @@
-"""The rcparse rules that the catalog generates match what the old literals matched, and nothing else."""
+"""The rcparse rules that the catalog generates.
+
+The old entries (by name) give what the literals of the old rcparse matched,
+and nothing else. Every entry, old or new, is checked generically: its words
+and PATH markers compile and match an example built from them, its variables
+are names, a detected spec has dirs, and env_var values are unique. A new
+catalog entry needs no change here (ARCHITECTURE.md, section 10).
+"""
 
 import itertools
 import re
@@ -79,6 +86,49 @@ def _alternatives(literal: str) -> set:
     return set(literal.split("|"))
 
 
+# The entries of the catalog when it replaced the literals above. Only they are compared with the literals.
+OLD_FRAMEWORKS = ("Oh My Zsh", "Prezto", "zinit", "Powerlevel10k", "antigen", "antidote", "Zim", "zplug")
+OLD_VERSION_MANAGERS = ("nvm", "fnm", "volta", "pyenv", "rbenv", "asdf", "sdkman", "jenv", "rvm", "nodenv", "goenv",
+                        "chruby", "tfenv", "conda", "mamba", "micromamba")
+
+
+def old(specs, names):
+    return [s for s in specs if s.name in names]
+
+
+def new(specs, names):
+    return [s for s in specs if s.name not in names]
+
+
+# How rcparse uses the words and markers of one entry: framework words are patterns, version-manager words are
+# text, and a PATH marker follows a "/" and comes before a "/" or the end.
+def framework_pattern(spec) -> str:
+    return "|".join(spec.words)
+
+
+def version_manager_pattern(spec) -> str:
+    return r"\b(?:{})\b".format("|".join(re.escape(w) for w in spec.words))
+
+
+def path_pattern(spec) -> str:
+    return "/(?:{})(?:/|$)".format("|".join(spec.path_markers))
+
+
+def example(pattern: str) -> str:
+    """A text that a simple pattern of the catalog matches: a lookahead left out, the first branch of a
+    (?:...|...) group, \\b as nothing, \\d as 0, x? as x, and an escaped character as itself."""
+    text = re.sub(r"\(\?[=!][^()]*\)", "", pattern)
+    text = re.sub(r"\(\?:([^()|]*)(?:\|[^()]*)?\)", r"\1", text)
+    text = text.replace(r"\b", "").replace(r"\d", "0")
+    text = re.sub(r"(?<!\\)\?", "", text)
+    return re.sub(r"\\(.)", r"\1", text)
+
+
+def matches(text: str, old_literal: str, specs, pattern) -> bool:
+    """What the rule should match: what the old literal matched, or what a new entry matches."""
+    return bool(re.search(old_literal, text)) or any(re.search(pattern(s), text) for s in specs)
+
+
 class CatalogRegexTests(unittest.TestCase):
     def setUp(self):
         self.rules = dict(rcparse._RULES)
@@ -91,41 +141,53 @@ class CatalogRegexTests(unittest.TestCase):
         self.assertEqual(self.rules[rcparse.VERSION_MANAGER].flags, re.compile(OLD_VERSION_MANAGER).flags)
         self.assertEqual(rcparse._PATH_VERSION_MANAGERS.flags, re.compile(OLD_PATH_VERSION_MANAGERS).flags)
 
+    def test_old_entries_are_there(self):
+        self.assertEqual([s.name for s in old(catalog.FRAMEWORKS, OLD_FRAMEWORKS)], list(OLD_FRAMEWORKS))
+        self.assertEqual([s.name for s in old(catalog.VERSION_MANAGERS, OLD_VERSION_MANAGERS)],
+                         list(OLD_VERSION_MANAGERS))
+
     def test_skip_vars(self):
-        self.assertEqual(rcparse.SKIP_VARS, OLD_SKIP_VARS)
+        added = {**{v: F for s in new(catalog.FRAMEWORKS, OLD_FRAMEWORKS) for v in s.vars},
+                 **{v: V for s in new(catalog.VERSION_MANAGERS, OLD_VERSION_MANAGERS) for v in s.extra_vars}}
+        self.assertFalse(set(added) & set(OLD_SKIP_VARS), "a new entry takes a variable of an old one")
+        self.assertEqual(rcparse.SKIP_VARS, {**OLD_SKIP_VARS, **added})
 
     def test_framework_words(self):
-        self.assertEqual({w for s in catalog.FRAMEWORKS for w in s.words}, _alternatives(OLD_FRAMEWORK))
-        old, new = re.compile(OLD_FRAMEWORK), self.rules[rcparse.FRAMEWORK]
+        self.assertEqual({w for s in old(catalog.FRAMEWORKS, OLD_FRAMEWORKS) for w in s.words},
+                         _alternatives(OLD_FRAMEWORK))
+        rule, added = self.rules[rcparse.FRAMEWORK], new(catalog.FRAMEWORKS, OLD_FRAMEWORKS)
         for sample, ctx in itertools.product(FRAMEWORK_SAMPLES, CONTEXTS):
             text = ctx.format(sample, sample)
             with self.subTest(text=text):
-                self.assertEqual(bool(new.search(text)), bool(old.search(text)))
+                self.assertEqual(bool(rule.search(text)), matches(text, OLD_FRAMEWORK, added, framework_pattern))
 
     def test_version_manager_words(self):
-        words = {w for s in catalog.VERSION_MANAGERS for w in s.words}
+        words = {w for s in old(catalog.VERSION_MANAGERS, OLD_VERSION_MANAGERS) for w in s.words}
         self.assertEqual(words, _alternatives(OLD_VERSION_MANAGER[3:-3]))
-        old, new = re.compile(OLD_VERSION_MANAGER), self.rules[rcparse.VERSION_MANAGER]
+        rule, added = self.rules[rcparse.VERSION_MANAGER], new(catalog.VERSION_MANAGERS, OLD_VERSION_MANAGERS)
         samples = VERSION_MANAGER_WORDS + tuple(w.upper() for w in VERSION_MANAGER_WORDS) + \
             tuple(w.lower() for w in VERSION_MANAGER_WORDS) + ("miniconda", "anaconda3", "nvmrc", ".nvmrc")
         hits = 0
         for sample, ctx in itertools.product(samples, CONTEXTS):
             text = ctx.format(sample, sample)
             with self.subTest(text=text):
-                self.assertEqual(bool(new.search(text)), bool(old.search(text)))
-                hits += bool(old.search(text))
+                self.assertEqual(bool(rule.search(text)),
+                                 matches(text, OLD_VERSION_MANAGER, added, version_manager_pattern))
+                hits += bool(re.search(OLD_VERSION_MANAGER, text))
         self.assertGreater(hits, 100)
 
     def test_path_markers(self):
-        markers = {m for s in catalog.VERSION_MANAGERS for m in s.path_markers}
+        markers = {m for s in old(catalog.VERSION_MANAGERS, OLD_VERSION_MANAGERS) for m in s.path_markers}
         old_dot = {r"\." + n for n in OLD_PATH_VERSION_MANAGERS[4:].split(")")[0].split("|")}
         self.assertEqual(markers, old_dot | {"fnm", r"(?:ana|mini)conda\d?(?=/)"})
-        old, new = re.compile(OLD_PATH_VERSION_MANAGERS), rcparse._PATH_VERSION_MANAGERS
+        rule = rcparse._PATH_VERSION_MANAGERS
+        added = [s for s in new(catalog.VERSION_MANAGERS, OLD_VERSION_MANAGERS) if s.path_markers]
         hits = 0
         for path in PATH_SAMPLES:
             with self.subTest(path=path):
-                self.assertEqual(bool(new.search(path)), bool(old.search(path)))
-                hits += bool(old.search(path))
+                self.assertEqual(bool(rule.search(path)),
+                                 matches(path, OLD_PATH_VERSION_MANAGERS, added, path_pattern))
+                hits += bool(re.search(OLD_PATH_VERSION_MANAGERS, path))
         self.assertGreater(hits, 40)
 
     def test_node_globs(self):
@@ -141,7 +203,10 @@ class CatalogRegexTests(unittest.TestCase):
         self.assertEqual(got, [g for g in OLD_NODE_GLOBS if not g[0].startswith("Library/")])
 
     def test_env_vars(self):
-        self.assertEqual({s.name: s.env_var for s in catalog.VERSION_MANAGERS if s.env_var}, {
+        env_vars = [s.env_var for s in catalog.VERSION_MANAGERS if s.env_var]
+        self.assertEqual(len(env_vars), len(set(env_vars)), env_vars)
+        self.assertEqual({s.name: s.env_var for s in old(catalog.VERSION_MANAGERS, OLD_VERSION_MANAGERS)
+                          if s.env_var}, {
             "nvm": "NVM_DIR", "fnm": "FNM_DIR", "volta": "VOLTA_HOME", "pyenv": "PYENV_ROOT",
             "rbenv": "RBENV_ROOT", "asdf": "ASDF_DATA_DIR", "sdkman": "SDKMAN_DIR", "jenv": "JENV_ROOT"})
 
@@ -170,6 +235,59 @@ class CatalogRegexTests(unittest.TestCase):
                     self.assertEqual(spec.default is None, spec.tool == "")
                 else:
                     self.assertEqual((spec.dirs, spec.tool, spec.default), ((), "", None))
+
+
+class EveryEntryTests(unittest.TestCase):
+    """Each entry of the catalog, old or new: rcparse knows its lines, PATH directories, and variables."""
+
+    def attributed(self, rule, names, text: str, spec) -> None:
+        m = rule.search(text)
+        self.assertIsNotNone(m, text)
+        self.assertEqual(rcparse._source(m, names), spec.name, text)
+
+    def test_framework_words(self):
+        rule = dict(rcparse._RULES)[rcparse.FRAMEWORK]
+        for spec in catalog.FRAMEWORKS:
+            for word in spec.words:
+                with self.subTest(spec=spec.name, word=word):
+                    re.compile(word)
+                    self.assertRegex(example(word), word)
+                    self.attributed(rule, rcparse._FRAMEWORK_NAMES, f"source {example(word)}", spec)
+
+    def test_version_manager_words(self):
+        rule = dict(rcparse._RULES)[rcparse.VERSION_MANAGER]
+        for spec in catalog.VERSION_MANAGERS:
+            self.assertTrue(spec.words, spec.name)
+            for word in spec.words:
+                with self.subTest(spec=spec.name, word=word):
+                    self.attributed(rule, rcparse._VERSION_MANAGER_NAMES, f'eval "$({word} init -)"', spec)
+
+    def test_path_markers(self):
+        for spec in catalog.VERSION_MANAGERS:
+            for marker in spec.path_markers:
+                with self.subTest(spec=spec.name, marker=marker):
+                    re.compile(marker)
+                    self.attributed(rcparse._PATH_VERSION_MANAGERS, rcparse._PATH_VERSION_MANAGER_NAMES,
+                                    f"/Users/me/{example(marker)}/bin", spec)
+
+    def test_variables(self):
+        """Each is a name, and an assignment of it is a framework or version-manager line of its entry."""
+        for specs, category, of in ((catalog.FRAMEWORKS, rcparse.FRAMEWORK, lambda s: s.vars),
+                                    (catalog.VERSION_MANAGERS, rcparse.VERSION_MANAGER, lambda s: s.extra_vars)):
+            for spec in specs:
+                for var in of(spec):
+                    with self.subTest(spec=spec.name, var=var):
+                        self.assertRegex(var, rf"^{rcparse._NAME}$")
+                        self.assertEqual(rcparse.SKIP_VARS[var], category)
+                        self.assertEqual(rcparse._VAR_SOURCES[var], spec.name)
+        for spec in catalog.VERSION_MANAGERS:
+            if spec.env_var:
+                self.assertRegex(spec.env_var, rf"^{rcparse._NAME}$")
+
+    def test_example(self):
+        """The examples of the helper itself."""
+        patterns = (r"\$\{ZSH\}", r"\bplugins=\(", r"(?:ana|mini)conda\d?(?=/)", r"\.nvm")
+        self.assertEqual([example(p) for p in patterns], ["${ZSH}", "plugins=(", "anaconda0", ".nvm"])
 
 
 if __name__ == "__main__":

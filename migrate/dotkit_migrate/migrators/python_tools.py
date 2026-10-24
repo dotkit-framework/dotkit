@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .._compat import tomllib
 from ..context import Context, read_json
@@ -12,7 +12,7 @@ from ..declared import Declared
 from ..docs import Txn
 from ..model import AdoptOptions, Choices, Facts, Page
 from . import Migrator
-from .tools import Package, adopt_tools, env_path, page, plan_tools
+from .tools import Package, adopt_tools, env_path, mise_commands, page, plan_tools
 
 
 @dataclass
@@ -89,3 +89,7 @@ class PythonTools(Migrator):
         p = facts_of(f)
         if p is not None:
             adopt_tools(declared, txn, "pipx", p.packages)
+
+    def mise_commands(self, f: Facts) -> Dict[str, Tuple[str, ...]]:
+        p = facts_of(f)
+        return mise_commands("pipx", p.packages if p else [])

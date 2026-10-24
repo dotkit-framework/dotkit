@@ -18,7 +18,7 @@ from ..declared import Declared
 from ..docs import Txn
 from ..model import AdoptOptions, Choices, Facts, Page
 from . import Migrator
-from .tools import Package, adopt_tools, env_path, page, plan_tools, tilde_path
+from .tools import Package, adopt_tools, env_path, mise_commands, page, plan_tools, tilde_path
 
 
 @dataclass
@@ -160,3 +160,7 @@ class NodeTools(Migrator):
         n = facts_of(f)
         if n is not None:
             adopt_tools(declared, txn, "npm", n.packages)
+
+    def mise_commands(self, f: Facts) -> Dict[str, Tuple[str, ...]]:
+        n = facts_of(f)
+        return mise_commands("npm", n.packages if n else [])
