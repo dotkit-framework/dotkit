@@ -144,6 +144,11 @@ Most base files read a file of yours after them, so your settings win:
 `~/.bash_profile` gives `bash -l`, for example a script with `#!/bin/bash -l`,
 the same PATH and mise as zsh. An interactive bash then reads `~/.bashrc`.
 
+Keep tokens and other secrets out of every repository: put their `export`
+lines in `~/.secrets`, readable only by you (`chmod 600 ~/.secrets`). The base
+`~/.zprofile` sources it before `~/.zprofile.local`, so login shells have
+them. `zsh -c` without `-l` does not read it.
+
 Link your file in `nix/home.nix`:
 
 ```nix

@@ -23,6 +23,11 @@ if [[ -x /opt/homebrew/bin/brew ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
+# Secrets that stay out of every repository: export lines in ~/.secrets.
+if [[ -r ~/.secrets ]]; then
+  source ~/.secrets
+fi
+
 if [[ -r ~/.zprofile.local ]]; then
   source ~/.zprofile.local
 fi
