@@ -209,11 +209,10 @@ mas_name() {
     END { print $n if defined $n }
   ') || out=''
   [[ -z $out ]] || { printf '%s' "$out"; return 0; }
-  # Then the App Store. Not verified against the output of a real mas: the
-  # first line of `mas info` is taken to be "Name version [price]". Drop a
-  # trailing [...], then the last word (the version); the rest is the name.
-  out=$("$mas" info "$1" 2>/dev/null) || return 1
-  out=$(head -n 1 <<<"$out" | sed -E 's/[[:space:]]*\[[^]]*\][[:space:]]*$//; s/^[[:space:]]+//; s/[[:space:]]*[^[:space:]]+[[:space:]]*$//')
+  # Then the App Store. mas 7 `info --json` prints one JSON object per line
+  # (JSON Lines); the name of the app is `.name` of the first one.
+  out=$("$mas" info --json "$1" 2>/dev/null) || return 1
+  out=$(jq -rn 'first(inputs) | .name | strings' <<<"$out" 2>/dev/null) || return 3
   [[ -n $out ]] || return 3
   printf '%s' "$out"
 }

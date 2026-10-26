@@ -1372,8 +1372,9 @@ The nix module reads both files through two options, `dotkit.lists.taps` and
 files and lists them in its `nix/darwin.nix`, which no longer has the
 `homebrew.taps = [ ];` and `homebrew.masApps = { };` lines.
 `dotkit add mas:ID` and `dotkit remove mas:ID` (`scripts/dotkit-pkg`) edit
-`nix/mas.txt`. The name comes from `mas`; without `mas`, the command says to
-run `dotkit add brew:mas` first.
+`nix/mas.txt`. The name comes from `mas`: from `mas list` when the app is
+installed, else `.name` of the first object of `mas info --json <id>` (JSON
+Lines). Without `mas`, the command says to run `dotkit add brew:mas` first.
 
 ## 13. Refactor steps
 
@@ -1468,6 +1469,3 @@ None block the work.
 - Not planned, possible later: the framework and version-manager items
   could name their own shell lines, using `Finding.source`, which today only
   the leftovers report shows.
-- `dotkit add mas:ID` takes the name of an app that is not installed from
-  the first line of `mas info`. That format was not checked against a real
-  `mas` (`mas_name` in `scripts/dotkit-pkg`).
