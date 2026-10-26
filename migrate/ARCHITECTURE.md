@@ -33,7 +33,8 @@ Hard constraints:
   is `~/.secrets`: setup appends the variables of the secrets that it moves
   there, and never changes a line that the file has (section 6). It never
   installs, uninstalls, or deletes anything on the Mac. Removals are report
-  text only.
+  text only. The one mode that changes the Mac is `dotkit tidy`
+  (`TIDY.md`), and only through `tidy/actions.py`.
 - **Secrets:** a detected secret never goes into a file that Git tracks, and
   the report never shows one. A secret that the wizard can move goes to
   `~/.secrets` as a variable, and the repository file refers to the variable.
@@ -107,6 +108,8 @@ migrate/
       homebrew.py  appstore.py  node_tools.py  python_tools.py  built_tools.py
       runtimes.py  shell.py  frameworks.py  config_files.py  other_config.py
       logins.py  leftovers.py
+    tidy/                          dotkit tidy (TIDY.md): apps.py (scan) and plan.py follow the rules
+                                   of migrators/; actions.py changes the Mac; cli.py runs the mode
     ui/
       screens.py                   Screen specs from the Session's pages; no curses
       curses_ui.py                 widgets and the screen loop

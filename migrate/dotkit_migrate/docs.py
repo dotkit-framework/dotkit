@@ -339,7 +339,7 @@ class ListDoc(_Doc):
         host = self.docs.host or "this Mac"
         if self.docs.mode == "adopt":
             text = self.base_text + ("\n" if self.base_text and not self.base_text.endswith("\n") else "")
-            return text + f"# Added by dotkit migrate on {host}.\n" + "".join(r + "\n" for r in rows)
+            return text + f"# Added by {self.docs.by} on {host}.\n" + "".join(r + "\n" for r in rows)
         source = "the App Store" if self.kind == "mas" else "Homebrew"
         return (self.base_text.rstrip("\n") + "\n\n" + f"# From {source} on {host}, see MIGRATION.md.\n" +
                 "".join(r + "\n" for r in rows))
@@ -1080,10 +1080,11 @@ class Docs:
     """The documents of one run. mode: "setup" (base text from the template) or "adopt" (from the repository)."""
 
     def __init__(self, mode: str, template: Path, repo: Optional[Path], home: str = "", host: str = "",
-                 strict: bool = False, secrets: Optional[Dict[str, str]] = None):
+                 strict: bool = False, secrets: Optional[Dict[str, str]] = None, by: str = "dotkit migrate"):
         assert mode in ("setup", "adopt")
         assert repo is not None, "the documents need the repository path"
         self.mode, self.template, self.repo = mode, template, repo
+        self.by = by  # the command that adds to the lists in adopt mode: "dotkit migrate" or "dotkit tidy"
         self.home, self.host, self.strict = home, host, strict
         # The variables that ~/.secrets assigns already: SecretsDoc never writes them again.
         self.secrets: Dict[str, str] = dict(secrets or {})

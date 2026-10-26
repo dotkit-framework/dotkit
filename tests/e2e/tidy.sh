@@ -1,0 +1,72 @@
+#!/bin/bash
+# tests/e2e/tidy.sh: dotkit tidy and the adopt of brew bundle on the CI runner,
+# after setup. migrate/TIDY.md, section 9.
+#
+# For each of two small casks, it makes an app that is installed "by hand": it
+# installs the cask, copies the app aside, uninstalls the cask, and puts the
+# copy back. The app then has the version of the cask, and Homebrew does not
+# know it. Then:
+#   1. dotkit tidy adopts the first app: brew install --cask --adopt.
+#   2. dotkit add cask:<token> adopts the second app through brew bundle,
+#      which passes --adopt.
+# Both times the bundle must stay the same directory (its inode), and a
+# setting in the preferences of the app must stay.
+set -euo pipefail
+
+fail() { printf 'tidy.sh: %s\n' "$*" >&2; exit 1; }
+
+export HOMEBREW_NO_AUTO_UPDATE=1
+dotkit=(/run/current-system/sw/bin/zsh -lc)
+
+# install_by_hand <token> <app>: the app of the cask, without the cask.
+install_by_hand() {
+  local token=$1 app=/Applications/$2 copy
+  ! brew list --cask "$token" >/dev/null 2>&1 || fail "$token is installed already."
+  brew install --cask "$token"
+  copy=$(mktemp -d)/$2
+  ditto "$app" "$copy"
+  brew uninstall --cask "$token"
+  [[ ! -e $app ]] || fail "brew uninstall left $app."
+  ditto "$copy" "$app"
+  rm -rf "$(dirname "$copy")"
+  ! brew list --cask "$token" >/dev/null 2>&1 || fail "Homebrew still has $token."
+}
+
+# remember <app>: the inode of the bundle, after a setting in the app data (its preferences).
+remember() {
+  local app=/Applications/$1 id
+  id=$(defaults read "$app/Contents/Info" CFBundleIdentifier)
+  defaults write "$id" dotkitTidyE2E -string kept
+  stat -f %i "$app"
+}
+
+# check_adopted <token> <app> <inode>
+check_adopted() {
+  local token=$1 app=/Applications/$2 inode=$3 id
+  brew list --cask "$token" >/dev/null || fail "Homebrew does not have $token."
+  [[ $(stat -f %i "$app") == "$inode" ]] || fail "$app is not the same directory."
+  grep -qx "$token" ~/.dotfiles/nix/casks.txt || fail "nix/casks.txt does not have $token."
+  id=$(defaults read "$app/Contents/Info" CFBundleIdentifier)
+  [[ $(defaults read "$id" dotkitTidyE2E) == kept ]] || fail "the app data of $app changed."
+}
+
+# 1. dotkit tidy, with a plan file. Rectangle is a cask with auto_updates.
+install_by_hand rectangle Rectangle.app
+inode=$(remember Rectangle.app)
+out=$("${dotkit[@]}" 'dotkit tidy -n')
+printf '%s\n' "$out"
+grep -Eq '^adopt +cask:rectangle +/Applications/Rectangle\.app' <<<"$out" || fail 'the plan does not adopt Rectangle.'
+plan=$(mktemp)
+echo 'adopt cask:rectangle /Applications/Rectangle.app' >"$plan"
+"${dotkit[@]}" "dotkit tidy -y --plan '$plan'"
+rm -f "$plan"
+check_adopted rectangle Rectangle.app "$inode"
+grep -qx '# Added by dotkit tidy on .*\.' ~/.dotfiles/nix/casks.txt || fail 'nix/casks.txt has no tidy comment.'
+
+# 2. brew bundle adopts an app that the list has.
+install_by_hand maccy Maccy.app
+inode=$(remember Maccy.app)
+"${dotkit[@]}" 'dotkit add -y cask:maccy'
+check_adopted maccy Maccy.app "$inode"
+
+echo 'tidy.sh: ok'

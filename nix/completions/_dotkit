@@ -13,6 +13,7 @@ _dotkit() {
     'info:show where a tool is declared, its command, and its sources'
     'list:show the declared tools'
     'migrate:add the packages that were installed by hand to the lists'
+    'tidy:give the apps a clean source: casks and the App Store'
     'history:show the package changes of the last apply'
     'rollback:go back to the previous Nix generation'
     'clean:delete old Nix generations, downloads, and mise versions'
@@ -51,6 +52,8 @@ _dotkit() {
         migrate)
           _arguments $dry_run $yes $help \
             '(-a --all)'{-a,--all}'[also cargo and Go tools, which mise builds from source]' && ret=0 ;;
+        tidy)
+          _arguments $dry_run $yes $help '--plan[read the edited plan from a file]:plan file:_files' && ret=0 ;;
         history|rollback)
           _arguments $help && ret=0 ;;
       esac

@@ -218,6 +218,13 @@ class NoWriteTests(unittest.TestCase):
             with self.subTest(f=f.name):
                 self.assertEqual(write_findings(f.read_text(encoding="utf-8"), f.name), [])
 
+    def test_the_scan_and_the_plan_of_tidy_do_not_write_or_run_commands(self):
+        """TIDY.md, section 7: only tidy/actions.py and tidy/cli.py change the Mac."""
+        for name in ("apps.py", "plan.py"):
+            f = PACKAGE / "tidy" / name
+            with self.subTest(f=name):
+                self.assertEqual(write_findings(f.read_text(encoding="utf-8"), name), [])
+
     def test_the_check_finds_writes(self):
         """The check itself: each of these fails it."""
         for src in ("open(p, 'w')", "open(p, mode='a')", "open(p, m)", "p.open('w')", "p.write_text('x')",

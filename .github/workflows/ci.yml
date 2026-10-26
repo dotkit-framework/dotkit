@@ -44,7 +44,7 @@ jobs:
             scripts/herdr/git-status.sh scripts/herdr/process-name.sh \
             scripts/herdr/process-name.bash config/bash/bash_profile \
             templates/default/dotkit tests/e2e/verify.sh \
-            tests/e2e/etc-restored.sh tests/e2e/migrated.sh tests/setup.sh
+            tests/e2e/etc-restored.sh tests/e2e/migrated.sh tests/e2e/tidy.sh tests/setup.sh
 
       # shellcheck does not read zsh. zsh -n parses a file without running it.
       # scripts/herdr/process-name.sh is sourced by zsh too.
@@ -188,6 +188,12 @@ jobs:
 
       - name: Verify the migration
         run: tests/e2e/migrated.sh "$RUNNER_TEMP"
+
+      # Apps from a "DMG": dotkit tidy adopts one, and brew bundle adopts one
+      # that the list has. After the checks of the migration, which compare
+      # the lists with the runner before setup.
+      - name: Verify dotkit tidy
+        run: tests/e2e/tidy.sh
 
       - name: Show the migration report
         if: always()

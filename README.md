@@ -119,6 +119,29 @@ adds them. It skips the Homebrew copy of a tool that the lists have from Nix
 or mise. cargo and Go tools only with `--all`, because mise builds them from
 source.
 
+`dotkit tidy` does the same for apps from other places: a DMG, a `.pkg`
+installer, or the App Store. It scans `/Applications` and `~/Applications`,
+finds the cask of each app by its name and bundle ID, and writes a plan
+with one line per app:
+
+```
+adopt    cask:brave-browser  /Applications/Brave Browser.app  # by hand; the cask auto-updates
+replace  cask:joplin         /Applications/Joplin.app         # by hand; 3.6.14, the cask has 3.7.21
+add      mas:409201541       /Applications/Pages.app          # from the App Store, not in nix/mas.txt
+keep                         /Applications/Home VPN.app       # by hand; no cask
+```
+
+`adopt` gives the app to the cask in place (`brew install --cask --adopt`),
+and `replace` installs the cask over it. `add` adds an app that is from a
+cask or the App Store already to the lists. `trash` moves an app to the
+Trash, and `keep` changes nothing. Tidy opens the plan in your editor,
+checks it, shows the commands, and asks once. Then it adds the casks and
+App Store apps to `nix/casks.txt` and `nix/mas.txt`. The app data in
+`~/Library` stays: tidy never touches it. Apps from Setapp, JetBrains
+Toolbox, and Apple, and apps that you cannot change without sudo, stay as
+they are. `dotkit tidy -n` prints the plan and changes nothing.
+`migrate/TIDY.md` has the details.
+
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
 dotfiles repository does the same.
@@ -268,7 +291,9 @@ used Mac: it has many Homebrew packages, and the job adds old dotfiles. It
 applies again, then `tests/e2e/verify.sh` checks the result: the login shell, the
 `dotkit` command, zsh, `bash -l`, the links, mise, and `dotkit add` and `remove`.
 `tests/e2e/migrated.sh` checks the new lists, the carried shell lines, and
-`MIGRATION.md`.
+`MIGRATION.md`. `tests/e2e/tidy.sh` makes two apps that look installed by hand, then
+checks that `dotkit tidy` adopts one and that `dotkit add` adopts the
+other, with the same bundle and the same app data.
 The `e2e-etc` job, on macOS 26 only, installs Nix first and keeps the changed
 `/etc/shells` of the runner, so the first activation fails. It checks that
 setup moved `/etc/zshrc` and `/etc/bashrc` back, then moves `/etc/shells`
