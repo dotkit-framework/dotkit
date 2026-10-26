@@ -69,16 +69,16 @@ class GuardTests(unittest.TestCase):
         t.commit()
         plan = writer.render(d)
         tracked = plan.files["config/zsh/zshrc"]
-        self.assertEqual(plan.local["local/zshrc.zsh"], function + "\n")
+        self.assertEqual(plan.secrets, "")
         self.assertNotIn("request()", tracked)
         self.assertNotIn("echo before", tracked)
         self.assertNotIn("echo after", tracked)
         self.assertIn("export EDITOR=vim", tracked)
-        self.assertIn("/local/", plan.files[".gitignore"])
-        for text in (tracked, plan.local["local/zshrc.zsh"]):
-            for shell in ("/bin/zsh", "/bin/bash"):
-                self.assertEqual(subprocess.run([shell, "-n", "-c", text], capture_output=True).returncode, 0)
+        self.assertNotIn("/local/", plan.files.get(".gitignore", ""))
+        for shell in ("/bin/zsh", "/bin/bash"):
+            self.assertEqual(subprocess.run([shell, "-n", "-c", tracked], capture_output=True).returncode, 0)
         self.assertNotIn("hunter2", report.render(d.report, "mac", "~/.dotfiles"))
+        self.assertIn("config/zsh/zshrc: a statement with a secret is not in Git.", d.report.sections["Secrets"].items)
 
     def test_mask_lines(self):
         lines = ["safe\n", fake.fill("token = @GH@\n"), fake.fill("@NPM@")]
@@ -99,11 +99,11 @@ class WriteTests(unittest.TestCase):
         self.assertTrue(os.access(repo / "dotkit", os.X_OK))
         self.assertEqual((repo / "config/ghostty.conf").read_text(), "font-size = 16\n")
         self.assertTrue((repo / "MIGRATION.md").read_text().startswith("# Migration from"))
-        mode = stat.S_IMODE((repo / "local/zshrc.zsh").stat().st_mode)
-        self.assertEqual(mode, 0o600)
+        self.assertFalse((repo / "local").exists())
+        self.assertIn("GITHUB_TOKEN", result.secret_names)
+        self.assertFalse((h.home / ".secrets").exists(), "write_new does not write ~/.secrets")
         status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
                                 capture_output=True, text=True, check=True).stdout
-        self.assertNotIn("local/", status, "Git ignores the secrets")
         self.assertIn("MIGRATION.md", status)
 
     def test_nested_finder_metadata_is_not_copied(self):
@@ -202,11 +202,20 @@ class VerifyTests(unittest.TestCase):
         writer.write_new(self.plan, TEMPLATE)
         self.assertIn(name, (self.plan.repo / ".build/links-in-way").read_text())
 
-    def test_local_files_are_not_checked(self):
-        self.assertTrue(any(fake.TOKENS["@GH@"] in text for text in self.plan.local.values()))
+    def test_secrets_stay_out_of_the_repository(self):
+        self.assertIn(fake.TOKENS["@GH@"], self.plan.secrets)
         writer.write_new(self.plan, TEMPLATE)
         self.assertEqual(partial_dirs(self.h), [".dotfiles"])
         self.assertEqual(writer.verify(self.plan.repo, self.plan), [])
+        for root, _dirs, files in os.walk(self.plan.repo):
+            for name in files:
+                self.assertNotIn(fake.TOKENS["@GH@"].encode(), Path(root, name).read_bytes(), name)
+
+    def test_write_secrets_appends(self):
+        path = self.h.write(".secrets", "export OLD=1", mode=0o600)
+        writer.write_secrets(self.plan)
+        self.assertEqual(path.read_text(), "export OLD=1\n\n" + self.plan.secrets)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_the_golden_plans_write(self):
         """The verification never fires on the plans of the golden tests."""

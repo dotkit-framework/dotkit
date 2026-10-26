@@ -1,7 +1,9 @@
 """Shell files: the lines of ~/.zshenv, ~/.zprofile, ~/.zshrc, ~/.bash_profile, and their .local files.
 
 rcparse sorts each statement: carried to the repository file of its layer,
-a secret (to local/, which Git ignores), or a finding for the report. dotkit
+a secret, or a finding for the report. An assignment with a secret goes to
+~/.secrets, outside the repository; another statement with a secret goes to
+the report, without its text. dotkit
 links its own shell files, so the other shell files get to-dos; the
 "Login shell" to-do is core (registry.py), as it reads only the identity.
 """
@@ -13,7 +15,7 @@ from pathlib import Path
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from .. import base as base_mod
-from .. import rcparse
+from .. import rcparse, secrets_file
 from ..context import Context, executables, is_managed, read_text
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
@@ -202,7 +204,7 @@ class Shell(Migrator):
             detail = f"To {repo_file} (~/{layer})."
             if r.secrets:
                 parts.append(plural(len(r.secrets), "line") + " with a secret")
-                detail += " The lines with a secret go to local/, which Git ignores."
+                detail += " Variables with a secret go to ~/.secrets, outside the repository."
             label = f"~/{name}: " + " and ".join(parts)
             items.append(Item(f"shell:{name}", label, detail))
         return [Page("shell", "Shell lines", "config/zsh, config/bash",
@@ -238,13 +240,7 @@ class Shell(Migrator):
                     written = True
                     r.carried(plural(res.statements, "line") + f" of ~/{x.name}", f"{repo_file} (~/{layer})")
                 if res.secrets and on:
-                    rc.add_secret("\n".join([f"# From ~/{x.name}."] + [s.text for s in res.secrets]))
-                    written = True
-                    r.todo("Secrets", "These lines have a secret, so they are not in Git. They are in a file in "
-                                      "local/ of this repository, which Git ignores, and the repository file reads "
-                                      "it. On a new Mac, copy the file by hand, or keep its lines in a manager for "
-                                      "passwords.",
-                           [f"~/{x.name}:{s.lines[0]}: `{s.name}` -> {rc.local}" for s in res.secrets])
+                    _secrets(txn, x.name, res.secrets)
                 if left_out(pages, c, f"shell:{x.name}"):
                     # What the page offered: the full chain, as the page label counts it.
                     r.todo("Not carried, by your choice", NOT_CARRIED,
@@ -275,6 +271,39 @@ class Shell(Migrator):
                 ".zlogout": "It stays in place, and zsh still reads it.",
             }[name]
             r.todo("Other shell files", "", [f"~/{name}: {note}"])
+
+
+SECRETS_INTRO = ("These variables have a secret, so they are not in Git. They are in ~/.secrets now, which the dotkit "
+                 "~/.zprofile and ~/.bash_profile read, so login shells and the programs they start have them. "
+                 "On a new Mac, copy ~/.secrets by hand; keep it out of Git.")
+NOT_MOVED_INTRO = ("These lines have a secret, and they are not a plain assignment that ~/.secrets can take, so they "
+                   "are not carried. Put the secret in ~/.secrets as a variable, for example "
+                   "`export MY_TOKEN='...'`, and copy the line, with the variable instead of the secret, to the "
+                   "repository file.")
+
+
+def _secrets(txn: Txn, name: str, lines: List[rcparse.SecretLine]) -> None:
+    """The lines with a secret of one shell file: an assignment to ~/.secrets, another statement to the report."""
+    r, moved, refused, left = txn.report, [], [], []
+    for s in lines:
+        m = rcparse._ASSIGN.match(s.text) if "\n" not in s.text.strip() else None
+        if m is None:
+            left.append(f"~/{name}:{s.lines[0]}: {s.name}")
+            continue
+        var, value = m.group("name"), m.group("value")
+        line = ("export " if m.group("export") else "") + f"{var}={value}"
+        if txn.secrets().export(var, secrets_file.value_of(value), line, f"~/{name}"):
+            moved.append(f"~/{name}:{s.lines[0]}: `{var}`")
+        else:
+            refused.append(f"~/{name}:{s.lines[0]}: `{var}`. ~/.secrets has `{var}` with another value already, "
+                           "so this one is not added. Check which one you need.")
+    if moved:
+        r.carried(plural(len(moved), "variable") + f" with a secret of ~/{name}", "~/.secrets")
+        r.todo("Secrets", SECRETS_INTRO, moved)
+    if refused:
+        r.todo("Secrets", "", refused)
+    if left:
+        r.todo("Secrets", NOT_MOVED_INTRO, left)
 
 
 def _findings(txn: Txn, name: str, res: rcparse.Result) -> None:

@@ -1,8 +1,10 @@
-"""Other config: files and directories in ~/.config and dotfiles in the home directory, off by default.
+"""Other config: files and directories in ~/.config, dotfiles in the home directory, and the config of the apps
+of catalog.APP_CONFIGS (~/.pi/agent), off by default.
 
 They are not part of dotkit and keep working in place. A selected one is
 copied to config/ and linked back. Files with state, caches, logins, or a
-secret are not offered.
+secret are not offered. Nor are the old places of an app's config (~/.config/pi):
+the app no longer reads them.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .. import base as base_mod
-from .. import secrets
+from .. import catalog, secrets
 from ..context import Context, is_managed, tilde
 from ..docs import Txn
 from ..model import Choices, Facts, Item, Page
@@ -47,11 +49,22 @@ class Entry:
     adoptable: bool
     reason: str = ""  # why it cannot be adopted
     files: int = 0
+    dest: str = ""  # the repository path; "" for the default of its place
+
+
+@dataclass
+class OldPlace:
+    """An old place of an app's config, which the app no longer reads."""
+
+    rel: str
+    app: str
+    root: str  # where the app reads its config now, relative to the home directory
 
 
 @dataclass
 class OtherFacts:
-    found: List[Entry] = field(default_factory=list)  # in ~/.config, then the dotfiles
+    found: List[Entry] = field(default_factory=list)  # in ~/.config, the dotfiles, then the apps
+    old: List[OldPlace] = field(default_factory=list)
 
 
 def facts_of(f: Facts) -> Optional[OtherFacts]:
@@ -136,15 +149,26 @@ class OtherConfig(Migrator):
 
     def scan(self, ctx: Context) -> OtherFacts:
         out = OtherFacts()
+        old = {rel: spec for spec in catalog.APP_CONFIGS for rel in spec.old}
+        for rel, spec in old.items():
+            if os.path.lexists(ctx.home / rel):
+                out.old.append(OldPlace(rel, spec.name, spec.root))
         config = ctx.home / ".config"
         if config.is_dir():
             for p in sorted(config.iterdir(), key=lambda q: q.name.lower()):
-                if p.name in base_mod.BASE_CONFIG_DIRS or p.name.startswith("."):
+                if p.name in base_mod.BASE_CONFIG_DIRS or p.name.startswith(".") or f".config/{p.name}" in old:
                     continue
                 out.found.append(_assess(ctx, ".config/" + p.name))
         for name in HOME_DOTFILES:
             if (ctx.home / name).is_file():
                 out.found.append(_assess(ctx, name))
+        for spec in catalog.APP_CONFIGS:
+            for name in spec.entries:
+                rel = f"{spec.root}/{name}"
+                if os.path.lexists(ctx.home / rel):
+                    entry = _assess(ctx, rel)
+                    entry.dest = f"{spec.dest}/{name}"
+                    out.found.append(entry)
         return out
 
     def pages(self, f: Facts) -> List[Page]:
@@ -170,7 +194,7 @@ class OtherConfig(Migrator):
         for x in o.found:
             if c.selected("other", f"other:{x.rel}") and x.adoptable:
                 name = x.rel.removeprefix(".config/").lstrip(".")
-                dest = f"config/{name}" if x.rel.startswith(".config/") else f"config/home/{name}"
+                dest = x.dest or (f"config/{name}" if x.rel.startswith(".config/") else f"config/home/{name}")
                 if txn.copies.add(dest, Path(home, x.rel)):
                     txn.links().link(x.rel, dest)
                     adopted.append(f"~/{x.rel} -> {dest}")
@@ -205,3 +229,7 @@ class OtherConfig(Migrator):
         if skipped:
             r.todo("Other config that stays out of the repository",
                    "These stay in place. They hold state, caches, or logins, so they are not for Git.", skipped)
+        if o.old:
+            r.todo("Other config that stays out of the repository", "",
+                   [f"~/{p.rel}: an old place of the {p.app} config. {p.app} reads ~/{p.root} now, so ~/{p.rel} "
+                    "has no effect, and it is not offered. Delete it when you no longer need it." for p in o.old])

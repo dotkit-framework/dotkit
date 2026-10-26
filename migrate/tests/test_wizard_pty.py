@@ -241,7 +241,7 @@ class WizardPtyTests(unittest.TestCase):
         self.assertEqual(picked["shell"], ["shell:.zshrc"])
         self.assertEqual(picked["other"], ["other:.config/nvim"])
         self.assertEqual(c["options"]["file:.config/ghostty/config"], "replace")
-        self.assertEqual(c["options"]["file:.npmrc"], "keep")
+        self.assertEqual(c["options"]["file:.npmrc"], "tokens")
         self.assertIn("The plan:", screen)
         self.assertIn("Not carried, by your choice:", screen)
 

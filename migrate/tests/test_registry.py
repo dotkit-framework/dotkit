@@ -206,7 +206,7 @@ class RegistryTests(unittest.TestCase):
         plan = s.build(s.defaults(str(h.home / ".dotfiles")))
         self.assertEqual((s.failures, plan.failures), ([], []))
         self.assertEqual(sorted(plan.files), ["MIGRATION.md", "nix/user.nix"])
-        self.assertEqual((plan.copies, plan.local, plan.links, plan.move_links, plan.blockers), ({}, {}, {}, [], []))
+        self.assertEqual((plan.copies, plan.secrets, plan.links, plan.move_links, plan.blockers), ({}, "", {}, [], []))
         self.assertIn("## Carried over\n\nNothing.\n\n## To do\n\nNothing.\n", plan.report)
 
 
@@ -242,9 +242,9 @@ class NoWriteTests(unittest.TestCase):
 # The .todo(...) calls whose intro the static check cannot read, and why.
 NOT_STATIC = {
     # ReportView.todo hands its arguments on to ReportDoc.todo: the intro is whatever its caller gave.
-    "dotkit_migrate/docs.py:1000",
+    "dotkit_migrate/docs.py:1099",
     # rcparse.hint(...): test_rcparse_hints_have_no_secret checks every hint with both file names.
-    "dotkit_migrate/migrators/shell.py:295",
+    "dotkit_migrate/migrators/shell.py:324",
 }
 
 

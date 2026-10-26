@@ -123,8 +123,8 @@ def summary(plan: Plan, report: ReportDoc, git_name: str = "", git_email: str = 
         out += ["Setup cannot continue:"] + [f"  {b}" for b in p.blockers] + [""]
     out += [f"Repository: {repo_rel} (new)", f"zsh keymap: {p.keymap}", ""]
     out += [f"{what} -> {where}" for what, where in report.carried_rows]
-    if p.local:
-        out.append("Lines with secrets -> " + ", ".join(sorted(p.local)) + " (Git ignores local/)")
+    if p.secret_names:
+        out.append("Secrets -> ~/.secrets, outside the repository: " + ", ".join(p.secret_names))
     nulls = [t for t, v in p.links.items() if v is None]
     if nulls:
         out.append("Stay in place, not linked: " + ", ".join(f"~/{t}" for t in nulls))

@@ -32,7 +32,6 @@
   "home": "<HOME>",
   "keymap": "emacs",
   "links": {},
-  "local": {},
   "move_links": [],
   "repo": "~/.dotfiles",
   "report": [
@@ -51,6 +50,8 @@
     "Nothing.",
     ""
   ],
+  "secret_names": [],
+  "secrets": "",
   "summary": [
     "Repository: ~/.dotfiles (new)",
     "zsh keymap: emacs",

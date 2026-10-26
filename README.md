@@ -76,16 +76,29 @@ dotkit also has, other config to copy into the repository, and the plan.
 | Global npm, pnpm, bun, pipx, and `uv tool` tools | `config/mise.toml`, as `npm:` and `pipx:` tools. cargo and Go tools are off: mise builds them from source |
 | `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
 | Ghostty, Git, and mise config | Yours, read after the dotkit file |
-| Starship, npm, uv, and the other tools that read one file | Yours, instead of the dotkit file |
-| Detected secrets: tokens in shell files, `~/.npmrc` with a token | Shell statements that would otherwise be carried over go to ignored `local/` if a secret is detected. The wizard omits other statements and masks their detected secrets in the report. A config file with a detected secret stays in place and is not linked |
-| Other `~/.config` entries, version managers | Stay in place. The report lists them, with the mise commands for the versions |
+| Starship, uv, and the other tools that read one file | Yours, instead of the dotkit file |
+| `~/.npmrc` with registries | The dotkit file, with your registries and their tokens. Your other npm settings go to the report |
+| Detected secrets: tokens in shell files, `~/.npmrc`, and Git config | Variables in `~/.secrets`, outside the repository (see below) |
+| Other `~/.config` entries, pi (`~/.pi/agent`), version managers | Stay in place, or go to `config/` if you select them. The report lists them, with the mise commands for the versions. An old place of an app's config, such as `~/.config/pi`, is not offered |
+
+The wizard moves the secrets that it detects to `~/.secrets`, and the
+repository files refer to them by name:
+
+| Secret | In `~/.secrets` | In the repository |
+|---|---|---|
+| An assignment in a shell file, such as `export GITHUB_TOKEN=...` | The same line | Nothing |
+| A registry token in `~/.npmrc` | `export NPM_TOKEN='...'`, named after the registry | `${NPM_TOKEN}` in `config/npmrc` |
+| A Git setting with a token, such as a `url` section with the token in it | `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, and `GIT_CONFIG_VALUE_<n>`, which Git reads | `config/gitconfig` without the setting |
+
+The wizard adds only the names that `~/.secrets` does not have, and it never
+changes a line there. The variables of `~/.npmrc` and Git config also go to
+`dotkit.guiSecrets` in `nix/darwin.nix`, so GUI apps that used these files
+still get them. A secret in another place, such as an alias, a function, or
+another config file, is not carried; the report names it, never its value.
 
 Secret detection is heuristic. It can miss secrets and flag text that is not
-secret. Shell statements that would otherwise be carried over go to the
-repository's ignored `local/` directory if a secret is detected. The wizard
-omits other statements and masks their detected secrets in the report.
-This does not guarantee that the generated files contain no secrets. Review
-the generated files before you commit or publish the repository.
+secret. This does not guarantee that the generated files contain no secrets.
+Review the generated files before you commit or publish the repository.
 
 Newly mapped global tools use mise's `"latest"`, not their installed versions.
 `MIGRATION.md` records the previous installed versions that the scan finds.
@@ -146,9 +159,20 @@ Most base files read a file of yours after them, so your settings win:
 the same PATH and mise as zsh. An interactive bash then reads `~/.bashrc`.
 
 Keep tokens and other secrets out of every repository: put their `export`
-lines in `~/.secrets`, readable only by you (`chmod 600 ~/.secrets`). The base
-`~/.zprofile` sources it before `~/.zprofile.local`, so login shells have
-them. `zsh -c` without `-l` does not read it.
+lines in `~/.secrets`, readable only by you (`chmod 600 ~/.secrets`). Config
+files refer to the variables, for example `${NPM_TOKEN}` in `config/npmrc`.
+Write plain `export NAME='value'` lines, because zsh, bash, and `/bin/sh`
+read the file:
+
+- The base `~/.zprofile` sources it before `~/.zprofile.local`, and
+  `~/.bash_profile` before `~/.bash_profile.local`, so login shells and the
+  programs that they start have the variables. `zsh -c` without `-l` does not
+  read it.
+- GUI apps get the names in `dotkit.guiSecrets`: `NPM_TOKEN` and
+  `GITHUB_TOKEN` from the base, and yours in `nix/darwin.nix`, for example
+  `dotkit.guiSecrets = [ "GITHUB_NPM_TOKEN" ];`. A launchd agent reads the
+  values from `~/.secrets` at login and when the file changes. An app that
+  is open keeps the old value until you restart it.
 
 Link your file in `nix/home.nix`:
 

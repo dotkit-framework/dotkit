@@ -382,10 +382,9 @@ class LinksAndFilesTests(unittest.TestCase):
         d = setup_docs()
         t = d.begin("shell")
         rc = t.shell_rc(".zshrc")
-        self.assertEqual((rc.path, rc.local), ("config/zsh/zshrc", "local/zshrc.zsh"))
+        self.assertEqual(rc.path, "config/zsh/zshrc")
         self.assertTrue(rc.add_part("# From ~/.zshrc.", "export EDITOR=vim\n"))
         self.assertFalse(rc.add_part("# From ~/.zshrc.", "export EDITOR=vim\n"))
-        self.assertTrue(rc.add_secret("# From ~/.zshrc.\nexport TOKEN=x"))
         with self.assertRaises(ValueError):
             rc.add_part("no comment", "x\n")
         with self.assertRaises(ValueError):
@@ -393,15 +392,50 @@ class LinksAndFilesTests(unittest.TestCase):
         t.shell_rc(".zprofile").ensure()
         t.shell_rc(".bash_profile")
         t.commit()
-        files, local = d.render()
-        self.assertEqual(local, {"local/zshrc.zsh": "# From ~/.zshrc.\nexport TOKEN=x\n"})
+        files, secret_lines = d.render()
+        self.assertEqual(secret_lines, "")
         self.assertEqual(files["config/zsh/zshrc"], (TEMPLATE / "config/zsh/zshrc").read_text() +
-                         "\n# Lines with secrets, not in Git. See MIGRATION.md.\n"
-                         'if [[ -r "$HOME/.dotfiles/local/zshrc.zsh" ]]; then\n'
-                         '  source "$HOME/.dotfiles/local/zshrc.zsh"\nfi\n'
                          "\n# From ~/.zshrc.\nexport EDITOR=vim\n")
         self.assertTrue(files["config/zsh/zprofile"].startswith("# Your lines for zsh login shells"))
         self.assertNotIn("config/bash/bash_profile", files, "nothing added, not ensured")
+
+    def test_secrets(self):
+        """~/.secrets: its variables stay, the same value is no-op, another value is refused and not a Conflict."""
+        d = docs.Docs("setup", TEMPLATE, Path(HOME, ".dotfiles"), home=HOME, strict=True,
+                      secrets={"OLD": "v1", "SAME": "s"})
+        t = d.begin("shell")
+        s = t.secrets()
+        self.assertTrue(s.export("SAME", "s", "export SAME=s", "~/.zshrc"))
+        self.assertFalse(s.export("OLD", "v2", "export OLD=v2", "~/.zshrc"))
+        self.assertTrue(s.export("NEW", "n", "export NEW=n", "~/.zshrc"))
+        self.assertTrue(s.export("NEW", "n", "export NEW='n'", "~/.zshrc"), "the same value")
+        self.assertFalse(s.export("NEW", "m", "export NEW=m", "~/.zshrc"))
+        self.assertEqual(s.free_name("OLD", "v1"), "OLD")
+        self.assertEqual(s.free_name("OLD", "v2"), "OLD_2")
+        self.assertEqual(s.free_name("FRESH", "x"), "FRESH")
+        for name, line in (("1X", "export 1X=1"), ("A-B", "x"), ("OK", "two\nlines")):
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    s.export(name, "v", line, "~/.zshrc")
+        t.commit()
+        t = d.begin("config_files")
+        t.secrets().export("TOK", "t", "export TOK='t'", "~/.npmrc")
+        self.assertTrue(t.darwin_nix().gui_secret("TOK"))
+        self.assertFalse(t.darwin_nix().gui_secret("TOK"))
+        self.assertFalse(t.darwin_nix().gui_secret("NPM_TOKEN"), "the base has it")
+        t.commit()
+        files, secret_lines = d.render()
+        self.assertEqual(secret_lines, "# Added by the dotkit migration. See MIGRATION.md.\n# From ~/.zshrc.\n"
+                                       "export NEW=n\n# From ~/.npmrc.\nexport TOK='t'\n")
+        self.assertEqual(d.secret_names(), ["NEW", "TOK"])
+        self.assertEqual(d.conflicts, [])
+        self.assertTrue(files["nix/darwin.nix"].endswith('  dotkit.guiSecrets = [\n    "TOK"\n  ];\n}\n'))
+        self.assertTrue(files["nix/darwin.nix"].startswith((TEMPLATE / "nix/darwin.nix").read_text()[:-2]))
+        adopt = docs.Docs("adopt", TEMPLATE, Path(HOME, ".dotfiles"), home=HOME)
+        t = adopt.begin("shell")
+        with self.assertRaises(ValueError):
+            t.secrets()
+        t.rollback()
 
     def test_shell_nix_file_and_copies(self):
         d = setup_docs(strict=False)
@@ -413,7 +447,8 @@ class LinksAndFilesTests(unittest.TestCase):
         self.assertFalse(t.file("nix/user.nix").set("rec { }\n"))
         self.assertFalse(t.file("nix/user.nix").set("other\n"))
         self.assertEqual(d.conflicts[-1].path, "nix/user.nix")
-        for path in ("config/mise.toml", "config/zsh/zshrc", "nix/brews.txt", "local/x", "MIGRATION.md", "../x"):
+        for path in ("config/mise.toml", "config/zsh/zshrc", "nix/brews.txt", "nix/darwin.nix", "MIGRATION.md",
+                     "../x"):
             with self.subTest(path=path):
                 with self.assertRaises(ValueError):
                     t.file(path)
@@ -460,8 +495,6 @@ class LinksAndFilesTests(unittest.TestCase):
             "config/bash": ("contains", "config/bash/bash_profile"),
             "config/merged": ("contains", "config/merged/gitconfig"),
             "nix": ("contains", "nix/brews.txt"),
-            "local": ("is", "local"),
-            "local/x": ("is", "local/x"),
             ".": ("contains", ".gitignore"),
         }
         for rel, why in cases.items():
@@ -513,8 +546,7 @@ class LinksAndFilesTests(unittest.TestCase):
                 self.assertFalse(t.copies.add(rel, Path(HOME, ".config/y")))
         self.assertEqual(t.copies.taken(nfd + "/init.lua"), ("inside", nfc))
         self.assertEqual(t.copies.taken("Config/Zsh"), ("contains", "config/zsh/zprofile"))
-        self.assertEqual(t.copies.taken("LOCAL"), ("is", "LOCAL"))
-        self.assertEqual(t.copies.taken("Local/x"), ("is", "Local/x"))
+        self.assertIsNone(t.copies.taken("Local/x"), "local/ is a path like any other")
         self.assertEqual(t.copies.taken("Config/Mise.toml"), ("is", "Config/Mise.toml"))
         with self.assertRaises(docs.ConflictError):
             t.file("CONFIG/Caf\u00e9").set("x\n")

@@ -105,6 +105,8 @@ SECRET_FILES = (
     ".aws/credentials",
     ".gem/credentials",
     ".pypirc",
+    ".pi/agent/auth.json",
+    ".pi/agent/mcp-auth.json",
 )
 
 

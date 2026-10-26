@@ -28,7 +28,7 @@ if [[ -s $report ]]; then pass "$report exists"; else fail "$report is missing";
 # shellcheck disable=SC2016,SC2088 # Literal text of the report.
 for want in '~/.zshrc:3 `eval "$(starship init zsh)"`' '~/.zshrc:4-6 `if [[ -n $OLD_ZSHRC ]]; then`' \
   '~/.zshrc:7 `source ~/.old-zsh-plugin.zsh`' '~/.zprofile:1 `eval "$(/opt/homebrew/bin/brew shellenv)"`' \
-  '`MIGRATION_TEST_PASSWORD` -> local/zshrc.zsh'; do
+  '- ~/.zshrc:8: `MIGRATION_TEST_PASSWORD`' '- ~/.npmrc: `GITHUB_NPM_TOKEN`, for `//npm.pkg.github.com/:_authToken`'; do
   if grep -qF -- "$want" "$report"; then pass "the report has: $want"; else fail "the report does not have: $want"; fi
 done
 
@@ -133,15 +133,43 @@ if [[ $out == $'1/unset/not-a-real-secret-0042\noldll=\'ls -l\'' ]]; then
 else
   fail "a new zsh: '$out'"
 fi
-if (cd "$repo" && git ls-files -z --cached --others --exclude-standard | xargs -0 grep -l 'not-a-real-secret') >/dev/null 2>&1; then
-  fail 'a file that Git does not ignore has the secret'
+if grep -rq 'not-a-real-secret\|npm_xxxx' "$repo" --exclude-dir=.git; then
+  fail 'a file of the repository has a secret'
 else
-  pass 'only an ignored file has the secret'
+  pass 'no file of the repository has a secret'
 fi
-if [[ $(stat -f %Lp "$repo/local/zshrc.zsh" 2>/dev/null) == 600 ]]; then
-  pass 'local/zshrc.zsh is private'
+if [[ ! -e $repo/local ]]; then pass 'the repository has no local/'; else fail "$repo/local exists"; fi
+if [[ $(stat -f %Lp "$HOME/.secrets" 2>/dev/null) == 600 ]] && grep -q '^export MIGRATION_TEST_PASSWORD=' "$HOME/.secrets"; then
+  pass "$HOME/.secrets is private and has the secret"
 else
-  fail 'local/zshrc.zsh is missing or not mode 600'
+  fail "$HOME/.secrets is missing, not mode 600, or does not have the secret"
+fi
+
+step 'npm token'
+token=npm_$(printf 'x%.0s' $(seq 36))
+# shellcheck disable=SC2016 # Literal text of the file.
+if grep -qxF '//npm.pkg.github.com/:_authToken=${GITHUB_NPM_TOKEN}' "$repo/config/npmrc" &&
+  grep -qxF 'min-release-age=7' "$repo/config/npmrc"; then
+  pass 'config/npmrc has the dotkit settings and the token variable'
+else
+  fail 'config/npmrc does not have the dotkit settings and the token variable'
+fi
+# npm shows a token as (protected), so check the variable, and that npm
+# expands it: without it, npm warns "Failed to replace env in config".
+for shell in zsh bash; do
+  # shellcheck disable=SC2016 # The inner shell expands these.
+  cmd='printf "%s\n" "${GITHUB_NPM_TOKEN-unset}"; npm config get registry 2>&1 >/dev/null'
+  if [[ $shell == zsh ]]; then out=$(zsh_login "$cmd") || out=''; else out=$(bash -lc "$cmd" </dev/null) || out=''; fi
+  if [[ $out == "$token" ]]; then
+    pass "$shell -l has GITHUB_NPM_TOKEN from ~/.secrets, and npm expands it"
+  else
+    fail "$shell -l: '$out'"
+  fi
+done
+if grep -q 'GITHUB_NPM_TOKEN' "$repo/nix/darwin.nix"; then
+  pass 'nix/darwin.nix gives GUI apps the token'
+else
+  fail 'nix/darwin.nix does not have GITHUB_NPM_TOKEN in dotkit.guiSecrets'
 fi
 
 printf '\n'

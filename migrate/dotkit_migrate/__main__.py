@@ -120,6 +120,11 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
         info("Dry run: nothing was written.")
         return 0
     try:
+        writer.write_secrets(result)
+    except OSError as e:
+        info(f"dotkit setup: could not add your secrets to ~/.secrets ({e.strerror or e}). Nothing else changed.")
+        return 1
+    try:
         writer.write_new(result, b.template)
     except writer.SecretInRepository as e:
         return secret_stop("setup", e, a, home)

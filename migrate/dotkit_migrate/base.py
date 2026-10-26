@@ -89,6 +89,9 @@ BASE_TARGETS = frozenset(
     ]
 )
 
+# The variables of ~/.secrets that GUI apps get: dotkit.guiSecrets of nix/darwin.nix.
+GUI_SECRETS = ("NPM_TOKEN", "GITHUB_TOKEN")
+
 # ~/.config entries that the base manages a file in. Other entries are yours.
 # Home Manager links files into direnv (nix-direnv) and zsh (the zsh setup).
 BASE_CONFIG_DIRS = frozenset({

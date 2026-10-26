@@ -75,6 +75,11 @@ class Identity:
     login_shell: str = ""
     git_name: str = ""
     git_email: str = ""
+    # ~/.secrets: the variables that it assigns (secrets_file.read), never shown; its mode, None when it does
+    # not exist; and why it cannot be read, "" when it can.
+    secrets: dict[str, str] = field(default_factory=dict, repr=False)
+    secrets_mode: int | None = None
+    secrets_error: str = ""
 
 
 class Facts:
@@ -154,8 +159,9 @@ class Plan:
     files: dict[str, str] = field(default_factory=dict)
     # Files and directories to copy into the repository: repository path -> source.
     copies: dict[str, Path] = field(default_factory=dict)
-    # Files with secrets, in local/ of the repository, which Git ignores.
-    local: dict[str, str] = field(default_factory=dict)
+    # The lines that the writer appends to ~/.secrets, "" for none, and their names.
+    secrets: str = ""
+    secret_names: list[str] = field(default_factory=list)
     links: dict[str, str | None] = field(default_factory=dict)
     # Links of yours (not of Home Manager) where the new configuration links a
     # file, relative to the home directory. Home Manager does not move a link
