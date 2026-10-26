@@ -1110,8 +1110,50 @@ How PATH works, for mise 2026.10.3, from its source and a local test:
   (`nix/darwin.nix:43-44`). There, a leftover binary with the same name in
   `~/.local/bin`, `/opt/homebrew/bin`, or `/opt/homebrew/sbin` **wins** over
   the mise shim.
-- **Not checked:** nested shells, and the order relative to direnv's hook.
-  The report text must not make claims about them.
+- **Nested shells and direnv** (checked with mise 2026.10.3 and dotkit's
+  direnv hook, in a real login interactive zsh driven through a pty). The
+  first `mise activate` saves PATH in `__MISE_ORIG_PATH`, and nested shells
+  inherit it (a later `mise activate` keeps it). At each hook-env, an entry
+  that is not in the saved PATH and not mise's goes in front of mise's
+  tools if it comes before every saved entry. If it comes after one of
+  them, it goes to the very end of PATH (after `/usr/bin`, `/bin`, `/sbin`).
+  direnv's hook is first in `precmd_functions`
+  (`nix/modules/zsh/default.nix:103-105`) and mise's runs later, so in the
+  first shell the directories of a direnv directory come before a carried
+  new directory and before mise's tools. Let P be a directory that a parent
+  shell put in front of PATH: a project's tools from direnv or from
+  `nix develop -c zsh` (a PATH prefix, `PATH=<dir>:$PATH zsh`, stood in for
+  a real `nix develop`). In a nested `zsh -i` or `zsh -l -i` (and
+  `exec zsh`, checked only for the `config/zsh/zshrc` lines):
+  - With the dotkit base alone, P stays first. In `zsh -l -c` (agents), P
+    stays first through `_dotkit_first`.
+  - A carried line in `config/zsh/zshrc` that adds a new directory runs
+    again in the child and puts that directory before P, so it also shadows
+    the tools of the project.
+  - A carried line in `config/zsh/zshrc` that puts in front a directory that
+    `config/zsh/zprofile` adds already moves P to the end of PATH: that
+    directory is a saved entry, and P now comes after it. A directory of
+    `config/zsh/zshenv` is a saved entry too (checked with a zshenv line
+    that prepends it and with one that appends it). So mise's global
+    tools and the system directories come before the tools of the project.
+    With the same directory only in `config/zsh/zprofile`, or appended in
+    `config/zsh/zshrc` (`path+=(…)`), P stays first. `zsh -l -c` is not
+    affected (it reads no zshrc and runs no prompt hook).
+  - A carried line in `config/zsh/zshenv` that puts a directory in front
+    has the same effect by itself, with or without a line in
+    `config/zsh/zshrc`: every zsh runs zshenv, also a nested non-login one.
+    In a nested `zsh -l -c`, the directory of that line comes before P.
+    The same line in `config/zsh/zprofile`, without a line in
+    `config/zsh/zshrc`, keeps P first in all these cases.
+  - The directories of `DOTKIT_TOOL_PATH` stay behind mise's tools, also in
+    `zsh -l -c`. That shell does not activate mise again (zprofile skips it
+    when `MISE_SHELL` is set), but the inherited mise tool directories come
+    before `DOTKIT_TOOL_PATH`, so they are in `_dotkit_first`, which
+    zprofile puts first.
+- **Not checked:** a real `nix develop` (its default shell is bash), panes
+  of a terminal multiplexer (they inherit the environment of the
+  multiplexer server), and nested bash. The report text must not make
+  claims about them.
 
 What the migrator reports:
 
@@ -1123,7 +1165,9 @@ What the migrator reports:
    directories, and the directories carried into `config/zsh/zshenv` or
    `config/zsh/zprofile`. Each such line
    is listed, also when nothing in its directory shadows a tool now, in a
-   block of its own: it puts the directory in front of mise's tools.
+   block of its own: it puts the directory in front of mise's tools, and in
+   an interactive zsh that starts from another shell, also in front of the
+   directories that the parent shell put in front of PATH (P above).
 2. **Shadowed tools.** If such a directory, or `~/.local/bin`,
    `/opt/homebrew/bin`, or `/opt/homebrew/sbin`, contains a command with the
    same name as a mise tool, warn. The mise tools are the tool entries that
@@ -1155,18 +1199,37 @@ What the migrator reports:
    - as a last resort, `activate_aggressive = true` in `[settings]` of
      config/mise.toml. It acts only on full hook-env runs, and it does not
      change GUI apps.
-3. **Shell files that dotkit does not replace and that still run:**
+3. **Carried PATH lines that put an earlier directory in front again.** For
+   each line in `config/zsh/zshrc` that puts in front (`Carried.front`) a
+   directory that `config/zsh/zprofile` or `config/zsh/zshenv` adds
+   already, list the file, the line, and the earlier files, in a block of
+   its own (`leftovers.AGAIN`). These are front directories that are not
+   new: rcparse leaves out the toolPath and system ones
+   (`rcparse.path_done`), so only the early ones remain. Both sides are
+   compared without a trailing slash. In an interactive zsh that starts
+   from another shell (`zsh`, `exec zsh`), mise moves P to the end of PATH.
+   The fix is to drop that directory from the line. An appended line
+   (`path+=(…)`) puts nothing in front and gets no item. A zshenv line that
+   puts the directory in front also gets the item of point 4.
+4. **Carried PATH lines of zshenv that put a directory in front.** For each
+   line carried into `config/zsh/zshenv` with a non-empty `Carried.front`,
+   list the file, the line, and its front directories, in a block of its
+   own (`leftovers.ZSHENV`). Every zsh runs zshenv. In an interactive zsh
+   that starts from another shell (`zsh`), mise moves P to the end of PATH.
+   In `zsh -l -c`, the directory of the line comes before P. The fix is to move the line to config/zsh/zprofile
+   (`~/.zprofile.local`).
+5. **Shell files that dotkit does not replace and that still run:**
    `~/.bashrc` (interactive bash, after `mise activate`), `~/.zlogin` and
    `~/.zlogout` (zsh reads them), `~/.profile` (`sh -l`). Parse them with
    rcparse in report-only mode, and list their framework, version-manager,
    and new-PATH lines as "still runs". Installers for nvm, sdkman, and conda
    write to `~/.bashrc`.
-4. **mise files that mise still reads:** `~/.tool-versions` (always read,
+6. **mise files that mise still reads:** `~/.tool-versions` (always read,
    whatever the idiomatic settings) and `~/.config/mise/conf.d/*.toml`. The
    `runtimes` migrator reports them ("mise still reads these files"), and
    its intro says that they override the dotkit defaults for everything
    under `~`; `leftovers` does not repeat them.
-5. **Homebrew packages that are not in the lists** need no block here. A
+7. **Homebrew packages that are not in the lists** need no block here. A
    deselected one is under "Not carried, by your choice", whose Homebrew
    intro also says that `dotkit upgrade brew` upgrades only the declared
    packages (`dotkit:251-257`), so it goes stale, and that
@@ -1175,7 +1238,7 @@ What the migrator reports:
    dotkit tools". A dependency formula, which `brew leaves` does not show,
    matters only when it shadows a tool, and point 2 finds that by the
    binary.
-6. **A reference check next to every `rm` or `rm -rf` command** (not next to
+8. **A reference check next to every `rm` or `rm -rf` command** (not next to
    the uninstall commands of a package manager): "Before `rm -rf
    ~/.pyenv`, check that nothing points into it: LaunchAgents, IDE
    interpreter settings, git hooks, crontab (`grep -rl ~/.pyenv
@@ -1382,8 +1445,8 @@ Lines). Without `mas`, the command says to run `dotkit add brew:mas` first.
 `migrate-architecture`, in the commits after `24f0778` (the first version
 of this file): `77bb6c5` revised this file, then `d743d97` (step 1) to
 `18d2c60` (step 12a), then step 14 (`45c09f8`), which brings this file in
-line with the code and points the package docstring here, then step 14a.
-`git log --oneline 24f0778..` lists them. Step 12a landed after step 13. The table is the record of what each
+line with the code and points the package docstring here, then step 14a, then step 13b, which closes the first open item of
+section 14. `git log --oneline 24f0778..` lists them. Step 12a landed after step 13. The table is the record of what each
 step did. Its file and line references point to the code before that step
 (mostly `d91296a`), and the modules it names, such as `plan.py`, `scan.py`,
 `adopt.py`, and `migrators/_rest.py`, are gone. Sections 1 to 12 describe
@@ -1409,7 +1472,8 @@ the code as it is now.
 | 13 | `9681715`, `6f9d8d9` (goldens), `1d6b608`, `2f6e09e` (goldens) |
 | 12a | `18d2c60` |
 | 14 | `45c09f8` |
-| 14a | this commit ("Take the extension points from MIGRATORS and the catalog") |
+| 14a | `ddc9742` |
+| 13b | this commit ("Report carried shell lines that reorder nested shells") |
 
 Before step 1, the base fix for mise's idiomatic version files was already
 done (`config/mise.toml`), and the project-file hints were correct.
@@ -1452,20 +1516,21 @@ Rules for every step:
 | 13 | **Leftovers report** (section 11). `Package.commands`; executable listings in the `shell` and `leftovers` scans; `base.TOOL_PATH` checked against `nix/home.nix`; report-only parsing of `~/.bashrc`, `~/.zlogin`, `~/.zlogout`, `~/.profile`; the shadowing warnings with their context and fixes; the stale and cleanup sentences in the Homebrew intro of "Not carried, by your choice" (no separate Homebrew block); binaries matched to their package by link target; the reference check next to every `rm`; the `check_syntax` results are cached per build, so `zsh -n` runs once per text | new report text | 8 | goldens updated and reviewed; fixtures: `~/.npm-global/bin` with `tsc` carried from `~/.zshrc` while `npm:typescript` moves to mise → "interactive shells" warning with file and line; `~/.local/bin/ruff` while `pipx:ruff` moves → "GUI apps" warning; `source ~/.nvm/nvm.sh` in `~/.bashrc` → "still runs"; `~/bin` carried into `config/zsh/zprofile` from `~/.zprofile` and added again in `~/.zshrc` → no new-directory item; `/opt/homebrew/bin/node` (a link into `Cellar/node/`) → "GUI apps" warning with `brew uninstall node`, from the base's `node` |
 | 14 | **Package docstring.** `dotkit_migrate/__init__.py` points to this file and keeps the Python 3.9 rules; README "Work on dotkit" mentions it; the `migrators/__init__.py` docstring lists the import rule of section 3; a consistency pass brings this file in line with the code (stale names, paths, and line references; the status note and commit table of this section) | no change | all | review |
 | 14a | **Extension points without hard-coded lists.** Tests: `test_isolation.py`'s adopters are the migrators that override `adopt`, and `test_failed_scans.py`'s sources come from `MIGRATORS`; `test_catalog.py` compares the generated rcparse rules with the old literals only for the old entries, and checks every entry generically (its words and PATH markers compile and match an example, its variables are names, a detected spec has `dirs`, `env_var` is unique). Code: `Migrator.mise_commands(facts) -> Dict[str, Tuple[str, ...]]` (default empty), which the tool migrators implement; the Session merges the results into `Facts.mise_commands` after the scans (a hook that raises fails its migrator, as its scan would), and `leftovers.mise_tools` reads that instead of the four facts it names today (`leftovers.py:88-92`) | no change | 14 | STD; goldens unchanged; a test adds a fake catalog entry and a fake tool migrator, and the catalog, invariant, isolation, and leftovers tests pass without editing a test list |
+| 13b | **Nested shells and direnv** (section 11). The PATH order checked in a nested `zsh -i`, `zsh -l -i`, `exec zsh`, and `zsh -l -c`, in a direnv directory and under a `nix develop`-like PATH; section 11 states the results and what was not checked. `NEW_DIRS` also names the tools of a project; a new block, `leftovers.AGAIN`, lists each carried `config/zsh/zshrc` line that puts in front a directory of `config/zsh/zprofile` or `config/zsh/zshenv`, naming those files; another, `leftovers.ZSHENV`, lists each carried `config/zsh/zshenv` line that puts a directory in front | new report text | 13, 14a | goldens updated and reviewed (the kitchen-sink `~/bin` line gets the AGAIN item); tests: `~/bin` from `~/.zprofile` put in front again in `~/.zshrc` → the AGAIN item, also with a trailing slash on either side; only in `~/.zprofile`, or appended in `~/.zshrc` → no item; without the earlier line → the new-directory item; `path=(~/new ~/bin $path)` → one item of each; a `~/.zshenv` line that puts `~/bin` in front → the ZSHENV item, and with a `~/.zshrc` line that puts it in front again also the AGAIN item (naming zshenv, or zprofile and zshenv); a `~/.zshenv` line that appends `~/bin` with that `~/.zshrc` line → the AGAIN item only |
 
 Order: 1 → 1a → 2 → 3 and 4 (in either order) → 5 → 6 → 7 → 8. After 8: 9 (then
-9a), 10 (then 10a), and 13 in any order; 11 needs 10a; 12 needs 11; 12a (tests only) can land any time after 12, in parallel with 13. 14 comes after all of them, and 14a after 14. Land each step that changes
-behavior (1a, 2, 7, 9, 9a, 10a, 11, 12, 13) on its own, so that each golden diff can be
+9a), 10 (then 10a), and 13 in any order; 11 needs 10a; 12 needs 11; 12a (tests only) can land any time after 12, in parallel with 13. 14 comes after all of them, 14a after 14, and 13b after 14a. Land each step that changes
+behavior (1a, 2, 7, 9, 9a, 10a, 11, 12, 13, 13b) on its own, so that each golden diff can be
 reviewed by itself.
 
 ## 14. Open items
 
 None block the work.
 
-- Two things were not verified and limit what the leftovers report may
-  claim (section 11): how mise's PATH handling works in nested shells, and
-  its order relative to direnv's hook. If someone checks them later, extend
-  section 11 and the step 13 fixtures.
+- Done in step 13b: mise's PATH order in nested zsh shells and its order
+  relative to direnv's hook (section 11). Still not checked: a real
+  `nix develop`, panes of a terminal multiplexer, and nested bash. If
+  someone checks them, extend section 11 and the step 13b fixtures.
 - Not planned, possible later: the framework and version-manager items
   could name their own shell lines, using `Finding.source`, which today only
   the leftovers report shows.

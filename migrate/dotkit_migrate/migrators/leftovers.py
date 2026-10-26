@@ -6,11 +6,16 @@ before mise's tools in interactive shells; an old copy in a directory of
 dotkit.toolPath comes before the mise shims in GUI apps and launchd agents;
 and shell files that dotkit does not replace still run.
 
-How mise orders PATH (mise 2026.10.3, activate_aggressive = false): a
-directory that is added after `mise activate` stays in front of mise's tool
-directories; one that was on PATH before goes behind them. Nested shells and
-the order relative to direnv's hook were not checked, so no text here makes
-a claim about them.
+How mise orders PATH (mise 2026.10.3, activate_aggressive = false): the
+first `mise activate` saves PATH in __MISE_ORIG_PATH, and a nested shell
+inherits it. A directory that is not in that saved PATH and comes before all
+of its entries stays in front of mise's tool directories; the others go
+behind them. So in a zsh started from another shell, a carried line in
+config/zsh/zshrc that puts a directory of the saved PATH in front again moves
+the directories that the parent put in front (direnv, `nix develop -c zsh`)
+to the end of PATH. A carried line in config/zsh/zshenv that puts a directory
+in front does the same by itself, because every zsh runs zshenv. Section 11
+has what was checked, and what was not.
 """
 
 from __future__ import annotations
@@ -37,10 +42,24 @@ STILL_RUN = ((".bashrc", "bash"), (".zlogin", "zsh"), (".zlogout", "zsh"), (".pr
 EARLY_ZSH = ("config/zsh/zshenv", "config/zsh/zprofile")
 EARLY_BASH = ("config/bash/bash_profile",)
 
+# The directories that a parent shell put in front of PATH, as section 11 names them.
+_PARENT = "a project's tools from direnv or from `nix develop -c zsh`"
 NEW_DIRS = ("These carried PATH lines in config/zsh/zshrc (~/.zshrc.local), which runs after mise starts, put a "
             "directory in front of PATH that was not on PATH before. In interactive shells, that directory comes "
-            "before mise's tools, also for a command that you install there later. Drop a line that you no longer "
-            "need, or move it to config/zsh/zprofile (~/.zprofile.local), which runs before mise starts.")
+            "before mise's tools, also for a command that you install there later. In an interactive zsh that "
+            "starts from another shell, that directory also comes before the directories that the parent shell put "
+            f"in front of PATH, such as {_PARENT}. Drop a line that you no longer need, or move it to "
+            "config/zsh/zprofile (~/.zprofile.local), which runs before mise starts.")
+AGAIN = ("These carried PATH lines in config/zsh/zshrc (~/.zshrc.local) put a directory in front of PATH that "
+         "config/zsh/zprofile or config/zsh/zshenv adds already. In an interactive zsh that starts from another "
+         "shell (for example `zsh` or `exec zsh`), mise then moves the directories that the parent shell put in "
+         f"front of PATH, such as {_PARENT}, to the end of PATH, after /usr/bin. Drop that directory from the "
+         "line: the earlier file adds it already.")
+ZSHENV = ("These carried PATH lines in config/zsh/zshenv (~/.zshenv.local) put a directory in front of PATH. Every "
+          "zsh runs zshenv, so in a zsh that starts from another shell, the directories that the parent shell put "
+          f"in front of PATH, such as {_PARENT}, no longer come first. In an interactive zsh (for example `zsh`), "
+          "mise moves them to the end of PATH. In `zsh -l -c` (for example the commands of a coding agent), the "
+          "directory of the line comes before them. Move the line to config/zsh/zprofile (~/.zprofile.local).")
 INTERACTIVE = ("In interactive shells, these commands in a directory of a carried PATH line come before the mise "
                "tool of the same name. In this order: drop the line from config/zsh/zshrc; move it to "
                "config/zsh/zprofile (~/.zprofile.local), which runs before mise starts; uninstall the old copy; or, "
@@ -130,10 +149,15 @@ def removal(target: str) -> str:
     return ""
 
 
+def _norm(d: str) -> str:
+    """A directory without a trailing slash, as is_new compares it."""
+    return d.rstrip("/") or "/"
+
+
 def is_new(d: str, home: str, user: str, early: Set[str]) -> bool:
     """A directory that is not on PATH before mise starts: not in dotkit.toolPath, not one that rcparse leaves
     out (rcparse.path_done: dotkit's, the system's), and not one that a line before mise starts adds."""
-    d = d.rstrip("/") or "/"
+    d = _norm(d)
     return not (d in base_mod.tool_path(home, user) or rcparse.path_done(d, home) or d in early)
 
 
@@ -204,9 +228,14 @@ class Leftovers(Migrator):
     def manual_steps(self, ctx: Context) -> str:
         return ("MIGRATION.md does not list the leftovers that can still take effect. Check by hand: carried PATH "
                 "lines in config/zsh/zshrc that put a new directory in front of PATH, which comes before mise's "
-                "tools in interactive shells; old copies of mise tools in ~/.local/bin, /opt/homebrew/bin, and "
-                "/opt/homebrew/sbin, which GUI apps run before the mise shims; and ~/.bashrc, ~/.zlogin, "
-                "~/.zlogout, and ~/.profile, which still run.")
+                "tools in interactive shells and, in a zsh started from another shell, before the directories that "
+                "the parent shell put in front of PATH; carried lines in config/zsh/zshrc that put a directory of "
+                "config/zsh/zprofile or config/zsh/zshenv in front again, and carried lines in config/zsh/zshenv "
+                "that put a directory in front: in a zsh started from another shell, they move the project "
+                "directories of the parent shell (direnv, `nix develop -c zsh`) to the end of PATH or behind that "
+                "directory; old copies of mise tools in ~/.local/bin, /opt/homebrew/bin, and /opt/homebrew/sbin, "
+                "which GUI apps run before the mise shims; and ~/.bashrc, ~/.zlogin, ~/.zlogout, and ~/.profile, "
+                "which still run.")
 
     def scan(self, ctx: Context) -> LeftoverFacts:
         lf = LeftoverFacts(str(ctx.home), str(ctx.brew_prefix))
@@ -230,20 +259,37 @@ class Leftovers(Migrator):
         # The Homebrew packages of this repository's lists, as the plan renders them.
         listed = {"formula": set(txn.list("nix/brews.txt").names()), "cask": set(txn.list("nix/casks.txt").names())}
         paths = shell.carried_paths(f, c)
-        early_zsh = {d for _, _, dirs, _, repo_file in paths if repo_file in EARLY_ZSH for d in dirs}
-        early_bash = {d for _, _, dirs, _, repo_file in paths if repo_file in EARLY_BASH for d in dirs}
+        # The directories of the lines that run before mise starts in zsh, with the files that add each one.
+        early_zsh: Dict[str, Set[str]] = {}
+        for _, _, dirs, _, repo_file in paths:
+            if repo_file in EARLY_ZSH:
+                for d in dirs:
+                    early_zsh.setdefault(_norm(d), set()).add(repo_file)
+        early_dirs = set(early_zsh)
+        early_bash = {_norm(d) for _, _, dirs, _, repo_file in paths if repo_file in EARLY_BASH for d in dirs}
+
+        # Carried PATH lines in config/zsh/zshenv that put a directory in front: every zsh runs them, also one
+        # started from another shell, so they come before the directories of the parent shell.
+        zshenv = [f"~/{name}:{_where(lines)} puts {and_list([tilde(d, home) for d in front])} in front of PATH"
+                  for name, lines, _, front, repo_file in paths if repo_file == "config/zsh/zshenv" and front]
 
         # Carried PATH lines in config/zsh/zshrc that put a new directory in front: interactive shells. A
         # directory that a line appends goes behind mise's tools.
         sh = shell.facts_of(f)
-        new_dirs, shadows = [], []
+        # A directory that rcparse carried and that is not new is one of early_zsh: rcparse leaves out those of
+        # dotkit.toolPath and the system (rcparse.path_done). Putting one in front again changes nested shells.
+        new_dirs, again, shadows = [], [], []
         for name, lines, _, front, repo_file in paths:
             if repo_file != "config/zsh/zshrc":
                 continue
             for d in front:
-                if not is_new(d, home, user, early_zsh):
-                    continue
                 where = f"~/{name}:{_where(lines)}"
+                if not is_new(d, home, user, early_dirs):
+                    files = early_zsh.get(_norm(d))
+                    if files:
+                        again.append(f"{where} adds {tilde(d, home)}, which {and_list(sorted(files))} "
+                                     f"{'adds' if len(files) == 1 else 'add'} already")
+                    continue
                 new_dirs.append(f"{where} adds {tilde(d, home)}")
                 names = sh.executables.get(d, {}) if sh else {}
                 for t, cmds in _shadowed(names, tools):
@@ -257,6 +303,10 @@ class Leftovers(Migrator):
                                            f"Interactive shells, through {where},") for x, pkg in kept.items()]
         if new_dirs:
             r.todo(SECTION, NEW_DIRS, new_dirs)
+        if again:
+            r.todo(SECTION, AGAIN, again)
+        if zshenv:
+            r.todo(SECTION, ZSHENV, zshenv)
         if shadows:
             r.todo(SECTION, INTERACTIVE, shadows)
 
@@ -278,7 +328,7 @@ class Leftovers(Migrator):
 
         # Shell files that dotkit does not replace: they still run. ~/.profile is for sh -l, which reads
         # none of dotkit's shell files.
-        early = {".bashrc": early_bash, ".zlogin": early_zsh, ".zlogout": early_zsh}
+        early = {".bashrc": early_bash, ".zlogin": early_dirs, ".zlogout": early_dirs}
         items = []
         for name, res in lf.still_run.items():
             found = []

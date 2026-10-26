@@ -131,7 +131,8 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     h.write(".zshrc", fake.fill(ZSHRC))
     h.write(".zshrc.local", "alias never_read=true\n")
     h.write(".zshenv", "export LANG=en_US.UTF-8\n")
-    # ~/bin goes to config/zsh/zprofile, before mise starts: ~/.zshrc adding it again is no new directory.
+    # ~/bin goes to config/zsh/zprofile, before mise starts: ~/.zshrc putting it in front again is no new
+    # directory, but it gets the item about zsh started from another shell (leftovers.AGAIN).
     h.write(".zprofile", 'eval "$(/opt/homebrew/bin/brew shellenv)"\nexport PATH="$HOME/bin:$PATH"\n'
             'source ~/.zprofile.local\n')
     h.mkdir("bin")

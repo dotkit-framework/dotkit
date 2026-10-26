@@ -132,9 +132,28 @@ class LeftoversTests(unittest.TestCase):
                  "as a last resort, set `activate_aggressive = true`")
         self.assertEqual([text.index(x) for x in steps], sorted(text.index(x) for x in steps))
         self.assertIn("does not change GUI apps", text)
-        for intro in (leftovers.NEW_DIRS, leftovers.INTERACTIVE, leftovers.GUI, leftovers.STILL_RUNS):
-            for word in ("nested", "direnv"):
-                self.assertNotIn(word, intro, "section 11: not checked, so no claim")
+        # Section 11: only zsh started from another shell was checked, so only the blocks of carried zshrc and
+        # zshenv lines name it, each time with the directories of the parent shell; nix develop only as the
+        # example of where a project's tools come from; `exec zsh` only for the zshrc lines; no intro names bash or
+        # a terminal multiplexer. The fix comes last.
+        nested = (leftovers.NEW_DIRS, leftovers.AGAIN, leftovers.ZSHENV)
+        for intro in nested:
+            self.assertIn("starts from another shell", intro)
+            self.assertIn("the directories that the parent shell put in front of PATH", intro)
+            self.assertIn(leftovers._PARENT, intro)
+            self.assertEqual(intro.count("nix develop"), 1)
+        self.assertNotIn("exec zsh", leftovers.ZSHENV)
+        self.assertTrue(leftovers.NEW_DIRS.endswith("or move it to config/zsh/zprofile (~/.zprofile.local), which "
+                                                    "runs before mise starts."))
+        self.assertTrue(leftovers.AGAIN.endswith("Drop that directory from the line: the earlier file adds it "
+                                                 "already."))
+        self.assertTrue(leftovers.ZSHENV.endswith("Move the line to config/zsh/zprofile (~/.zprofile.local)."))
+        for intro in (leftovers.INTERACTIVE, leftovers.GUI, leftovers.STILL_RUNS):
+            for word in ("another shell", "direnv", "nix develop"):
+                self.assertNotIn(word, intro)
+        for intro in nested + (leftovers.INTERACTIVE, leftovers.GUI, leftovers.STILL_RUNS):
+            for word in ("nested", "tmux", "multiplexer", "bash -i"):
+                self.assertNotIn(word, intro)
 
     def test_a_new_directory_that_shadows_nothing_now(self):
         """npm:typescript deselected: the line is in its own block, without a warning."""
@@ -154,20 +173,91 @@ class LeftoversTests(unittest.TestCase):
         self.npm_global()
         self.assertEqual(self.section(self.report(dropped=[("shell", "shell:.zshrc")])), "")
 
-    def test_a_directory_of_the_profile_is_not_new(self):
-        """~/bin, carried into config/zsh/zprofile from ~/.zprofile, is on PATH before mise starts: ~/.zshrc
-        adding it again gives no item."""
+    def profile_bin(self) -> None:
+        """~/bin with a tsc that shadows mise's npm:typescript."""
         h = self.h
         h.mkdir("bin")
         link(h, "bin/tsc", "../.npm-global/lib/node_modules/typescript/bin/tsc")
         h.json(".nvm/versions/node/v20.11.0/lib/node_modules/typescript/package.json",
                {"name": "typescript", "version": "5.4.0", "bin": {"tsc": "bin/tsc"}})
+
+    def test_a_directory_of_the_profile_put_in_front_again(self):
+        """~/bin, carried into config/zsh/zprofile from ~/.zprofile, is on PATH before mise starts. ~/.zshrc
+        putting it in front again is no new directory and shadows nothing in the first shell, but it moves the
+        directories of a parent shell to the end of PATH in a nested zsh: its own block."""
+        h = self.h
+        self.profile_bin()
         h.write(".zprofile", 'export PATH="$HOME/bin:$PATH"\n')
         h.write(".zshrc", 'export PATH="$HOME/bin:$PATH"\n')
-        self.assertEqual(self.section(self.report()), "")
+        s = self.section(self.report())
+        self.assertEqual(s, f"\n{leftovers.AGAIN}\n\n- ~/.zshrc:1 adds ~/bin, which config/zsh/zprofile adds "
+                            "already\n")
         # Without the line in ~/.zprofile, it is new.
         h.write(".zprofile", "export EDITOR=vim\n")
-        self.assertIn("- ~/.zshrc:1 adds ~/bin\n", self.section(self.report()))
+        s = self.section(self.report())
+        self.assertIn("- ~/.zshrc:1 adds ~/bin\n", s)
+        self.assertNotIn(leftovers.AGAIN, s)
+
+    def test_a_trailing_slash_in_either_line(self):
+        h = self.h
+        self.profile_bin()
+        for profile, zshrc in (("$HOME/bin/", "$HOME/bin"), ("$HOME/bin", "$HOME/bin/")):
+            with self.subTest(profile=profile, zshrc=zshrc):
+                h.write(".zprofile", f'export PATH="{profile}:$PATH"\n')
+                h.write(".zshrc", f'export PATH="{zshrc}:$PATH"\n')
+                s = self.section(self.report())
+                self.assertIn(f"\n{leftovers.AGAIN}\n\n- ~/.zshrc:1 adds ~/bin", s)
+                self.assertNotIn(leftovers.NEW_DIRS, s)
+
+    def test_a_line_with_a_new_and_an_earlier_directory(self):
+        h = self.h
+        self.profile_bin()
+        h.mkdir("new")
+        h.write(".zprofile", 'export PATH="$HOME/bin:$PATH"\n')
+        h.write(".zshrc", "path=(~/new ~/bin $path)\n")
+        s = self.section(self.report())
+        self.assertEqual(s, f"\n{leftovers.NEW_DIRS}\n\n- ~/.zshrc:1 adds ~/new\n\n{leftovers.AGAIN}\n\n"
+                            "- ~/.zshrc:1 adds ~/bin, which config/zsh/zprofile adds already\n")
+
+    def test_a_zshenv_line_that_puts_a_directory_in_front(self):
+        """Every zsh runs config/zsh/zshenv, so its front directory comes before those of a parent shell, with or
+        without a line in ~/.zshrc. A ~/.zshrc line that puts it in front again also gets the AGAIN item."""
+        h = self.h
+        self.profile_bin()
+        h.write(".zshenv", 'export PATH="$HOME/bin:$PATH"\n')
+        zshenv = f"\n{leftovers.ZSHENV}\n\n- ~/.zshenv:1 puts ~/bin in front of PATH\n"
+        h.write(".zshrc", "export EDITOR=vim\n")
+        self.assertEqual(self.section(self.report()), zshenv)
+        h.write(".zshrc", "path=(~/bin $path)\n")
+        self.assertEqual(self.section(self.report()), f"\n{leftovers.AGAIN}\n\n- ~/.zshrc:1 adds ~/bin, which "
+                         f"config/zsh/zshenv adds already\n{zshenv}")
+        # In ~/.zprofile too: the item names both files.
+        h.write(".zprofile", 'export PATH="$HOME/bin:$PATH"\n')
+        self.assertEqual(self.section(self.report()), f"\n{leftovers.AGAIN}\n\n- ~/.zshrc:1 adds ~/bin, which "
+                         f"config/zsh/zprofile and config/zsh/zshenv add already\n{zshenv}")
+
+    def test_a_zshenv_line_that_appends(self):
+        """A directory that ~/.zshenv appends is on PATH before mise starts too: no ZSHENV item, but the ~/.zshrc
+        line that puts it in front gets the AGAIN item."""
+        h = self.h
+        self.profile_bin()
+        h.write(".zshenv", "path+=(~/bin)\n")
+        h.write(".zshrc", "export EDITOR=vim\n")
+        self.assertEqual(self.section(self.report()), "")
+        h.write(".zshrc", "path=(~/bin $path)\n")
+        self.assertEqual(self.section(self.report()), f"\n{leftovers.AGAIN}\n\n- ~/.zshrc:1 adds ~/bin, which "
+                         "config/zsh/zshenv adds already\n")
+
+    def test_a_directory_of_the_profile_only_or_appended_again(self):
+        """Without a line in ~/.zshrc, or with one that appends ~/bin, the directories of a parent shell stay in
+        front: no item."""
+        h = self.h
+        self.profile_bin()
+        h.write(".zprofile", 'export PATH="$HOME/bin:$PATH"\n')
+        for zshrc in ("export EDITOR=vim\n", "path+=(~/bin)\n", 'export PATH="$PATH:$HOME/bin"\n'):
+            with self.subTest(zshrc=zshrc):
+                h.write(".zshrc", zshrc)
+                self.assertEqual(self.section(self.report()), "")
 
     def test_a_directory_of_bash_is_new_in_zsh(self):
         """~/.bash_profile runs before mise starts in bash, not in zsh: the line of ~/.zshrc is new."""
