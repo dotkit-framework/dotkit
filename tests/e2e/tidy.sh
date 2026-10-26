@@ -11,6 +11,11 @@
 #      which passes --adopt.
 # Both times the bundle must stay the same directory (its inode), and a
 # setting in the preferences of the app must stay.
+#   3. Command-line tools (TIDY.md, section 8.1): the CI job installs
+#      pycowsay with pipx before setup, and the wizard moves it to mise, so
+#      the pipx copy is an old copy. A copy of jq in ~/.local/bin is a file
+#      that dotkit has from Nix. tidy uninstalls the first and moves the
+#      second to the Trash.
 set -euo pipefail
 
 fail() { printf 'tidy.sh: %s\n' "$*" >&2; exit 1; }
@@ -68,5 +73,25 @@ install_by_hand maccy Maccy.app
 inode=$(remember Maccy.app)
 "${dotkit[@]}" 'dotkit add -y cask:maccy'
 check_adopted maccy Maccy.app "$inode"
+
+# 3. Command-line tools.
+grep -q '"pipx:pycowsay"' ~/.dotfiles/config/mise.toml || fail 'config/mise.toml does not have pipx:pycowsay.'
+pipx list --short | grep -q '^pycowsay ' || fail 'pipx does not have pycowsay.'
+mkdir -p ~/.local/bin
+cp "$(/run/current-system/sw/bin/zsh -lc 'command -v jq')" ~/.local/bin/jq
+out=$("${dotkit[@]}" 'dotkit tidy -n')
+printf '%s\n' "$out"
+grep -Eq '^uninstall +pipx:pycowsay +' <<<"$out" || fail 'the plan does not uninstall pipx:pycowsay.'
+grep -Eq '^trash +~/\.local/bin/jq +# a file from an installer; dotkit has jq' <<<"$out" ||
+  fail 'the plan does not move ~/.local/bin/jq to the Trash.'
+plan=$(mktemp)
+grep -E '^(uninstall +pipx:pycowsay|trash +~/\.local/bin/jq) ' <<<"$out" >"$plan"
+"${dotkit[@]}" "dotkit tidy -y --plan '$plan'"
+rm -f "$plan"
+! pipx list --short | grep -q '^pycowsay ' || fail 'pipx still has pycowsay.'
+[[ ! -e ~/.local/bin/jq ]] || fail "$HOME/.local/bin/jq is still there."
+[[ -n $(find ~/.Trash -maxdepth 1 -name 'jq*') ]] || fail 'the Trash does not have jq.'
+# mise has pycowsay still.
+/run/current-system/sw/bin/zsh -lc 'pycowsay hi' >/dev/null || fail 'pycowsay of mise does not run.'
 
 echo 'tidy.sh: ok'

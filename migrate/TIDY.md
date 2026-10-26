@@ -1,7 +1,7 @@
 # Design: `dotkit tidy`
 
-Status: phase 1 (apps) is implemented in `dotkit_migrate/tidy/`. Phases 2 and 3
-(section 8) are not.
+Status: phases 1 (apps) and 2 (command-line tools, section 8.1) are
+implemented in `dotkit_migrate/tidy/`. Phase 3 (section 8) is not.
 
 ## 1. The problem
 
@@ -360,15 +360,79 @@ Rules:
 
 ## 8. Phases
 
-1. **Apps:** this document.
-2. **CLI leftovers:** the old executables that `leftovers` reports
-   (`~/.local/bin`, the Homebrew directories, version managers), plus
-   `/usr/local/bin`, `~/bin`, `~/go/bin`, and `~/.cargo/bin`. A line per
-   binary or package, with the uninstall command that `leftovers` already
-   prints (`pipx uninstall`, `npm uninstall -g`, `brew uninstall`), and
-   `trash` for a plain file.
+1. **Apps:** sections 3 to 6.
+2. **Command-line tools:** section 8.1.
 3. **pkg uninstalls:** `pkgutil --forget` and the files of a receipt, only
-   for packages without system parts.
+   for packages without system parts. Not implemented.
+
+### 8.1 Command-line tools
+
+The same plan has a second part, after the apps, for old copies of
+command-line tools. `dotkit migrate` already adds the Homebrew, npm, pipx,
+uv, cargo, and Go tools that the lists do not have, so tidy does not list
+those again. After `dotkit migrate` and `dotkit apply`, the old copies of
+such tools are redundant, and tidy proposes to remove them.
+
+What tidy scans (`tidy/clis.py`, read-only, with the rules of section 7):
+
+| Kind | Where | The thing | Its path in the plan | Uninstall |
+|---|---|---|---|---|
+| `brew` | `brew leaves --installed-on-request` | `brew:<formula>` | `<prefix>/Cellar/<formula>` | `brew uninstall <formula>` |
+| `npm` | the global `node_modules` of each node that the scan of `node_tools` finds (Homebrew, nvm, fnm, asdf, `~/.npm-global`, ...) | `npm:<package>` | the package directory | `<prefix>/bin/npm uninstall -g <package>`, with `<prefix>/bin` first in PATH, so that the npm of that node runs |
+| `pipx` | `$PIPX_HOME/venvs` | `pipx:<package>` | the venv | `pipx uninstall <package>` |
+| `uv` | `$UV_TOOL_DIR` | `uv:<package>` | the tool directory | `uv tool uninstall <package>` |
+| `cargo` | `$CARGO_HOME/.crates2.json` | `cargo:<crate>` | its first command in `$CARGO_HOME/bin` | `cargo uninstall <crate>` |
+| `go` | `$GOBIN`, or `$GOPATH/bin` | `go:<name>` | the file | none: `trash` |
+| `file` | `~/.local/bin`, `~/bin`, `/usr/local/bin`, `$CARGO_HOME/bin` | none | the file or the link | none: `trash` |
+| `manager` | the version managers of `catalog.VERSION_MANAGERS` and the zsh frameworks of `catalog.FRAMEWORKS` | none | their directory | none: `trash` |
+
+A `file` is an executable that no other row has. The scan skips links into
+the Nix store, into an app (`/usr/local/bin/docker` of OrbStack), into a
+Homebrew `Cellar` or `Caskroom`, into a pipx venv, a uv tool, or a
+`node_modules` directory (other rows have those), and links to a file in
+the same directory (the commands of rustup).
+
+The default verbs:
+
+| The tool | Default | Comment |
+|---|---|---|
+| `brew`, and the lists or the base have it from Homebrew | not a line | |
+| `brew`, and dotkit has it from Nix or mise (`Declared.brew`) | `uninstall` | what dotkit has |
+| `npm`, `pipx`, `uv`, `cargo`, `go`, and dotkit has its mise key or its command (`Declared.mise_key`, `Declared.tool`) | `uninstall` (`trash` for `go`) | what dotkit has |
+| one of these, and dotkit does not have it | not a line | `dotkit migrate` adds it |
+| `npm` without an npm next to it | `keep` | no npm to uninstall it |
+| `file`, and dotkit has the command | `trash` | what dotkit has |
+| `file`, and dotkit does not have it | `keep` | the link target, or "a file from an installer" |
+| `file` or `go` that you cannot move without sudo | `keep` | the owner |
+| `manager` | `keep` | dotkit does not load it; check that nothing points into it before `trash` |
+
+A `pipx` or `uv` package has the mise key `pipx:<package>`, as in
+`dotkit migrate`.
+
+The plan line:
+
+```
+# Command-line tools: old copies of tools that dotkit has, and files that no package manager knows.
+uninstall  brew:jq          /opt/homebrew/Cellar/jq                               # dotkit has jq (from Nix)
+uninstall  npm:typescript   ~/.nvm/versions/node/v20.11.0/lib/node_modules/typescript  # nvm v20.11.0; dotkit has npm:typescript
+trash                       ~/.local/bin/ruff                                     # a file; dotkit has pipx:ruff (from mise)
+keep                        /usr/local/bin/tailscale                              # a file from an installer; owned by root
+keep                        ~/.nvm                                                # nvm; dotkit does not load it. Before trash, check that nothing points into it: LaunchAgents, IDE interpreter settings, git hooks
+```
+
+The check adds to section 5:
+
+- `uninstall` takes the thing of the scan for that path, and the scan must
+  have an uninstall command for it.
+- `trash` is for `file`, `go`, and `manager` lines. A package gets
+  `uninstall`, so that its package manager forgets it too.
+- `adopt`, `replace`, and `add` are for apps only, and `uninstall` is for
+  tools only.
+
+The apply adds to section 6: `uninstall` runs the command of the table, with
+its output on the terminal. `trash` moves the file or the directory to the
+Trash. Before a line runs, tidy checks that its path still exists. Phase 2
+writes nothing to the lists.
 
 ## 9. Tests
 
@@ -390,6 +454,12 @@ Rules:
   app that does not quit, `Ctrl-C` after one line, an `Info.plist` that
   changes before the apply, a plan with errors, an empty plan, the cleanup
   hint, and the editor.
+- `tests/tidy/test_clis.py`: a fake Mac with Homebrew formulae, nvm with
+  npm, `~/.npm-global` without npm, pipx, uv, cargo with rustup, Go, files
+  and links in `~/.local/bin` and `/usr/local/bin`, nvm, and Oh My Zsh. The
+  scan and its uninstall commands, the default verbs of section 8.1, the
+  check, and the apply: the commands run in order, and the lists do not
+  change.
 - **e2e** (`tests/e2e/tidy.sh`, after the migration checks of the CI e2e
   job): it installs a small cask, copies its app aside, uninstalls the
   cask, and puts the copy back, so the app has the version of the cask and
@@ -398,7 +468,11 @@ Rules:
   adopted by `dotkit add cask:maccy`, through brew bundle, which passes
   `--adopt`. Both times the bundle must be the same directory (its inode),
   a setting in the preferences of the app must stay, and `nix/casks.txt`
-  must have the token.
+  must have the token. Then phase 2: the CI job installs pycowsay with pipx
+  before setup, and the wizard moves it to mise. `dotkit tidy -n` must
+  propose `uninstall pipx:pycowsay`, and `trash` for a copy of `jq` in
+  `~/.local/bin`. After the plan runs, pipx does not have pycowsay, the
+  Trash has `jq`, and the `pycowsay` of mise runs.
 
 ## 10. Decisions
 

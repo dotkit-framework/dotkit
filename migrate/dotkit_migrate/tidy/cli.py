@@ -24,6 +24,7 @@ from ..migrators.appstore import add_app
 from ..model import AdoptResult, Facts, Identity
 from . import apps, plan
 from .actions import Actions
+from .clis import Tool
 from .plan import Line
 
 MakeContext = Callable[[Path, base_mod.Base], Context]
@@ -71,8 +72,20 @@ def changed(app: apps.App) -> bool:
     return apps.read_info(Path(app.path))[:2] != (app.bundle_id, app.version)
 
 
+def apply_tool(x: Line, tool: Tool, actions: Actions) -> Tuple[bool, str]:
+    """Run one line of a command-line tool. (True, "") or (False, why, with the next step)."""
+    if not os.path.lexists(tool.path):
+        return False, "it is gone since the scan. Run dotkit tidy again."
+    if x.verb == "uninstall":
+        if actions.uninstall(tool.uninstall, tool.path_first):
+            return True, ""
+        return False, f"`{' '.join(tool.uninstall)}` failed; its output is above."
+    ok, why = actions.trash(tool.path)
+    return (True, "") if ok else (False, f"it could not move it to the Trash: {why}")
+
+
 def apply_line(x: Line, app: apps.App, actions: Actions) -> Tuple[bool, str]:
-    """Run one line. (True, "") or (False, why, with the next step)."""
+    """Run one line of an app. (True, "") or (False, why, with the next step)."""
     if x.verb == "add":
         return True, ""
     if changed(app):
@@ -101,6 +114,8 @@ def write_lists(done: List[Line], t: apps.TidyFacts, ctx: Context, repo: Path, d
     by_path = {a.path: a for a in t.apps}
     out = []
     for x in done:
+        if x.path not in by_path:  # a command-line tool: phase 2 writes nothing to the lists
+            continue
         if x.token and x.verb != "trash":
             if declared.brew(x.token, "cask"):
                 continue
@@ -144,13 +159,13 @@ def cmd_tidy(a: argparse.Namespace, make_context: MakeContext, make_actions: Cal
     if not a.dry_run and not a.plan and not a.yes and not sys.stdin.isatty():
         info("dotkit tidy: the plan opens in an editor, which needs a terminal. Use -n to print it, or --plan FILE.")
         return 2
-    info("Scanning the apps of this Mac. It changes nothing.")
+    info("Scanning the apps and command-line tools of this Mac. It changes nothing.")
     t = apps.scan(ctx)
     for w in t.warnings:
         info(w)
     lines, listed = plan.defaults(t, declared)
     if not lines:
-        print("The lists have every app of this Mac that tidy knows.")
+        print("The lists have every app of this Mac that tidy knows, and tidy found no old copies of tools.")
         return 0
     text = plan.render(lines, t, listed)
     if a.dry_run:
@@ -194,7 +209,9 @@ def cmd_tidy(a: argparse.Namespace, make_context: MakeContext, make_actions: Cal
         return 0
     print("Tidy runs:")
     print("\n".join("  " + c for c in plan.commands(todo, t)))
-    print("Then it adds the casks and App Store apps to nix/casks.txt and nix/mas.txt.", flush=True)
+    if any(x.verb in ("adopt", "replace", "add") for x in todo):
+        print("Then it adds the casks and App Store apps to nix/casks.txt and nix/mas.txt.")
+    sys.stdout.flush()
     if not a.yes:
         sys.stderr.write("Tidy now? [y/N] ")
         sys.stderr.flush()
@@ -203,12 +220,16 @@ def cmd_tidy(a: argparse.Namespace, make_context: MakeContext, make_actions: Cal
             return 1
     actions = make_actions(t.brew)
     by_path = {x.path: x for x in t.apps}
+    tools = {x.path: x for x in t.tools}
     done: List[Line] = []
     failed: List[str] = []
     stopped = False
     try:
         for x in todo:
-            ok, why = apply_line(x, by_path[x.path], actions)
+            if x.path in tools:
+                ok, why = apply_tool(x, tools[x.path], actions)
+            else:
+                ok, why = apply_line(x, by_path[x.path], actions)
             if ok:
                 done.append(x)
             else:
@@ -228,9 +249,13 @@ def cmd_tidy(a: argparse.Namespace, make_context: MakeContext, make_actions: Cal
              "with dotkit add.")
         return 1
     trashed = [tilde(x.path, t.home) for x in done if x.verb == "trash"]
+    removed = [f"{x.thing} ({tilde(x.path, t.home)})" for x in done if x.verb == "uninstall"]
     if added:
         print("Added to the lists:")
         print("\n".join("  " + s for s in added))
+    if removed:
+        print("Uninstalled:")
+        print("\n".join("  " + s for s in removed))
     if trashed:
         print("In the Trash:")
         print("\n".join("  " + s for s in trashed))

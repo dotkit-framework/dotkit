@@ -56,9 +56,11 @@ usage() {
     '  tidy [-n] [-y] [--plan FILE]' \
     '                              Give the apps of this Mac a clean source: find the apps' \
     '                              from a DMG or an installer that have a cask, and the App' \
-    '                              Store apps that the lists do not have. Opens the plan in' \
-    '                              your editor, asks once, then installs the casks and adds' \
-    '                              them to the lists. App data stays.' \
+    '                              Store apps that the lists do not have. Also finds old' \
+    '                              copies of tools that dotkit has (npm, pipx, uv, cargo,' \
+    '                              Homebrew, files). Opens the plan in your editor, asks' \
+    '                              once, then installs the casks, adds them to the lists,' \
+    '                              and uninstalls the old copies. App data stays.' \
     '' \
     'Recovery:' \
     '  history                     The package changes of the last apply.' \

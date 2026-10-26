@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import plistlib
-import pwd
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +16,7 @@ from typing import Dict, FrozenSet, Iterator, List, Optional, Set, Tuple
 
 from ..catalog import BREW_ENV
 from ..context import Context, tilde
+from . import clis
 
 # Directories with apps that are not apps of their own: the web apps of Chrome and Brave (*.localized), and
 # the apps of Nix and Home Manager.
@@ -90,7 +90,8 @@ class TidyFacts:
     casks: Dict[str, CaskInfo] = field(default_factory=dict)  # the installed casks and the matched ones
     names: Set[str] = field(default_factory=set)  # the tokens of cask_names.txt; empty when it is missing
     mas_names: Dict[int, str] = field(default_factory=dict)  # from `mas list`
-    skipped: List[str] = field(default_factory=list)  # apps that cannot be a line of the plan
+    skipped: List[str] = field(default_factory=list)  # apps and tools that cannot be a line of the plan
+    tools: List[clis.Tool] = field(default_factory=list)  # the command-line tools (TIDY.md, section 8.1)
     warnings: List[str] = field(default_factory=list)
 
 
@@ -274,17 +275,6 @@ def read_info(path: Path) -> Tuple[str, str, str]:
     return text("CFBundleIdentifier"), text("CFBundleShortVersionString"), text("CFBundleVersion")
 
 
-def _owner(path: Path) -> str:
-    try:
-        uid = path.stat().st_uid
-    except OSError:
-        return ""
-    try:
-        return pwd.getpwuid(uid).pw_name
-    except KeyError:
-        return str(uid)
-
-
 def bulk_file(ctx: Context) -> Optional[Path]:
     """The newest bulk file of the Homebrew API cache, or None."""
     api = Path(ctx.env.get("HOMEBREW_CACHE") or ctx.home / "Library/Caches/Homebrew") / "api"
@@ -365,7 +355,7 @@ def scan(ctx: Context) -> TidyFacts:
         app = App(str(path), path.name)
         app.bundle_id, app.version, app.build = read_info(path)
         app.writable = os.access(path, os.W_OK)
-        app.owner = _owner(path)
+        app.owner = clis.owner(path)
         app.running = any(line.startswith(app.path + "/") for line in procs)
         if path.name in owned:
             app.source, app.cask = "cask", owned[path.name]
@@ -408,4 +398,9 @@ def scan(ctx: Context) -> TidyFacts:
                 app.source, app.cask = "cask", app.match
         wanted = sorted({a.match for a in t.apps if a.match and a.source != "mas" and a.match not in t.casks})
         t.casks.update(cask_infos(ctx, t, wanted))
+    for tool in clis.scan(ctx):
+        if " #" in tilde(tool.path, t.home) or "\n" in tool.path:
+            t.skipped.append(tilde(tool.path, t.home))
+        else:
+            t.tools.append(tool)
     return t

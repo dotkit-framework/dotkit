@@ -108,8 +108,9 @@ migrate/
       homebrew.py  appstore.py  node_tools.py  python_tools.py  built_tools.py
       runtimes.py  shell.py  frameworks.py  config_files.py  other_config.py
       logins.py  leftovers.py
-    tidy/                          dotkit tidy (TIDY.md): apps.py (scan) and plan.py follow the rules
-                                   of migrators/; actions.py changes the Mac; cli.py runs the mode
+    tidy/                          dotkit tidy (TIDY.md): apps.py and clis.py (the scans) and plan.py
+                                   follow the rules of migrators/; actions.py changes the Mac; cli.py
+                                   runs the mode
     ui/
       screens.py                   Screen specs from the Session's pages; no curses
       curses_ui.py                 widgets and the screen loop

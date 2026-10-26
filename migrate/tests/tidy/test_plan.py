@@ -207,9 +207,9 @@ class TextTests(unittest.TestCase):
         ])
         errors, _ = self.check(text)
         self.assertEqual(errors, [
-            "line 3: `fix` is not a verb. Use adopt, replace, add, keep, trash.",
-            "line 4: the line has no app path.",
-            "line 5: " + str(where / "Nothing.app") + " is not an app of the scan.",
+            "line 3: `fix` is not a verb. Use adopt, replace, add, uninstall, keep, trash.",
+            "line 4: the line has no path.",
+            "line 5: " + str(where / "Nothing.app") + " is not an app or a tool of the scan.",
             "line 6: adopt needs a cask: adopt cask:<token> <path>.",
             "line 7: Homebrew has no cask `no-such`.",
             "line 8: the cask zoom runs an installer, so it has nothing to adopt. Use replace.",

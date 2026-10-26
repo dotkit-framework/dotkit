@@ -6,7 +6,9 @@ import json
 import plistlib
 from pathlib import Path
 
-from dotkit_migrate.tidy import apps
+from unittest import mock
+
+from dotkit_migrate.tidy import apps, clis
 from tests import fake
 
 BULK = "Library/Caches/Homebrew/api/internal/packages.arm64_sequoia.jws.json.payload"
@@ -16,6 +18,12 @@ class TidyMac:
     def __init__(self, test):
         self.h = fake.Home()
         test.addCleanup(self.h.cleanup)
+        # /usr/local/bin of the fake Mac.
+        self.usr_local = self.h.root / "usr-local-bin"
+        self.usr_local.mkdir()
+        patch = mock.patch.object(clis, "USR_LOCAL_BIN", self.usr_local)
+        patch.start()
+        test.addCleanup(patch.stop)
         self.bulk: dict = {}  # token -> the raw cask of the bulk file
         self.info: dict = {}  # token -> the cask of brew info --json=v2
         self.installed: list = []

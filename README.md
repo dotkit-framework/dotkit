@@ -139,8 +139,18 @@ checks it, shows the commands, and asks once. Then it adds the casks and
 App Store apps to `nix/casks.txt` and `nix/mas.txt`. The app data in
 `~/Library` stays: tidy never touches it. Apps from Setapp, JetBrains
 Toolbox, and Apple, and apps that you cannot change without sudo, stay as
-they are. `dotkit tidy -n` prints the plan and changes nothing.
-`migrate/TIDY.md` has the details.
+they are.
+
+The plan also has old copies of command-line tools that dotkit has: a
+Homebrew formula of a tool that dotkit has from Nix, or an npm, pipx, uv, or
+cargo package of a tool that `config/mise.toml` has (after `dotkit migrate`
+moved it there). `uninstall` removes such a copy with its package manager,
+for example `npm uninstall -g typescript` with the npm of that nvm node. A
+file in `~/.local/bin`, `~/bin`, or `/usr/local/bin` that dotkit has, for
+example `mise` from its installer, gets `trash`. Other files, version
+managers such as `~/.nvm`, and zsh frameworks are `keep` lines, so that you
+see them; change one to `trash` to move it to the Trash. `dotkit tidy -n`
+prints the plan and changes nothing. `migrate/TIDY.md` has the details.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
@@ -293,7 +303,9 @@ applies again, then `tests/e2e/verify.sh` checks the result: the login shell, th
 `tests/e2e/migrated.sh` checks the new lists, the carried shell lines, and
 `MIGRATION.md`. `tests/e2e/tidy.sh` makes two apps that look installed by hand, then
 checks that `dotkit tidy` adopts one and that `dotkit add` adopts the
-other, with the same bundle and the same app data.
+other, with the same bundle and the same app data. Then tidy uninstalls the
+pipx copy of pycowsay, which mise has after setup, and moves a copy of `jq`
+in `~/.local/bin` to the Trash.
 The `e2e-etc` job, on macOS 26 only, installs Nix first and keeps the changed
 `/etc/shells` of the runner, so the first activation fails. It checks that
 setup moved `/etc/zshrc` and `/etc/bashrc` back, then moves `/etc/shells`

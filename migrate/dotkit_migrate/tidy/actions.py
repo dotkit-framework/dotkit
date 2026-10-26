@@ -1,4 +1,5 @@
-"""The changes of dotkit tidy: install a cask, quit an app, move an app to the Trash (TIDY.md, section 6).
+"""The changes of dotkit tidy: install a cask, quit an app, uninstall a tool, move a path to the Trash (TIDY.md,
+sections 6 and 8.1).
 
 This is the only module of the package that changes the Mac. cli.py creates
 the one Actions object; the tests give a fake with the same methods.
@@ -25,6 +26,20 @@ class Actions:
         try:
             r = subprocess.run([self.brew, "install", "--cask", f"--{how}", token],
                                env={**os.environ, **BREW_ENV}, check=False)
+        except OSError:
+            return False
+        return r.returncode == 0
+
+    def uninstall(self, argv: List[str], path_first: str = "") -> bool:
+        """Run the uninstall command of a tool's package manager, with its output on the terminal. path_first goes
+        first in PATH, so that the npm of an nvm node runs with that node. True when it exits with 0."""
+        env = dict(os.environ)
+        if path_first:
+            env["PATH"] = path_first + os.pathsep + env.get("PATH", "")
+        if argv and os.path.basename(argv[0]) == "brew":
+            env.update(BREW_ENV)
+        try:
+            r = subprocess.run(argv, env=env, check=False)
         except OSError:
             return False
         return r.returncode == 0
@@ -56,7 +71,8 @@ class Actions:
         return not self.running(path)
 
     def trash(self, path: str) -> Tuple[bool, str]:
-        """Move the app to the Trash, where the Finder can put it back. (True, "") or (False, the error)."""
+        """Move an app, a file, or a directory to the Trash, where the Finder can put it back. (True, "") or (False,
+        the error)."""
         tools: List[List[str]] = []
         if os.access("/usr/bin/trash", os.X_OK):
             tools.append(["/usr/bin/trash", path])

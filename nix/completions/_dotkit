@@ -13,7 +13,7 @@ _dotkit() {
     'info:show where a tool is declared, its command, and its sources'
     'list:show the declared tools'
     'migrate:add the packages that were installed by hand to the lists'
-    'tidy:give the apps a clean source: casks and the App Store'
+    'tidy:give the apps a clean source, and remove old copies of tools'
     'history:show the package changes of the last apply'
     'rollback:go back to the previous Nix generation'
     'clean:delete old Nix generations, downloads, and mise versions'

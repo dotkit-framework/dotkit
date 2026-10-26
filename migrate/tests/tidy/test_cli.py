@@ -173,7 +173,7 @@ class TidyTests(unittest.TestCase):
         code, _, err = self.run_tidy(f"adopt {self.app('Slack.app')}\nadopt cask:slack /Applications/Nope.app\n")
         self.assertEqual((code, self.actions), (2, None))
         self.assertIn("dotkit tidy: line 1: adopt needs a cask", err)
-        self.assertIn("dotkit tidy: line 2: /Applications/Nope.app is not an app of the scan.", err)
+        self.assertIn("dotkit tidy: line 2: /Applications/Nope.app is not an app or a tool of the scan.", err)
 
     def test_an_empty_plan_and_a_plan_of_keep_lines(self):
         self.assertEqual(self.run_tidy("# nothing\n\n")[0], 1)
