@@ -366,7 +366,6 @@ class Txn:
     def file(self, path: str) -> FileView: ...     # setup only
     def shell_nix(self) -> ShellNixView: ...       # setup only; owner "core" only (the keymap)
     def secrets(self) -> SecretsView: ...          # setup only; ~/.secrets, outside the repository
-    def darwin_nix(self) -> DarwinNixView: ...     # setup only; dotkit.guiSecrets in nix/darwin.nix
     copies: CopiesView                             # setup only
     report: ReportView
     def commit(self) -> None: ...
@@ -388,8 +387,7 @@ The rules for every view operation:
    migration".
    Repository paths follow a stricter rule. A path is taken by an earlier
    copy, by a fixed document path (the list files, `config/mise.toml`,
-   `nix/home.nix`, `nix/shell.nix`, `nix/darwin.nix`, `nix/user.nix`, the
-   shell files), or by a whole file (`FileDoc`) that has text.
+   `nix/home.nix`, `nix/shell.nix`, `nix/user.nix`, the shell files), or by a whole file (`FileDoc`) that has text.
    `Copies.add` on a taken path makes no copy and returns `False`, with no
    conflict: the migrator handles it (for example `other_config` keeps the
    file in place and adds a to-do). A whole file set on a path that a copy
@@ -427,7 +425,6 @@ The document types:
 | `ShellRcDoc` | `config/zsh/zshenv`, `config/zsh/zprofile`, `config/zsh/zshrc`, `config/bash/bash_profile` | `add_part(header, text)`, `ensure()` (write the file even when empty) | main in `SHELL_LAYERS` | no |
 | `ShellNixDoc` | `nix/shell.nix` | `set_keymap(value)`, written by the Session | `emacs` or `vi` | no |
 | `SecretsDoc` | `~/.secrets`, outside the repository: the lines that the writer appends | `export(name, value, line, source) -> bool`, `free_name(base, value)`, `taken(name)` | `name` a shell variable name; `line` one line | no |
-| `DarwinNixDoc` | `nix/darwin.nix`: `dotkit.guiSecrets` before the last `}` | `gui_secret(name) -> bool`; a name of `base.GUI_SECRETS` is a no-op | a shell variable name | no |
 | `FileDoc` | a whole file with one owner: `nix/user.nix`, a merged `config/gitconfig` | `set(text)` | the path is not owned by another document | no |
 | `Copies` | files and directories copied into the repository | `add(rel, src) -> bool`, `False` when `rel` is taken (rule 4); `taken(rel) -> Optional[Tuple[str, str]]`, `(relation, path)` (rule 4) | `src` absolute and inside the home directory; `rel` relative | no |
 | `ReportDoc` | `MIGRATION.md`, the summary | `carried(what, where)`, `todo(section, intro, items)`, `blocker(msg)` | `section` in `report.SECTIONS` | yes (adopt output) |
@@ -739,8 +736,8 @@ Secrets are handled at five points:
 2. **Routing in the migrators.** Secrets go to `~/.secrets` as variables
    (`SecretsDoc`), and the repository files refer to the variables. The base
    `~/.zprofile` and `~/.bash_profile` source `~/.secrets`, and the
-   `gui-secrets` agent of `nix/darwin.nix` gives the names of
-   `dotkit.guiSecrets` to GUI apps.
+   `gui-secrets` agent of `nix/darwin.nix` gives its exported variables to
+   GUI apps.
    - The shell migrator sends an assignment with a secret (rcparse's
      `SecretLine` that `rcparse._ASSIGN` matches) to `~/.secrets`, as it was
      written. Another statement with a secret (an alias, a function) is not
@@ -749,9 +746,7 @@ Secrets are handled at five points:
      tokens of `~/.npmrc`; each token becomes `${NAME}`, which npm expands.
      `lift.gitconfig` takes the settings with a secret out of a Git config
      file; they become `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, and
-     `GIT_CONFIG_VALUE_<n>`. The names of these variables also go to
-     `dotkit.guiSecrets` (`DarwinNixDoc`), because GUI apps read these files
-     too. A file with a secret that `lift.py` cannot move gets only
+     `GIT_CONFIG_VALUE_<n>`. A file with a secret that `lift.py` cannot move gets only
      `keep`/`dotkit`, as before.
    - `other_config` does not offer an entry with a secret.
    - `SecretsDoc` never writes a name that `~/.secrets` has: the same value

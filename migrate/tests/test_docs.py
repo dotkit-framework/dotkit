@@ -420,17 +420,13 @@ class LinksAndFilesTests(unittest.TestCase):
         t.commit()
         t = d.begin("config_files")
         t.secrets().export("TOK", "t", "export TOK='t'", "~/.npmrc")
-        self.assertTrue(t.darwin_nix().gui_secret("TOK"))
-        self.assertFalse(t.darwin_nix().gui_secret("TOK"))
-        self.assertFalse(t.darwin_nix().gui_secret("NPM_TOKEN"), "the base has it")
         t.commit()
         files, secret_lines = d.render()
         self.assertEqual(secret_lines, "# Added by the dotkit migration. See MIGRATION.md.\n# From ~/.zshrc.\n"
                                        "export NEW=n\n# From ~/.npmrc.\nexport TOK='t'\n")
         self.assertEqual(d.secret_names(), ["NEW", "TOK"])
         self.assertEqual(d.conflicts, [])
-        self.assertTrue(files["nix/darwin.nix"].endswith('  dotkit.guiSecrets = [\n    "TOK"\n  ];\n}\n'))
-        self.assertTrue(files["nix/darwin.nix"].startswith((TEMPLATE / "nix/darwin.nix").read_text()[:-2]))
+        self.assertEqual(files, {})
         adopt = docs.Docs("adopt", TEMPLATE, Path(HOME, ".dotfiles"), home=HOME)
         t = adopt.begin("shell")
         with self.assertRaises(ValueError):
@@ -447,8 +443,7 @@ class LinksAndFilesTests(unittest.TestCase):
         self.assertFalse(t.file("nix/user.nix").set("rec { }\n"))
         self.assertFalse(t.file("nix/user.nix").set("other\n"))
         self.assertEqual(d.conflicts[-1].path, "nix/user.nix")
-        for path in ("config/mise.toml", "config/zsh/zshrc", "nix/brews.txt", "nix/darwin.nix", "MIGRATION.md",
-                     "../x"):
+        for path in ("config/mise.toml", "config/zsh/zshrc", "nix/brews.txt", "MIGRATION.md", "../x"):
             with self.subTest(path=path):
                 with self.assertRaises(ValueError):
                     t.file(path)

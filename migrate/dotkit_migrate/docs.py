@@ -744,38 +744,6 @@ class SecretsDoc(_Doc):
         return "\n".join(out) + "\n"
 
 
-_DARWIN_END = "}\n"
-
-
-class DarwinNixDoc(_Doc):
-    """nix/darwin.nix: the variables of ~/.secrets that GUI apps get, after those of the base."""
-
-    def __init__(self, docs: Docs, path: str, base_text: str):
-        super().__init__(docs, path)
-        self.base_text = base_text
-
-    def _empty(self):
-        return []  # names
-
-    def gui_secret(self, txn: Txn, name: str) -> bool:
-        if not secrets_file.NAME.fullmatch(name):
-            raise ValueError(f"not a variable name: {name!r}")
-        w = self._w(txn)
-        if name in base_mod.GUI_SECRETS or name in w:
-            return False
-        w.append(name)
-        return True
-
-    def render(self) -> Optional[str]:
-        if not self.state or not self.base_text.endswith(_DARWIN_END):
-            return None
-        names = "".join(f"    {nix_string(n)}\n" for n in self.state)
-        block = ("\n  # Variables of ~/.secrets that GUI apps also get, after those of the dotkit base. Your\n"
-                 "  # config files used them in GUI apps before the migration. See MIGRATION.md.\n"
-                 f"  dotkit.guiSecrets = [\n{names}  ];\n")
-        return self.base_text[:-len(_DARWIN_END)] + block + _DARWIN_END
-
-
 class ShellNixDoc(_Doc):
     """nix/shell.nix: the zsh keymap."""
 
@@ -1046,14 +1014,6 @@ class SecretsView:
         return self._doc.taken(self._txn, name)
 
 
-class DarwinNixView:
-    def __init__(self, txn: Txn, doc: DarwinNixDoc):
-        self._txn, self._doc = txn, doc
-
-    def gui_secret(self, name: str) -> bool:
-        return self._doc.gui_secret(self._txn, name)
-
-
 class ShellNixView:
     def __init__(self, txn: Txn, doc: ShellNixDoc):
         self._txn, self._doc = txn, doc
@@ -1107,13 +1067,12 @@ class ReportView:
 _MISE = "config/mise.toml"
 _HOME_NIX = "nix/home.nix"
 _SHELL_NIX = "nix/shell.nix"
-_DARWIN_NIX = "nix/darwin.nix"
 _SECRETS = "~/.secrets"
 
 
 def _document_paths() -> set:
     """The paths of the documents other than whole files, and the files that the writer adds."""
-    return set(ListDoc.KINDS) | {_MISE, _HOME_NIX, _SHELL_NIX, _DARWIN_NIX, "MIGRATION.md", ".gitignore"} | \
+    return set(ListDoc.KINDS) | {_MISE, _HOME_NIX, _SHELL_NIX, "MIGRATION.md", ".gitignore"} | \
         {repo_file for _, repo_file in base_mod.SHELL_LAYERS.values()}
 
 
@@ -1233,10 +1192,9 @@ class Docs:
             d = self._docs.get(path)
             if d is not None and d.render() is not None:
                 files[path] = d.render()
-        for path in (_SHELL_NIX, _DARWIN_NIX):
-            d = self._docs.get(path)
-            if d is not None and d.render() is not None:
-                files[path] = d.render()
+        d = self._docs.get(_SHELL_NIX)
+        if d is not None and d.render() is not None:
+            files[_SHELL_NIX] = d.render()
         d = self._docs.get(_MISE)
         if isinstance(d, MiseDoc):
             text, error = d.render()
@@ -1304,12 +1262,6 @@ class Txn:
         d = self.docs
         d._setup_only("secrets")
         return SecretsView(self, d._get(_SECRETS, SecretsDoc, lambda: SecretsDoc(d)))
-
-    def darwin_nix(self) -> DarwinNixView:
-        d = self.docs
-        d._setup_only("darwin_nix")
-        return DarwinNixView(self, d._get(_DARWIN_NIX, DarwinNixDoc,
-                                          lambda: DarwinNixDoc(d, _DARWIN_NIX, d.base_text(_DARWIN_NIX))))
 
     def file(self, path: str) -> FileView:
         d = self.docs

@@ -166,11 +166,6 @@ for shell in zsh bash; do
     fail "$shell -l: '$out'"
   fi
 done
-if grep -q 'GITHUB_NPM_TOKEN' "$repo/nix/darwin.nix"; then
-  pass 'nix/darwin.nix gives GUI apps the token'
-else
-  fail 'nix/darwin.nix does not have GITHUB_NPM_TOKEN in dotkit.guiSecrets'
-fi
 
 printf '\n'
 if ((failures > 0)); then

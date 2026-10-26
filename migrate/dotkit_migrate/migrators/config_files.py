@@ -435,12 +435,12 @@ class ConfigFiles(Migrator):
             _idiomatic(f, txn, cf.mise_settings, layered=False)
 
 
-NPM_INTRO = ("npm reads these tokens from ~/.secrets now: config/npmrc has `${NAME}` instead of each token. "
-             "GUI apps get them through dotkit.guiSecrets in nix/darwin.nix.")
+NPM_INTRO = ("npm reads these tokens from ~/.secrets now: config/npmrc has `${NAME}` instead of each token. GUI "
+             "apps get them too.")
 GIT_INTRO = ("Git cannot read a variable in its config files, so these settings with a secret are in ~/.secrets now, "
              "as GIT_CONFIG_COUNT, GIT_CONFIG_KEY_<n>, and GIT_CONFIG_VALUE_<n>. Git reads them in every "
              "repository, and they win over the settings of a repository; `git config --list --show-scope` "
-             "shows them as `command`. GUI apps get them through dotkit.guiSecrets in nix/darwin.nix.")
+             "shows them as `command`. GUI apps get them too.")
 
 
 def _npm_tokens(f: Facts, txn: Txn, x: ConfigFile, link: base_mod.Link, where: str) -> None:
@@ -453,7 +453,6 @@ def _npm_tokens(f: Facts, txn: Txn, x: ConfigFile, link: base_mod.Link, where: s
             continue
         name = s.free_name(st.var, st.value)
         s.export(name, st.value, secrets_file.export_line(name, st.value), where)
-        txn.darwin_nix().gui_secret(name)
         lines.append(f"{st.key}=${{{name}}}")
         moved.append(f"{where}: `{name}`, for `{st.key}`")
     txn.file(link.repo_file).set(f"# Your registries and tokens, from {where}. npm reads the tokens from "
@@ -489,7 +488,6 @@ def _git_secrets(txn: Txn, parts: List[Tuple[str, List[Tuple[str, str]]]]) -> No
         values += [(f"GIT_CONFIG_KEY_{i}", key), (f"GIT_CONFIG_VALUE_{i}", value)]
     for name, value in values:
         s.export(name, value, secrets_file.export_line(name, value), source)
-        txn.darwin_nix().gui_secret(name)
     r.carried(plural(len(settings), "Git setting") + f" with a secret of {source}", "~/.secrets")
     r.todo("Secrets", GIT_INTRO, counts)
 

@@ -85,13 +85,13 @@ in
       '';
     };
 
-    guiSecrets = mkOption {
-      type = types.listOf (types.strMatching "[A-Za-z_][A-Za-z0-9_]*");
+    guiSecrets.enable = mkOption {
+      type = types.bool;
+      default = true;
       description = ''
-        Variables of ~/.secrets that GUI apps also get, for example the token
-        of a registry for an IDE that runs npm. Only the names are in the
-        configuration. The values are read from ~/.secrets at each login and
-        when the file changes. A name that ~/.secrets does not set is removed.
+        GUI apps also get the variables that ~/.secrets exports, as terminal
+        programs do. The values are read from ~/.secrets at each login and
+        when the file changes. They stay out of the Nix store.
       '';
     };
   };
@@ -108,12 +108,6 @@ in
         casks = [ ./casks.txt ];
       };
       guiVariables = [ "JAVA_HOME" ];
-      # Registry tokens, for an IDE that runs npm. GUI_SECRETS in
-      # migrate/dotkit_migrate/base.py has the same names.
-      guiSecrets = [
-        "NPM_TOKEN"
-        "GITHUB_TOKEN"
-      ];
     };
 
     home-manager.users.${user.name}.home.packages = map package (names cfg.lists.packages);
@@ -190,29 +184,21 @@ in
       serviceConfig.RunAtLoad = true;
     };
 
-    # The same for the variables of dotkit.guiSecrets, from ~/.secrets. The
-    # values stay out of the Nix store. launchd runs the agent again when the
-    # file changes. Apps that run already keep their old values until a restart.
-    launchd.user.agents.gui-secrets = lib.mkIf (cfg.guiSecrets != [ ]) {
-      # A subshell: a ~/.secrets that stops with an error does not stop the agent.
-      # The agent gets the values of its last run from launchd: unset them first,
-      # so that a name removed from ~/.secrets is removed here too.
+    # The same for the variables that ~/.secrets exports. launchd runs the
+    # agent again when the file changes. Apps that run already keep their old
+    # values until a restart. A variable removed from ~/.secrets stays until
+    # the next login.
+    launchd.user.agents.gui-secrets = lib.mkIf cfg.guiSecrets.enable {
       script = ''
-        (
-          unset ${lib.concatStringsSep " " cfg.guiSecrets}
-          if [ -r ${lib.escapeShellArg "${user.home}/.secrets"} ]; then
-            . ${lib.escapeShellArg "${user.home}/.secrets"} >/dev/null 2>&1
-          fi
-      ''
-      + lib.concatMapStrings (name: ''
-        if [ -n "''${${name}+set}" ]; then
-          /bin/launchctl setenv ${name} "''$${name}"
-        else
-          /bin/launchctl unsetenv ${name}
-        fi
-      '') cfg.guiSecrets
-      + ''
-        )
+        secrets=${lib.escapeShellArg "${user.home}/.secrets"}
+        [ -r "$secrets" ] || exit 0
+        # A clean environment: only what the file exports, and what sh sets itself.
+        /usr/bin/env -i HOME=${lib.escapeShellArg user.home} /bin/sh -c '. "$1" >/dev/null 2>&1; /usr/bin/env -0' sh "$secrets" |
+          while IFS= read -r -d "" entry; do
+            name=''${entry%%=*}
+            case $name in PWD | SHLVL | HOME | _) continue ;; esac
+            /bin/launchctl setenv "$name" "''${entry#*=}"
+          done
       '';
       serviceConfig = {
         RunAtLoad = true;

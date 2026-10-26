@@ -91,9 +91,7 @@ repository files refer to them by name:
 | A Git setting with a token, such as a `url` section with the token in it | `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, and `GIT_CONFIG_VALUE_<n>`, which Git reads | `config/gitconfig` without the setting |
 
 The wizard adds only the names that `~/.secrets` does not have, and it never
-changes a line there. The variables of `~/.npmrc` and Git config also go to
-`dotkit.guiSecrets` in `nix/darwin.nix`, so GUI apps that used these files
-still get them. A secret in another place, such as an alias, a function, or
+changes a line there. A secret in another place, such as an alias, a function, or
 another config file, is not carried; the report names it, never its value.
 
 Secret detection is heuristic. It can miss secrets and flag text that is not
@@ -168,11 +166,13 @@ read the file:
   `~/.bash_profile` before `~/.bash_profile.local`, so login shells and the
   programs that they start have the variables. `zsh -c` without `-l` does not
   read it.
-- GUI apps get the names in `dotkit.guiSecrets`: `NPM_TOKEN` and
-  `GITHUB_TOKEN` from the base, and yours in `nix/darwin.nix`, for example
-  `dotkit.guiSecrets = [ "GITHUB_NPM_TOKEN" ];`. A launchd agent reads the
-  values from `~/.secrets` at login and when the file changes. An app that
-  is open keeps the old value until you restart it.
+- GUI apps get them too. A launchd agent reads the exported variables of
+  `~/.secrets` at login and when the file changes. An app that is open keeps
+  the old values until you restart it, and a variable that you remove stays
+  until the next login. To turn it off, set
+  `dotkit.guiSecrets.enable = false;` in `nix/darwin.nix`.
+- Keep only secrets in the file. Every GUI app gets its variables, so a
+  setting such as `NODE_OPTIONS` belongs in `~/.zshenv.local`.
 
 Link your file in `nix/home.nix`:
 

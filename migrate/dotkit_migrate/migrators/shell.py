@@ -274,7 +274,7 @@ class Shell(Migrator):
 
 
 SECRETS_INTRO = ("These variables have a secret, so they are not in Git. They are in ~/.secrets now, which the dotkit "
-                 "~/.zprofile and ~/.bash_profile read, so login shells and the programs they start have them. "
+                 "~/.zprofile and ~/.bash_profile read, so login shells, the programs they start, and GUI apps have them. "
                  "On a new Mac, copy ~/.secrets by hand; keep it out of Git.")
 NOT_MOVED_INTRO = ("These lines have a secret, and they are not a plain assignment that ~/.secrets can take, so they "
                    "are not carried. Put the secret in ~/.secrets as a variable, for example "

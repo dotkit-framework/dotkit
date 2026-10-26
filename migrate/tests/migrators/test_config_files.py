@@ -192,8 +192,6 @@ class ConfigFilesTests(unittest.TestCase):
         self.assertEqual(result.secrets, "# Added by the dotkit migration. See MIGRATION.md.\n# From ~/.npmrc.\n"
                                          f"export NPM_ACME_DEV_NPM_TOKEN='{npm}'\n"
                                          f"export GITHUB_NPM_TOKEN_2='{gh}'\n")
-        self.assertIn('  dotkit.guiSecrets = [\n    "NPM_ACME_DEV_NPM_TOKEN"\n    "GITHUB_NPM_TOKEN_2"\n  ];\n',
-                      result.files["nix/darwin.nix"])
         self.assertIn("- ~/.npmrc: these settings are not carried: `save-exact`, `init-author-name`. The first apply "
                       "renames it to ~/.npmrc.before-dotkit. Copy the ones you need to config/npmrc.\n", result.report)
         for text in [result.report, *result.summary, *result.files.values()]:
@@ -209,7 +207,6 @@ class ConfigFilesTests(unittest.TestCase):
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertIn("\n@acme:registry=https://npm.pkg.github.com\n\n# Delay", result.files["config/npmrc"])
         self.assertEqual(result.secrets, "")
-        self.assertNotIn("nix/darwin.nix", result.files)
 
     def test_npmrc_with_a_secret_elsewhere(self):
         """A secret outside the registry settings: the file stays in place, as before."""
@@ -236,7 +233,6 @@ class ConfigFilesTests(unittest.TestCase):
                          "[user]\n\tname = Jane\n[github]\n\tuser = jane\n[core]\n\teditor = vim\n")
         self.assertEqual(result.secret_names, ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0",
                                                "GIT_CONFIG_KEY_1", "GIT_CONFIG_VALUE_1"])
-        self.assertIn('    "GIT_CONFIG_COUNT"\n    "GIT_CONFIG_KEY_0"\n', result.files["nix/darwin.nix"])
         self.assertIn("- ~/.gitconfig: 2 settings\n", result.report)
         for text in [result.report, *result.summary, *result.files.values()]:
             self.assertNotIn(gh, text)

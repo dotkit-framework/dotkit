@@ -383,12 +383,9 @@ class NixFileTests(unittest.TestCase):
     def test_nix_files_parse(self):
         h = fake.Home()
         self.addCleanup(h.cleanup)
-        runner = used_mac(h)
-        # A registry token that GUI apps used: nix/darwin.nix gets dotkit.guiSecrets.
-        h.write(".npmrc", fake.fill("//npm.pkg.github.com/:_authToken=@GH@\n"))
-        p = fake.session(h, runner)
+        p = fake.session(h, used_mac(h))
         result = p.build(p.defaults(str(h.home / "my dots")))
-        files = ("nix/home.nix", "nix/user.nix", "nix/darwin.nix")
+        files = ("nix/home.nix", "nix/user.nix")
         for rel in files:
             out = subprocess.run(["nix-instantiate", "--parse", "-E", result.files[rel]], capture_output=True,
                                  text=True)

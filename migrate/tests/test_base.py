@@ -25,17 +25,6 @@ class BaseTests(unittest.TestCase):
         for main in base.SHELL_LAYERS:
             self.assertIn(main, links)
 
-    def test_gui_secrets_match_nix_darwin(self):
-        """base.GUI_SECRETS is dotkit.guiSecrets of nix/darwin.nix."""
-        text = (fake.ROOT / "nix/darwin.nix").read_text()
-        block = re.search(r"^\s*guiSecrets = \[\n(.*?)^\s*\];\n", text, re.M | re.S)
-        self.assertIsNotNone(block, "dotkit.guiSecrets in nix/darwin.nix")
-        self.assertEqual(tuple(re.findall(r'"([^"]+)"', block.group(1))), base.GUI_SECRETS)
-
-    def test_template_darwin_nix_ends_with_its_brace(self):
-        """docs.DarwinNixDoc adds dotkit.guiSecrets before the last line."""
-        self.assertTrue((fake.ROOT / "templates/default/nix/darwin.nix").read_text().endswith("\n}\n"))
-
     def test_tool_path_matches_nix_home(self):
         """base.TOOL_PATH is dotkit.toolPath of nix/home.nix, in its order."""
         text = (fake.ROOT / "nix/home.nix").read_text()
