@@ -191,11 +191,39 @@ migrate() {
   "$dotkit/migrate/dotkit-migrate" setup --repo "$repo" ${yes:+--yes} "$@"
 }
 
+# True when $1 does not exist, or is an empty directory (for example one
+# that the user made for the repository). Setup uses that path as new.
+is_absent() {
+  [[ ! -e $1 && ! -L $1 ]] && return
+  [[ -d $1 && ! -L $1 && -z $(ls -A -- "$1") ]]
+}
+
+# Git treats an argument without :// and without a colon before the first
+# slash as a local path.
+is_local_path() {
+  [[ $1 != *://* ]] || return 1
+  [[ $1 != *:* || ${1%%:*} == */* ]]
+}
+
+# Setup clones <repository-url> to $repo. A local path must be a Git
+# repository other than $repo: a common mistake is to give the destination.
+check_url() {
+  [[ -n $url ]] && is_local_path "$url" || return 0
+  local hint="<repository-url> is the dotfiles repository that setup clones to $repo (DOTFILES sets another path). To create a new repository, run setup without it."
+  [[ -d $url && -d $repo && $(cd -- "$url" && pwd -P) == "$(cd -- "$repo" && pwd -P)" ]] &&
+    fail "$url is the destination of setup, not a repository to clone." "$hint"
+  git -C "$url" rev-parse --git-dir >/dev/null 2>&1 ||
+    fail "$url is not a Git repository." "$hint"
+}
+
 # The dotfiles repository: the existing one, a clone of $url, or a new one
 # from the migration wizard. The wizard can choose another path.
 ensure_dotfiles() {
-  if [[ -e $repo ]]; then
-    [[ -f $repo/nix/flake.nix ]] || fail "$repo exists, but has no nix/flake.nix. Move it, or set DOTFILES."
+  if is_absent "$repo"; then
+    [[ ! -d $repo ]] || rmdir -- "$repo"
+  else
+    [[ -f $repo/nix/flake.nix ]] ||
+      fail "$repo exists, but has no nix/flake.nix. Move it, or set DOTFILES."
     return
   fi
   if [[ -n $url ]]; then
@@ -221,7 +249,7 @@ ensure_dotfiles() {
 created="$HOME/Library/Caches/dotkit/repository"
 find_created_repo() {
   local earlier
-  [[ -z ${DOTFILES:-} && -z $url && ! -e $repo && -f $created ]] || return 0
+  [[ -z ${DOTFILES:-} && -z $url && -f $created ]] && is_absent "$repo" || return 0
   read -r earlier <"$created" || return 0
   [[ -f $earlier/nix/flake.nix ]] || return 0
   repo=$earlier flake="path:$earlier/nix" build="$earlier/.build"
@@ -331,7 +359,8 @@ dotkit=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
 # the report. Nothing is installed or written.
 if [[ -n $dry_run ]]; then
   [[ -z $url ]] || fail 'The dry run is for a new repository, without <repository-url>.'
-  [[ ! -e $repo ]] || fail "$repo exists. The dry run shows a new repository: set DOTFILES to another path."
+  is_absent "$repo" || fail "$repo exists. The dry run shows a new repository: set DOTFILES to another path."
+  [[ ! -d $repo ]] || fail "$repo is an empty directory. Remove it for the dry run, or set DOTFILES to another path."
   migrate --dry-run
   exit
 fi
@@ -339,6 +368,7 @@ fi
 trap on_exit EXIT
 trap 'exit 130' INT TERM HUP
 
+check_url
 check_brew_prefix
 find_created_repo
 ensure_git_user

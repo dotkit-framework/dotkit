@@ -97,6 +97,49 @@ repo=$HOME/.dotfiles
 DOTFILES=$HOME/elsewhere find_created_repo 2>/dev/null
 if [[ $repo == "$HOME/.dotfiles" ]]; then pass 'DOTFILES wins over the earlier run'; else problem 'DOTFILES lost'; fi
 
+# An empty directory at the repository path is a new repository.
+mkdir -p "$HOME/.dotfiles"
+printf '%s\n' "$other" >"$created"
+repo=$HOME/.dotfiles
+find_created_repo 2>/dev/null
+if [[ $repo == "$other" ]]; then
+  pass 'an empty ~/.dotfiles does not hide the repository of the earlier run'
+else
+  problem "find_created_repo with an empty ~/.dotfiles: repo is '$repo'"
+fi
+repo=$HOME/.dotfiles
+if is_absent "$repo" && ! is_absent "$other"; then
+  pass 'is_absent accepts an empty directory only'
+else
+  problem 'is_absent'
+fi
+
+# A local path that is not a Git repository, for example the destination,
+# stops setup before it installs anything.
+for arg in "$HOME/.dotfiles" "$HOME/missing"; do
+  out=$(url=$arg check_url 2>&1) && status=0 || status=$?
+  if ((status != 0)) && [[ $out == *'run setup without it'* ]]; then
+    pass "check_url stops at $arg"
+  else
+    problem "check_url $arg: status $status, '$out'"
+  fi
+done
+git init --quiet "$tmp/remote"
+for arg in "$tmp/remote" https://github.com/u/dots.git git@github.com:u/dots.git; do
+  if (url=$arg check_url 2>/dev/null); then
+    pass "check_url accepts $arg"
+  else
+    problem "check_url rejects $arg"
+  fi
+done
+main=$(sed -n '/^check_url$/=; /^ensure_git_user$/=' "$here/scripts/setup" | paste -sd ' ' -)
+if [[ $main =~ ^([0-9]+)\ ([0-9]+)$ ]] && ((BASH_REMATCH[1] < BASH_REMATCH[2])); then
+  pass 'setup checks the repository URL before it asks questions'
+else
+  problem "the order of check_url and ensure_git_user: '$main'"
+fi
+rmdir "$HOME/.dotfiles"
+
 # Homebrew in another prefix stops setup before it installs anything.
 homebrew=$tmp/none/brew intel_homebrew=$tmp/intel/brew
 mkdir -p "$tmp/intel"

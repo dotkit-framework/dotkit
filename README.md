@@ -40,8 +40,9 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/podkovyrin/dotkit/main/s
 
 Setup installs the Xcode Command Line Tools, Nix, and Homebrew, writes your
 Git name and email to `~/.gitconfig.user`, and applies the configuration.
-`<repository-url>` is your dotfiles repository. Without it, setup creates
-`~/.dotfiles` from `templates/default`, with what the migration wizard can
+`<repository-url>` is your dotfiles repository, which setup clones to
+`~/.dotfiles` (`DOTFILES` sets another path). It is not the destination.
+Without it, setup creates `~/.dotfiles` (also when it is an empty directory) from `templates/default`, with what the migration wizard can
 carry over from this Mac (see below). Commit that repository and push it to
 your own remote. A file that is in the way of a dotkit link, for example an
 old `~/.zshrc`, is renamed to `<name>.before-dotkit`. When nix-darwin stops
