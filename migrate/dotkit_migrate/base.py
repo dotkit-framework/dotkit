@@ -55,6 +55,24 @@ SHELL_LAYERS: dict[str, tuple[str, str]] = {
     ".bash_profile": (".bash_profile.local", "config/bash/bash_profile"),
 }
 
+# dotkit.toolPath of nix/home.nix, in its order: the directories of DOTKIT_TOOL_PATH,
+# with <user> for the account name and ~ for the home directory. They are on
+# PATH before mise starts, and GUI apps have them before the mise shims
+# (nix/darwin.nix). tests/test_base.py compares the two.
+TOOL_PATH = (
+    "/etc/profiles/per-user/<user>/bin",
+    "/run/current-system/sw/bin",
+    "~/.local/bin",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+)
+
+
+def tool_path(home: str, user: str) -> list[str]:
+    """TOOL_PATH for one account: absolute directories."""
+    return [home + d[1:] if d.startswith("~/") else d.replace("<user>", user) for d in TOOL_PATH]
+
+
 # Every target that the base links. nix/home.nix has these and the herdr
 # scripts; tests/test_base.py compares the two.
 BASE_TARGETS = frozenset(
@@ -120,14 +138,32 @@ def read_list(path: Path) -> list[str]:
     return names
 
 
-def mise_tools(path: Path) -> dict[str, object]:
-    """The [tools] table of a mise config file, or {} when it cannot be read."""
+def read_mas(path: Path) -> dict[str, int]:
+    """The apps in nix/mas.txt, name -> ID, as nix/read-mas.nix reads them before it escapes the names."""
+    apps: dict[str, int] = {}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return apps
+    for line in text.splitlines():
+        m = re.fullmatch(r"(\d+)\s+(.+)", line.strip())
+        if m and not line.strip().startswith("#"):
+            apps.setdefault(m.group(2), int(m.group(1)))
+    return apps
+
+
+def _mise_table(path: Path, name: str) -> dict[str, object]:
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
         return {}
-    tools = data.get("tools")
-    return tools if isinstance(tools, dict) else {}
+    table = data.get(name)
+    return table if isinstance(table, dict) else {}
+
+
+def mise_tools(path: Path) -> dict[str, object]:
+    """The [tools] table of a mise config file, or {} when it cannot be read."""
+    return _mise_table(path, "tools")
 
 
 def mise_short(key: str) -> str:
@@ -156,6 +192,11 @@ class Base:
     @cached_property
     def mise(self) -> dict[str, object]:
         return mise_tools(self.root / "config/mise.toml")
+
+    @cached_property
+    def mise_settings(self) -> dict[str, object]:
+        """The [settings] table of the base config/mise.toml."""
+        return _mise_table(self.root / "config/mise.toml", "settings")
 
     @property
     def template(self) -> Path:

@@ -19,8 +19,8 @@
     # put the new commit here, and apply. The comment is the release that
     # `git describe --tags` shows for the commit.
     zsh-completions = {
-      # 0.35.0-418
-      url = "github:zsh-users/zsh-completions/4c84ebad534bdac3d2061db69082960c50856538";
+      # 0.36.0-184
+      url = "github:zsh-users/zsh-completions/989b23277ab33e8d5e82df6aed936e846db9d8b8";
       flake = false;
     };
     zsh-history-substring-search = {
@@ -29,8 +29,8 @@
       flake = false;
     };
     zsh-syntax-highlighting = {
-      # 0.8.0-4
-      url = "github:zsh-users/zsh-syntax-highlighting/1d85c692615a25fe2293bdd44b34c217d5d2bf04";
+      # 0.8.0-8
+      url = "github:zsh-users/zsh-syntax-highlighting/e6683f20e5c38d3e5447f45845d04ddda75d0f23";
       flake = false;
     };
     zsh-autosuggestions = {

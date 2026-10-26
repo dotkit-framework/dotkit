@@ -1,0 +1,4 @@
+# Homebrew taps for formulae and casks from other repositories, one per line:
+# owner/repo. A tap that is not on GitHub has its clone URL after the name:
+#   owner/repo https://example.com/owner/homebrew-repo.git
+# A formula from a tap is owner/repo/name in nix/brews.txt.

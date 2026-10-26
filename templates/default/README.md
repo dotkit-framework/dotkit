@@ -17,8 +17,9 @@ apply.
 | File | For |
 |---|---|
 | `nix/packages.txt`, `nix/brews.txt`, `nix/casks.txt` | your tools, after the dotkit lists |
+| `nix/taps.txt`, `nix/mas.txt` | Homebrew taps, App Store apps |
 | `config/mise.toml` | your runtimes and mise tools |
-| `nix/darwin.nix` | macOS settings, App Store apps |
+| `nix/darwin.nix` | macOS settings |
 | `nix/home.nix` | your config files (`dotkit.links`) |
 | `nix/shell.nix` | the zsh keymap and abbreviations |
 | `config/zsh/zshrc` | your zsh lines |

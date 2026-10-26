@@ -230,6 +230,16 @@ if zsh_login 'dotkit remove -y nix:hello' && ! grep -qx hello "$repo/nix/package
 else
   fail 'dotkit remove -y nix:hello'
 fi
+# The runner has no mas, so dotkit cannot read the name of an App Store app.
+mas_before=$(cat "$repo/nix/mas.txt")
+if out=$(zsh_login 'dotkit add -n mas:497799835' 2>&1); then
+  fail "dotkit add -n mas:497799835 without mas succeeded: $out"
+elif [[ $out == *'dotkit: mas:497799835: mas is not installed, so the name of the app is unknown. Run dotkit add brew:mas first.'* &&
+  $(cat "$repo/nix/mas.txt") == "$mas_before" ]]; then
+  pass 'dotkit add -n mas:497799835 without mas says to add mas first, and nix/mas.txt stays'
+else
+  fail "dotkit add -n mas:497799835 without mas: '$out'"
+fi
 
 step 'Homebrew'
 # Setup and the applies uninstall nothing that was on the Mac before.

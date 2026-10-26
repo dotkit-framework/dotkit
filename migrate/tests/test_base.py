@@ -2,6 +2,7 @@ import re
 import unittest
 
 from dotkit_migrate import base
+from dotkit_migrate._compat import tomllib
 from tests import fake
 
 
@@ -15,7 +16,7 @@ class BaseTests(unittest.TestCase):
         links = dict(re.findall(r'^\s*"([^"]+)" = (?:lib\.mkDefault )?"?([^";]+)"?;', text, re.M))
         targets = {t for t, src in links.items() if src.startswith(("config/", "scripts/"))}
         targets |= {".local/share/dotkit"}
-        # A file of the dotfiles repository: plan.py handles it as the mise config.
+        # A file of the dotfiles repository: config_files handles it as the mise config.
         targets -= {".config/mise/config.toml"}
         self.assertEqual(targets, set(base.BASE_TARGETS))
         for link in base.LINKS:
@@ -23,6 +24,17 @@ class BaseTests(unittest.TestCase):
             self.assertTrue((fake.ROOT / link.source).is_file(), link.source)
         for main in base.SHELL_LAYERS:
             self.assertIn(main, links)
+
+    def test_tool_path_matches_nix_home(self):
+        """base.TOOL_PATH is dotkit.toolPath of nix/home.nix, in its order."""
+        text = (fake.ROOT / "nix/home.nix").read_text()
+        block = re.search(r"^\s*toolPath = lib\.mkMerge \[\n(.*?)^\s*\];\n", text, re.M | re.S)
+        self.assertIsNotNone(block, "dotkit.toolPath in nix/home.nix")
+        dirs = re.findall(r'^\s*"([^"]+)"\s*$', block.group(1), re.M)
+        dirs = [d.replace("${user.name}", "<user>").replace("${user.home}", "~") for d in dirs]
+        self.assertEqual(dirs, list(base.TOOL_PATH))
+        self.assertEqual(base.tool_path("/Users/jane", "jane")[:3],
+                         ["/etc/profiles/per-user/jane/bin", "/run/current-system/sw/bin", "/Users/jane/.local/bin"])
 
     def test_layers_are_read(self):
         """Each layer file is one that the base file reads."""
@@ -44,12 +56,24 @@ class BaseTests(unittest.TestCase):
         self.assertIsNone(self.b.provides_brew("node@20"))
         self.assertIsNone(self.b.provides_brew("ghostty"), "a formula ghostty is not the cask")
 
+    def test_mise_settings(self):
+        """Base.mise_settings is the [settings] table of the base config/mise.toml, as Base.mise is [tools]."""
+        data = tomllib.loads((fake.ROOT / "config/mise.toml").read_text())
+        self.assertEqual(self.b.mise_settings, data["settings"])
+        self.assertEqual(self.b.mise, data["tools"])
+        self.assertIsInstance(self.b.mise_settings["idiomatic_version_file_enable_tools"], list)
+        self.assertEqual(base.Base(fake.ROOT / "nonexistent").mise_settings, {})
+
     def test_template_anchors(self):
-        """plan.py edits the template at these lines."""
+        """docs.py edits the template at these lines."""
         t = self.b.template
         self.assertIn('    ".zshrc.local" = "config/zsh/zshrc";\n', (t / "nix/home.nix").read_text())
-        self.assertIn("  homebrew.taps = [ ];\n", (t / "nix/darwin.nix").read_text())
-        self.assertIn("  homebrew.masApps = { };\n", (t / "nix/darwin.nix").read_text())
+        darwin = (t / "nix/darwin.nix").read_text()
+        self.assertIn("    taps = [ ./taps.txt ];\n", darwin)
+        self.assertIn("    masApps = [ ./mas.txt ];\n", darwin)
+        self.assertNotIn("homebrew.", darwin, "taps and App Store apps are in their list files")
+        for rel in ("nix/taps.txt", "nix/mas.txt"):
+            self.assertEqual(base.read_list(t / rel), [], rel)
         self.assertIn('# keymap = "vi";', (t / "nix/shell.nix").read_text())
         self.assertIn("[tools]", (t / "config/mise.toml").read_text())
 

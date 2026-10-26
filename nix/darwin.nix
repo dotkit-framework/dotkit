@@ -15,6 +15,20 @@ let
   readList = import ./read-list.nix lib;
   # Names from all list files of one kind, in order, without repeats.
   names = files: lib.unique (lib.concatMap readList files);
+  # Homebrew names for the Brewfile, a Ruby file that nix-darwin writes without
+  # escaping: stop at a name that could break it.
+  brewNames =
+    option: files:
+    map (
+      name:
+      if builtins.match "[A-Za-z0-9@+._/-]+" name == null then
+        throw "dotkit.lists.${option}: '${name}' is not a Homebrew name."
+      else
+        name
+    ) (names files);
+  # Taps and App Store apps have more than a name on a line, so they have their own readers.
+  readTaps = import ./read-taps.nix lib;
+  readMasApps = import ./read-mas.nix lib;
 
   package =
     name:
@@ -44,6 +58,22 @@ in
       casks = mkOption {
         type = types.listOf types.path;
         description = "Files with Homebrew casks, one per line.";
+      };
+      taps = mkOption {
+        type = types.listOf types.path;
+        default = [ ];
+        description = ''
+          Files with Homebrew taps, one per line: owner/repo, and the clone URL
+          after it for a tap that is not on GitHub. See nix/read-taps.nix.
+        '';
+      };
+      masApps = mkOption {
+        type = types.listOf types.path;
+        default = [ ];
+        description = ''
+          Files with Mac App Store apps, one per line: the App Store ID, then
+          the name. See nix/read-mas.nix.
+        '';
       };
     };
 
@@ -164,8 +194,10 @@ in
         extraEnv.HOMEBREW_NO_INSTALL_CLEANUP = "1";
       };
 
-      brews = names cfg.lists.brews;
-      casks = names cfg.lists.casks;
+      brews = brewNames "brews" cfg.lists.brews;
+      casks = brewNames "casks" cfg.lists.casks;
+      taps = readTaps cfg.lists.taps;
+      masApps = readMasApps cfg.lists.masApps;
     };
   };
 }

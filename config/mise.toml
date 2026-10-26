@@ -16,5 +16,10 @@ uv = { version = "latest", minimum_release_age = "1d" }
 [settings]
 # New releases wait 7 days. A tool can set its own minimum_release_age.
 minimum_release_age = "7d"
-# Read rust-toolchain.toml, so Rust projects need no extra mise config.
-idiomatic_version_file_enable_tools = ["rust"]
+# Read the version files of other tools: .nvmrc, .node-version, .python-version,
+# .ruby-version, and rust-toolchain.toml. Projects that use nvm, pyenv, rbenv,
+# or rustup then need no extra mise config. Gemfile and package.json do not set
+# versions. These settings are lists: a list in your config/mise.toml or in a
+# project mise.toml replaces this one.
+idiomatic_version_file_enable_tools = ["node", "python", "ruby", "rust"]
+idiomatic_version_file_disable_files = ["ruby:Gemfile", "node:package.json"]

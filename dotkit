@@ -6,7 +6,7 @@
 # The tools come from three sources, and dotkit uses the same three words everywhere:
 #   nix   nix/packages.txt (CLIs), nix/flake.lock (the dotkit release, which
 #         pins Nixpkgs)
-#   brew  nix/casks.txt, nix/brews.txt, homebrew.masApps in nix/darwin.nix
+#   brew  nix/casks.txt, nix/brews.txt, nix/taps.txt, nix/mas.txt (App Store apps)
 #   mise  config/mise.toml (runtimes and fast-moving CLIs)
 # The dotkit base has its own lists of each kind. `dotkit add` and
 # `dotkit remove` change only the lists of the dotfiles repository.
@@ -48,10 +48,11 @@ usage() {
     '  remove [-n] [-y] <tool>...  Remove a tool from the config that declares it, and apply.' \
     '  info <tool>...              Where a tool is declared, its command, and its sources.' \
     '  list [nix|brew|mise]        The declared tools.' \
-    '  migrate [-n] [-y] [--all]   Find Homebrew packages and global npm and pipx tools' \
-    '                              that were installed by hand and that the lists do' \
-    '                              not have. Asks, then adds them. --all: also cargo and' \
-    '                              Go tools, which mise builds from source.' \
+    '  migrate [-n] [-y] [--all]   Find Homebrew packages and taps, App Store apps, and' \
+    '                              global npm and pipx tools that were installed by hand' \
+    '                              and that the lists do not have. Asks, then adds them.' \
+    '                              --all: also cargo and Go tools, which mise builds from' \
+    '                              source.' \
     '' \
     'Recovery:' \
     '  history                     The package changes of the last apply.' \

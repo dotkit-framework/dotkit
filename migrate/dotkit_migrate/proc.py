@@ -7,15 +7,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# Homebrew without its update, hints, and analytics: the scan only reads.
-BREW_ENV = {
-    "HOMEBREW_NO_AUTO_UPDATE": "1",
-    "HOMEBREW_NO_ENV_HINTS": "1",
-    "HOMEBREW_NO_ANALYTICS": "1",
-    "HOMEBREW_NO_INSTALL_CLEANUP": "1",
-}
-
-
 class Runner:
     """Runs a command and returns its output, or None when it fails."""
 

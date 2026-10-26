@@ -105,6 +105,9 @@ jobs:
       # GitHub downloads of Nix and mise, without the anonymous rate limit.
       NIX_CONFIG: access-tokens = github.com=${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
+      # The migration wizard raises on a crash or a conflict of one of its
+      # parts, instead of leaving the part out (tests and CI only).
+      DOTKIT_MIGRATE_STRICT: "1"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -123,7 +126,7 @@ jobs:
           # tests/e2e/migrated.sh checks that the new lists have them.
           brew leaves --installed-on-request >"$RUNNER_TEMP/brew-leaves-before"
           brew list --cask --full-name -1 >"$RUNNER_TEMP/brew-casks-full-before"
-          brew tap
+          brew tap | tee "$RUNNER_TEMP/brew-taps-before"
           # The runner has a ~/.bash_profile. Home Manager must rename it.
           cp ~/.bash_profile "$RUNNER_TEMP/bash_profile-before"
 
@@ -183,7 +186,7 @@ jobs:
 
       - name: Show the migration report
         if: always()
-        run: cat ~/.dotfiles/MIGRATION.md ~/.dotfiles/nix/brews.txt ~/.dotfiles/nix/casks.txt ~/.dotfiles/config/mise.toml ~/.dotfiles/nix/home.nix || true
+        run: cat ~/.dotfiles/MIGRATION.md ~/.dotfiles/nix/brews.txt ~/.dotfiles/nix/casks.txt ~/.dotfiles/nix/taps.txt ~/.dotfiles/nix/mas.txt ~/.dotfiles/config/mise.toml ~/.dotfiles/nix/home.nix || true
 
       # Setup moves the /etc files that the Nix installer changed to the
       # backup names of nix-darwin.

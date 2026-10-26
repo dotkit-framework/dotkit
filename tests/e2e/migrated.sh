@@ -65,6 +65,34 @@ else
   pass 'nix/casks.txt does not repeat the base casks'
 fi
 
+step 'Homebrew taps and App Store apps'
+for list in nix/taps.txt nix/mas.txt; do
+  if [[ -f $repo/$list ]]; then pass "$list exists"; else fail "$list is missing"; fi
+done
+# Each tap from before setup is in nix/taps.txt, and brew has each tap of
+# nix/taps.txt: the apply tapped it. Homebrew's own taps are not
+# carried; the report lists the old ones.
+missing=''
+while IFS= read -r tap; do
+  [[ -n $tap && $tap != homebrew/* ]] || continue
+  names "$repo/nix/taps.txt" | grep -qxF -- "$tap" || missing+=" $tap"
+done <"$before/brew-taps-before"
+if [[ -z $missing ]]; then pass 'every tap from before setup is in nix/taps.txt'; else fail "not in nix/taps.txt:$missing"; fi
+taps_now=$(brew tap)
+missing=''
+while IFS= read -r tap; do
+  grep -qxF -- "$tap" <<<"$taps_now" || missing+=" $tap"
+done < <(names "$repo/nix/taps.txt")
+if [[ -z $missing ]]; then pass 'brew has every tap of nix/taps.txt'; else fail "brew does not have these taps:$missing"; fi
+# Each app of nix/mas.txt is in the configuration (homebrew.masApps).
+apps=$(zsh_login 'dotkit list brew' | sed -n 's/^brew  \(.*[^ ]\) *app store$/\1/p') || apps=''
+missing=''
+while read -r id name; do
+  [[ -n $id && $id != '#'* ]] || continue
+  grep -qxF -- "$name" <<<"$apps" || missing+=" $id"
+done <"$repo/nix/mas.txt"
+if [[ -z $missing ]]; then pass 'the configuration has every app of nix/mas.txt'; else fail "not in homebrew.masApps:$missing"; fi
+
 step 'tools that moved to mise'
 # The e2e job installs cowsay with npm and pycowsay with pipx before setup.
 for spec in npm:cowsay:cowsay pipx:pycowsay:pycowsay; do

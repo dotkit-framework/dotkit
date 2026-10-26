@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import datetime
-from dataclasses import dataclass, field
 
-# The order of the sections under "To do". Shell line sections go where
-# "Shell lines" is, in the order of rcparse.CATEGORIES.
-ORDER = (
+from .model import PHASE_TEXT, Failure
+
+# The one ordered list of the sections under "To do". Shell line sections go
+# where "Shell lines" is, in the order of rcparse.CATEGORIES. Each migrator's
+# `sections` is a part of it (tests/test_registry.py).
+SECTIONS = (
+    "Problems during the migration",
     "Secrets",
     "Logins",
     "Config files",
@@ -19,88 +22,127 @@ ORDER = (
     "Tools that moved to mise",
     "Tools that are not in mise",
     "mise",
+    "Leftovers that can still take effect",
     "Homebrew copies of dotkit tools",
-    "Homebrew packages that are not in the lists",
+    "Not carried, by your choice",
     "Homebrew taps",
     "App Store apps",
     "Other config",
     "Other config that stays out of the repository",
-    "Scan errors",
+    "Scan warnings",
 )
 
-
-@dataclass
-class _Section:
-    title: str
-    intro: str = ""
-    items: list[str] = field(default_factory=list)
+# Where a person sees the traceback of a failure.
+DETAILS = "`dotkit-migrate setup --dry-run --debug`"
 
 
-class Report:
-    def __init__(self) -> None:
-        self.carried_rows: list[tuple[str, str]] = []
-        self.sections: dict[str, _Section] = {}
-        self._order: list[str] = []
+def _sorted(sections: dict) -> list:
+    """The sections in SECTIONS, and in the order they first appear within one place of it."""
+    first = list(sections)
 
-    def carried(self, what: str, where: str) -> None:
-        self.carried_rows.append((what, where))
+    def key(title: str) -> tuple[int, int]:
+        head = "Shell lines" if title.startswith("Shell lines") else title
+        rank = SECTIONS.index(head) if head in SECTIONS else len(SECTIONS)
+        return rank, first.index(title)
 
-    def todo(self, title: str, intro: str, items: list[str]) -> None:
-        sec = self.sections.get(title)
-        if sec is None:
-            sec = self.sections[title] = _Section(title)
-            self._order.append(title)
-        if intro and not sec.intro:
-            sec.intro = intro
-        sec.items += [i for i in items if i not in sec.items]
+    return [sections[t] for t in sorted(sections, key=key)]
 
-    @property
-    def count(self) -> int:
-        """The number of items to check, without the lines that dotkit does already."""
-        return sum(max(1, len(s.items)) for t, s in self.sections.items() if t != "Shell lines: Done by dotkit")
 
-    def _sorted(self) -> list[_Section]:
-        def key(title: str) -> tuple[int, int]:
-            head = "Shell lines" if title.startswith("Shell lines") else title
-            rank = ORDER.index(head) if head in ORDER else len(ORDER)
-            return rank, self._order.index(title)
-
-        return [self.sections[t] for t in sorted(self.sections, key=key)]
-
-    def render(self, scan, repo: str) -> str:
-        host = scan.hostname or "this Mac"
-        date = datetime.date.today().isoformat()
-        out = [
-            f"# Migration from {host}",
-            "",
-            f"dotkit setup created this repository ({repo}) from the Mac {host} on {date}. This file lists "
-            "what it carried over and what needs your attention. Work through the list, then delete this "
-            "file and commit.",
-            "",
-            "Setup uninstalled nothing that was on the Mac; the Homebrew packages stay installed. A file "
-            "in the way of a dotkit link is renamed to <name>.before-dotkit.",
-            "",
-            "## Carried over",
-            "",
-        ]
-        if self.carried_rows:
-            out += ["| What | Where |", "|---|---|"]
-            out += [f"| {_cell(w)} | {_cell(d)} |" for w, d in self.carried_rows]
-        else:
-            out.append("Nothing.")
-        out += ["", "## To do", ""]
-        if not self.sections:
-            out += ["Nothing.", ""]
-        for sec in self._sorted():
-            out.append(f"### {sec.title}")
-            out.append("")
-            if sec.intro:
-                out += [sec.intro, ""]
-            for item in sec.items:
+def render(doc, host: str, repo: str) -> str:
+    """The text of MIGRATION.md from a docs.ReportDoc."""
+    host = host or "this Mac"
+    date = datetime.date.today().isoformat()
+    out = [
+        f"# Migration from {host}",
+        "",
+        f"dotkit setup created this repository ({repo}) from the Mac {host} on {date}. This file lists "
+        "what it carried over and what needs your attention. Work through the list, then delete this "
+        "file and commit.",
+        "",
+        "Setup uninstalled nothing that was on the Mac; the Homebrew packages stay installed. A file "
+        "in the way of a dotkit link is renamed to <name>.before-dotkit.",
+        "",
+        "## Carried over",
+        "",
+    ]
+    if doc.carried_rows:
+        out += ["| What | Where |", "|---|---|"]
+        out += [f"| {_cell(w)} | {_cell(d)} |" for w, d in doc.carried_rows]
+    else:
+        out.append("Nothing.")
+    out += ["", "## To do", ""]
+    if not doc.sections:
+        out += ["Nothing.", ""]
+    for sec in _sorted(doc.sections):
+        out.append(f"### {sec.title}")
+        out.append("")
+        for block in sec.blocks:
+            if block.intro:
+                out += [block.intro, ""]
+            for item in block.items:
                 out.append(f"- {item}")
-            if sec.items:
+            if block.items:
                 out.append("")
-        return "\n".join(out).rstrip("\n") + "\n"
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def adopt_lines(added: list[tuple[str, list[str]]], doc) -> list[str]:
+    """The output of `dotkit migrate`: what was added, as (header, lines), then the to-dos of a docs.ReportDoc.
+
+    A block of the report is its intro, or the section title, and its items.
+    """
+    out = []
+    for header, lines in added:
+        if lines:
+            out += [header] + [f"  {line}" for line in lines]
+    for sec in _sorted(doc.sections):
+        for block in sec.blocks:
+            out.append(block.intro or f"{sec.title}:")
+            out += [f"  {item}" for item in block.items]
+    return out
+
+
+def problem_item(f: Failure) -> str:
+    """The item of a model.Failure under "Problems during the migration" (ARCHITECTURE.md, section 7.4)."""
+    by_hand = f" By hand: {f.manual}" if f.manual else ""
+    if f.phase == "conflict":
+        return f"**{f.title}**: {conflict_text(f)} {f.error}. Please report it."
+    if f.phase == "skipped":
+        return (f"**{f.title}**: skipped, because {f.reason}. Nothing of it is in this repository.{by_hand}")
+    where = f" ({f.where})" if f.where else ""
+    return (f"**{f.title}**: failed while {PHASE_TEXT[f.phase]}: {_code(f.error)}{where}. Nothing of it "
+            f"is in this repository.{by_hand} Details: {DETAILS}. Please report it.")
+
+
+def conflict_text(f: Failure) -> str:
+    """What a conflict did: "<document>: two parts wanted different values for `<target>`; the value of <the
+    second owner> is left out." """
+    return (f"{f.where}: two parts wanted different values for `{f.reason.replace('`', chr(39))}`; the value of "
+            f"{f.title} is left out.")
+
+
+def problems_lines(failures: list[Failure]) -> list[str]:
+    """The first lines of the summary, and the lines on stderr: the parts that failed, then each conflict."""
+    failed = [f for f in failures if f.phase != "conflict"]
+    out = []
+    if failed:
+        n = len(failed)
+        what = ", ".join(f"{f.migrator} ({PHASE_TEXT[f.phase]})" for f in failed)
+        out.append(f"Problems: {plural(n, 'part')} of the migration failed: {what}. "
+                   f"{'It is' if n == 1 else 'They are'} left out; MIGRATION.md says what to do.")
+    out += [f"Problems: {conflict_text(f)}" for f in failures if f.phase == "conflict"]
+    return out
+
+
+def scan_warning(failures: list[Failure]) -> str:
+    """The warning line of the first screen and of the plain prompts: the parts that have no screen."""
+    n = len(failures)
+    return (f"{plural(n, 'part')} of the scan failed: {', '.join(f.title for f in failures)}. "
+            f"{'It is' if n == 1 else 'They are'} left out; the plan screen and MIGRATION.md say more.")
+
+
+def _code(text: str) -> str:
+    return "`" + text.replace("`", "'") + "`"
 
 
 def plural(n: int, one: str, many: str | None = None) -> str:

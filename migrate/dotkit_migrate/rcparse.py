@@ -18,7 +18,7 @@ import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from . import secrets
+from . import catalog, secrets
 
 # Categories of the lines that are not carried, in report order, with the
 # next step for each one.
@@ -41,7 +41,7 @@ CATEGORIES: tuple[tuple[str, str], ...] = (
                 "Add the plugin lines you miss to {zshrc}. Remove the framework directory when you no "
                 "longer need it."),
     (VERSION_MANAGER, "mise replaces it, see \"Version managers\" below. mise reads .nvmrc, "
-                      ".node-version, .python-version, and .ruby-version files."),
+                      ".node-version, .python-version, and .ruby-version files, and always .tool-versions."),
     (PROMPT, "dotkit draws the prompt with Starship (~/.config/starship.toml). To keep your own prompt, "
              "set `dotkit.zsh.integrations.starship.enable = false;` in nix/shell.nix and add the lines "
              "to {zshrc}."),
@@ -61,19 +61,37 @@ CATEGORIES: tuple[tuple[str, str], ...] = (
 SKIP_VARS = {
     "PATH": PATHS, "FPATH": COMPLETION, "MANPATH": DONE, "INFOPATH": DONE,
     "HOMEBREW_PREFIX": DONE, "HOMEBREW_CELLAR": DONE, "HOMEBREW_REPOSITORY": DONE,
-    "ZSH": FRAMEWORK, "ZSH_THEME": FRAMEWORK, "ZSH_CUSTOM": FRAMEWORK, "ZSH_CACHE_DIR": FRAMEWORK,
-    "ZDOTDIR": FRAMEWORK, "plugins": FRAMEWORK, "DISABLE_AUTO_UPDATE": FRAMEWORK,
-    "DISABLE_UPDATE_PROMPT": FRAMEWORK, "UPDATE_ZSH_DAYS": FRAMEWORK, "DISABLE_AUTO_TITLE": FRAMEWORK,
-    "ENABLE_CORRECTION": FRAMEWORK, "COMPLETION_WAITING_DOTS": FRAMEWORK, "HIST_STAMPS": FRAMEWORK,
-    "CASE_SENSITIVE": FRAMEWORK, "HYPHEN_INSENSITIVE": FRAMEWORK, "DISABLE_MAGIC_FUNCTIONS": FRAMEWORK,
-    "DISABLE_LS_COLORS": FRAMEWORK, "DISABLE_UNTRACKED_FILES_DIRTY": FRAMEWORK, "ZINIT_HOME": FRAMEWORK,
-    "ZINIT": FRAMEWORK, "ZIM_HOME": FRAMEWORK, "ANTIDOTE_HOME": FRAMEWORK,
-    "NVM_DIR": VERSION_MANAGER, "PYENV_ROOT": VERSION_MANAGER, "RBENV_ROOT": VERSION_MANAGER,
-    "ASDF_DIR": VERSION_MANAGER, "ASDF_DATA_DIR": VERSION_MANAGER, "SDKMAN_DIR": VERSION_MANAGER,
-    "VOLTA_HOME": VERSION_MANAGER, "FNM_DIR": VERSION_MANAGER, "JENV_ROOT": VERSION_MANAGER,
-    "NODENV_ROOT": VERSION_MANAGER, "GOENV_ROOT": VERSION_MANAGER,
+    **{v: FRAMEWORK for spec in catalog.FRAMEWORKS for v in spec.vars},
+    **{v: FRAMEWORK for v in catalog.UNATTRIBUTED_FRAMEWORK_VARS},
+    **{v: VERSION_MANAGER for spec in catalog.VERSION_MANAGERS for v in spec.extra_vars},
     "JAVA_HOME": DONE, "PS1": PROMPT, "PROMPT": PROMPT, "RPROMPT": PROMPT, "RPS1": PROMPT, "PS2": PROMPT,
 }
+# The framework or version manager of each variable above, if it has one.
+_VAR_SOURCES = {
+    **{v: spec.name for spec in catalog.FRAMEWORKS for v in spec.vars},
+    **{v: spec.name for spec in catalog.VERSION_MANAGERS for v in spec.extra_vars},
+}
+
+
+def _by_spec(specs, words, wrap: str = "{}") -> tuple[re.Pattern[str], tuple[str, ...]]:
+    """A pattern of the words of all specs, one named group per spec, and the spec names in group order.
+
+    `wrap` puts the alternation into a larger pattern, as "\\b(?:{})\\b".
+    """
+    named = [s for s in specs if words(s)]
+    alternation = "|".join(f"(?P<s{i}>{'|'.join(words(s))})" for i, s in enumerate(named))
+    return re.compile(wrap.format(alternation)), tuple(s.name for s in named)
+
+
+def _source(m: re.Match[str] | None, names: tuple[str, ...]) -> str:
+    """The spec name of a match of a pattern of _by_spec."""
+    return names[int(m.lastgroup[1:])] if m and m.lastgroup else ""
+
+
+_FRAMEWORK_WORDS, _FRAMEWORK_NAMES = _by_spec(catalog.FRAMEWORKS, lambda s: s.words)
+_VERSION_MANAGER_WORDS, _VERSION_MANAGER_NAMES = _by_spec(
+    catalog.VERSION_MANAGERS, lambda s: tuple(re.escape(w) for w in s.words), r"\b(?:{})\b")
+_RULE_NAMES = {FRAMEWORK: _FRAMEWORK_NAMES, VERSION_MANAGER: _VERSION_MANAGER_NAMES}
 
 # (category, pattern). The first match wins. Checked on the whole statement.
 _RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -84,13 +102,8 @@ _RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"nix-daemon\.sh|hm-session-vars|/etc/profiles/per-user|/opt/homebrew/bin/brew\b|"
         r"(source|\.)\s+[\"']?(~|\$HOME|\$\{HOME\})/\.bashrc[\"']?\s*$|"
         r"^\s*typeset\s+-U\s+(path|PATH)(\s+(path|PATH))?\s*$")),
-    (FRAMEWORK, re.compile(
-        r"oh-my-zsh|\$ZSH\b|\$\{ZSH\}|ZSH_THEME|\bomz\b|prezto|zprezto|\bzinit\b|zi\.zsh|antigen|"
-        r"antidote|\bzplug\b|zimfw|\.zim\b|powerlevel10k|powerlevel9k|POWERLEVEL9K|\bp10k\b|"
-        r"p10k-instant-prompt|\bplugins=\(|zsh_plugins")),
-    (VERSION_MANAGER, re.compile(
-        r"\b(nvm|NVM_DIR|pyenv|PYENV_ROOT|rbenv|rvm|asdf|sdkman|SDKMAN|jenv|volta|VOLTA_HOME|fnm|"
-        r"nodenv|goenv|chruby|tfenv|conda|mamba|micromamba)\b")),
+    (FRAMEWORK, _FRAMEWORK_WORDS),
+    (VERSION_MANAGER, _VERSION_MANAGER_WORDS),
     (PROMPT, re.compile(r"\b(PS1|PROMPT|RPROMPT|RPS1|promptinit|prompt\s+\w+)\b")),
     (COMPLETION, re.compile(r"\b(compdef|fpath|complete\s+-[A-Za-z]|_comp_options|zstyle\s+':completion)")),
     (OPTIONS, re.compile(r"^\s*(setopt|unsetopt|bindkey|zstyle|autoload|zmodload|shopt|set\s+-o|"
@@ -115,9 +128,8 @@ _PATH_DONE = (
     "/nix/var/nix/profiles/default/bin", "~/.nix-profile/bin", "~/.local/share/mise/shims",
     "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin",
 )
-_PATH_VERSION_MANAGERS = re.compile(
-    r"/\.(pyenv|rbenv|nvm|nodenv|goenv|asdf|jenv|volta|sdkman|rvm|fnm|tfenv)(/|$)|/fnm(/|$)|/(ana|mini)conda\d?/"
-)
+_PATH_VERSION_MANAGERS, _PATH_VERSION_MANAGER_NAMES = _by_spec(
+    catalog.VERSION_MANAGERS, lambda s: s.path_markers, "/(?:{})(?:/|$)")
 
 
 @dataclass
@@ -125,6 +137,9 @@ class Carried:
     lines: tuple[int, int]
     text: str  # what goes into the repository file
     kind: str  # export, path, alias, function, comment
+    # A path line: the directories it adds, expanded, and those of them that it puts in front of PATH.
+    dirs: tuple[str, ...] = ()
+    front: tuple[str, ...] = ()
 
 
 @dataclass
@@ -142,6 +157,8 @@ class Finding:
     note: str = ""
     # The text has a secret: the report does not show it.
     secret: bool = False
+    # The framework or version manager of the catalog that the line uses, "" for none.
+    source: str = ""
 
     @property
     def where(self) -> str:
@@ -316,7 +333,8 @@ def _home_form(path: str, home: str) -> str:
     return shlex.quote(path)
 
 
-def _path_entry_done(entry: str, home: str) -> bool:
+def path_done(entry: str, home: str) -> bool:
+    """A PATH entry that dotkit adds, that the system has, or that is in the Nix store: rcparse does not carry it."""
     for d in _PATH_DONE:
         d = home + d[1:] if d.startswith("~") else d
         if entry.rstrip("/") == d:
@@ -337,15 +355,16 @@ class Parser:
         known = dict(known or {})
         pending: list[tuple[int, str]] = []  # comment lines right before a statement
 
-        def carry(st: _Statement, out: str, kind: str) -> None:
+        def carry(st: _Statement, out: str, kind: str, dirs: tuple[str, ...] = (),
+                  front: tuple[str, ...] = ()) -> None:
             for no, comment in pending:
                 res.carried.append(Carried((no, no), comment, "comment"))
             pending.clear()
-            res.carried.append(Carried((st.start, st.end), out, kind))
+            res.carried.append(Carried((st.start, st.end), out, kind, dirs, front))
 
-        def report(st: _Statement, category: str, note: str = "") -> None:
+        def report(st: _Statement, category: str, note: str = "", source: str = "") -> None:
             pending.clear()
-            res.findings.append(Finding((st.start, st.end), category, st.text.rstrip(), note))
+            res.findings.append(Finding((st.start, st.end), category, st.text.rstrip(), note, source=source))
 
         for st in _statements(text):
             stripped = st.text.strip()
@@ -408,8 +427,9 @@ class Parser:
         if fm and (st.block or re.search(r"\{.*\}\s*;?\s*$", text)) and not re.match(r"^\s*(if|for|while|case)\b", text):
             body = text
             for category, pattern in _RULES[:3]:
-                if pattern.search(body):
-                    report(st, category)
+                m = pattern.search(body)
+                if m:
+                    report(st, category, source=_source(m, _RULE_NAMES.get(category, ())))
                     return
             if text.count("\n") < 200:
                 carry(st, text.rstrip(), "function")
@@ -418,13 +438,14 @@ class Parser:
             return
 
         for category, pattern in _RULES:
-            if pattern.search(text):
+            m = pattern.search(text)
+            if m:
                 if category == PROMPT and _ALIAS.match(text):
                     break
                 if category == SOURCED and self._done_source(text):
                     report(st, DONE)
                     return
-                report(st, category)
+                report(st, category, source=_source(m, _RULE_NAMES.get(category, ())))
                 return
 
         if st.block or "\n" in text:
@@ -450,7 +471,7 @@ class Parser:
         if m:
             name, value = m.group("name"), m.group("value")
             if name in SKIP_VARS:
-                report(st, SKIP_VARS[name])
+                report(st, SKIP_VARS[name], source=_VAR_SOURCES.get(name, ""))
                 return
             raw = _unquote(value)
             if raw is not None:
@@ -549,15 +570,20 @@ class Parser:
 
         keep: list[tuple[str, bool]] = []
         dropped: list[str] = []
+        source = ""  # the first version manager of the dropped entries
         for raw, prepend in entries:
             path = _expand(raw, self.home, known)
             if path is None:
                 dropped.append(f"{raw} uses another variable")
+                names = (m.group(1) or m.group(2) for m in _VAR_REF.finditer(raw))
+                source = source or next((_VAR_SOURCES[n] for n in names if SKIP_VARS.get(n) == VERSION_MANAGER), "")
                 continue
-            if _path_entry_done(path, self.home):
+            if path_done(path, self.home):
                 continue
-            if _PATH_VERSION_MANAGERS.search(path):
+            vm = _PATH_VERSION_MANAGERS.search(path)
+            if vm:
                 dropped.append(f"{raw} is of a version manager")
+                source = source or _source(vm, _PATH_VERSION_MANAGER_NAMES)
                 continue
             if not self.exists(path):
                 dropped.append(f"{raw} does not exist")
@@ -567,7 +593,7 @@ class Parser:
             report(st, DONE)
             return True
         if dropped:
-            report(st, PATHS, "not carried: " + ", ".join(dropped))
+            report(st, PATHS, "not carried: " + ", ".join(dropped), source)
         if keep:
             lines = []
             front = [p for p, pre in keep if pre]
@@ -584,7 +610,7 @@ class Parser:
                     lines.append(f'PATH="{joined(front)}:$PATH"')
                 if back:
                     lines.append(f'PATH="$PATH:{joined(back)}"')
-            carry(st, "\n".join(lines), "path")
+            carry(st, "\n".join(lines), "path", tuple(p for p, _ in keep), tuple(front))
         return True
 
 
