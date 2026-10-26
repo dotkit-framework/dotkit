@@ -84,19 +84,37 @@ in
         PATH is always included.
       '';
     };
+
+    guiSecrets = mkOption {
+      type = types.listOf (types.strMatching "[A-Za-z_][A-Za-z0-9_]*");
+      description = ''
+        Variables of ~/.secrets that GUI apps also get, for example the token
+        of a registry for an IDE that runs npm. Only the names are in the
+        configuration. The values are read from ~/.secrets at each login and
+        when the file changes. A name that ~/.secrets does not set is removed.
+      '';
+    };
   };
 
   config = {
     nixpkgs.hostPlatform = "aarch64-darwin";
 
-    # The base lists. The dotfiles repository adds its own files.
-    # See nix/read-list.nix for the format.
-    dotkit.lists = {
-      packages = [ ./packages.txt ];
-      brews = [ ./brews.txt ];
-      casks = [ ./casks.txt ];
+    dotkit = {
+      # The base lists. The dotfiles repository adds its own files.
+      # See nix/read-list.nix for the format.
+      lists = {
+        packages = [ ./packages.txt ];
+        brews = [ ./brews.txt ];
+        casks = [ ./casks.txt ];
+      };
+      guiVariables = [ "JAVA_HOME" ];
+      # Registry tokens, for an IDE that runs npm. GUI_SECRETS in
+      # migrate/dotkit_migrate/base.py has the same names.
+      guiSecrets = [
+        "NPM_TOKEN"
+        "GITHUB_TOKEN"
+      ];
     };
-    dotkit.guiVariables = [ "JAVA_HOME" ];
 
     home-manager.users.${user.name}.home.packages = map package (names cfg.lists.packages);
 
@@ -170,6 +188,36 @@ in
         ) guiEnvironment
       );
       serviceConfig.RunAtLoad = true;
+    };
+
+    # The same for the variables of dotkit.guiSecrets, from ~/.secrets. The
+    # values stay out of the Nix store. launchd runs the agent again when the
+    # file changes. Apps that run already keep their old values until a restart.
+    launchd.user.agents.gui-secrets = lib.mkIf (cfg.guiSecrets != [ ]) {
+      # A subshell: a ~/.secrets that stops with an error does not stop the agent.
+      # The agent gets the values of its last run from launchd: unset them first,
+      # so that a name removed from ~/.secrets is removed here too.
+      script = ''
+        (
+          unset ${lib.concatStringsSep " " cfg.guiSecrets}
+          if [ -r ${lib.escapeShellArg "${user.home}/.secrets"} ]; then
+            . ${lib.escapeShellArg "${user.home}/.secrets"} >/dev/null 2>&1
+          fi
+      ''
+      + lib.concatMapStrings (name: ''
+        if [ -n "''${${name}+set}" ]; then
+          /bin/launchctl setenv ${name} "''$${name}"
+        else
+          /bin/launchctl unsetenv ${name}
+        fi
+      '') cfg.guiSecrets
+      + ''
+        )
+      '';
+      serviceConfig = {
+        RunAtLoad = true;
+        WatchPaths = [ "${user.home}/.secrets" ];
+      };
     };
 
     # Ghostty and the Starship config use the Nerd Font.

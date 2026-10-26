@@ -1,6 +1,8 @@
 # dotkit base. npm has one user config file. To add registry tokens, copy
 # this file to the dotfiles repository and replace the link:
-# dotkit.links.".npmrc" = "config/npmrc".
+# dotkit.links.".npmrc" = "config/npmrc". Write each token as a variable,
+# //npm.pkg.github.com/:_authToken=${GITHUB_NPM_TOKEN}, and export it in
+# ~/.secrets.
 
 # Delay newly published packages for 7 days.
 min-release-age=7
