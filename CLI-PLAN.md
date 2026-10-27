@@ -111,6 +111,8 @@ section of PARITY.md, with a reason. The planned deviations are the following:
 - jq is no longer necessary. "jq is not on PATH" goes away.
 - `dotkit add` can ask for the source (section 7).
 
+PARITY.md has the full list, and the Bash bugs that the port fixes.
+
 ### 4.2 Fake tools
 
 `lib/tests/fakebin/` has fake `nix`, `brew`, `mise`, `mas`, `curl`, `sudo`,

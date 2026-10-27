@@ -113,6 +113,19 @@ def _write(path: Path, text: str, mode: int = 0o644) -> None:
     path.chmod(mode)
 
 
+def install_fakes(root: Path, rules: List[dict]) -> Dict[str, str]:
+    """The fake tools in root/bin with the rules in root/fake; returns PATH and FAKE_DIR for them."""
+    for tool in TOOLS:
+        _write(root / "bin" / tool, _tool_script(tool), 0o755)
+    _write(root / "fake/rules.json", json.dumps(rules, indent=1))
+    return {"PATH": f"{root / 'bin'}:/usr/bin:/bin:/usr/sbin:/sbin", "FAKE_DIR": str(root / "fake")}
+
+
+def fake_calls(root: Path) -> List[dict]:
+    log = root / "fake/log.jsonl"
+    return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] if log.exists() else []
+
+
 def setup(sb: Path, impl: Impl, s: Scenario) -> None:
     for rel in impl.files:
         src = ROOT / rel
@@ -125,8 +138,7 @@ def setup(sb: Path, impl: Impl, s: Scenario) -> None:
     for rel, text in {**BASE, **REPO}.items():
         _write(sb / rel, text)
     _write(sb / "dotkit/migrate/dotkit-migrate", _tool_script("dotkit-migrate"), 0o755)
-    for tool in TOOLS:
-        _write(sb / "bin" / tool, _tool_script(tool), 0o755)
+    install_fakes(sb, s.rules)
     if impl.needs_jq and JQ:
         os.symlink(JQ, sb / "bin/jq")
     if s.dotkit_dir:
@@ -140,7 +152,6 @@ def setup(sb: Path, impl: Impl, s: Scenario) -> None:
             _write(p, text.replace("@SB", str(sb)), 0o755 if rel.startswith("bin/") else 0o644)
     (sb / "home").mkdir(exist_ok=True)
     (sb / "tmp").mkdir()
-    _write(sb / "fake/rules.json", json.dumps(s.rules, indent=1))
 
 
 def _snapshot(sb: Path) -> Dict[str, str]:
@@ -158,7 +169,7 @@ def _snapshot(sb: Path) -> Dict[str, str]:
     return out
 
 
-def _run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: str) -> tuple[int, str, str]:
+def run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: str) -> tuple[int, str, str]:
     """stdin and stderr on a terminal without echo, stdout on a pipe. Returns the exit code, stdout, the terminal."""
     master, slave = pty.openpty()
     attrs = termios.tcgetattr(slave)
@@ -189,6 +200,7 @@ def _run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: str) -> tupl
             if not chunk and p.poll() is not None:
                 break
     p.wait()
+    p.stdout.close()
     os.close(master)
     return p.returncode, out.decode(), term.decode().replace("\r\n", "\n")
 
@@ -219,13 +231,10 @@ def run(impl: Impl, s: Scenario) -> dict:
                                text=True, timeout=300)
             code, out, err = r.returncode, r.stdout, r.stderr
         else:
-            code, out, err = _run_tty(argv, env, sb / "home", s.tty)
+            code, out, err = run_tty(argv, env, sb / "home", s.tty)
         after = _snapshot(sb)
         files = {k: after.get(k) for k in sorted(set(before) | set(after)) if before.get(k) != after.get(k)}
-        calls = []
-        log = sb / "fake/log.jsonl"
-        if log.exists():
-            calls = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        calls = fake_calls(sb)
         if s.unordered:
             calls.sort(key=lambda c: json.dumps(c, sort_keys=True))
         result = {

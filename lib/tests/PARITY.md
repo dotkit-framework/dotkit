@@ -261,8 +261,9 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 |---|---|---|
 | DV1 | Python needs no jq, so "jq is not on PATH. Run dotkit apply first." goes away (P5). | The Python standard library reads JSON. |
 | DV2 | `dotkit add` asks for the source of a bare name in a terminal (CLI-PLAN.md, section 7). | The new feature. |
-| DV3 | When `DOTFILES` or `DOTKIT_DIR` is not a directory, Bash prints its own `cd` error with a line number. Python prints only the dotkit message. The exit codes stay (1 and 2). | Bash internals are not part of the interface. |
+| DV3 | Bash prints its own errors with a line number: `cd` when `DOTFILES` or `DOTKIT_DIR` is not a directory, and "command not found". Python prints only the dotkit message ("DOTFILES is not a directory: X", "NAME: command not found"). The exit codes stay (1, 2, and 127). | Bash internals are not part of the interface. |
 | DV4 | `__complete tools-*` prints the names sorted by code point, not with `sort` in the locale of the user. | zsh sorts the completions itself. |
+| DV5 | A list file or config/mise.toml that does not exist reads as empty. In Bash, awk printed an error, and most commands stopped with exit code 2. | The template has all the files; an empty list is the safe reading. |
 
 ## Bash bugs
 
@@ -274,3 +275,4 @@ scenario for the correct behavior.
 |---|---|---|
 | B1 | `--plan DIR/FILE` with a directory that does not exist: the `cd` error goes to stderr, and the wizard gets `--plan /FILE`. The usage error "'X' is not in a directory that exists." never shows. | The usage error, exit code 2. |
 | B2 | `upgrade` runs the switch in `switch \|\| ...`, where Bash does not stop at an error. When `nix-env --set` fails, `darwin-rebuild activate` runs anyway, and only the last exit code counts. | The switch stops at the first failure, as in `apply`. |
+| B3 | With `DOTKIT_DIR`, add and remove run the build in `if ! build_system`, where Bash does not stop at an error: when the evaluation of `drvPath` fails, `nix build` runs with the path `^*`. | The build stops with the exit code of the evaluation. |
