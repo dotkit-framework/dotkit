@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import List
 
-from ..core import nix, proc, ui
+from ..core import nix, proc
 from ..core.env import Env
 
 DECLARED = "h: { taps = map (t: t.name) h.taps; masApps = h.masApps; }"
@@ -28,16 +28,12 @@ def _wizard(env: Env, mode: str, flags: List[str]) -> int:
                      "--declared", declared.value, *flags]).code
 
 
-def migrate(env: Env, words: List[str], dry_run: bool, yes: bool, all_tools: bool) -> int:
-    if words:
-        raise ui.usage_error("migrate takes no arguments.")
+def migrate(env: Env, dry_run: bool, yes: bool, all_tools: bool) -> int:
     flags = [f for f, on in (("--dry-run", dry_run), ("--yes", yes), ("--all", all_tools)) if on]
     return _wizard(env, "adopt", flags)
 
 
-def tidy(env: Env, words: List[str], dry_run: bool, yes: bool, plan: str) -> int:
-    if words:
-        raise ui.usage_error("tidy takes no arguments.")
+def tidy(env: Env, dry_run: bool, yes: bool, plan: str) -> int:
     flags = [f for f, on in (("--dry-run", dry_run), ("--yes", yes)) if on]
     if plan:
         flags += ["--plan", plan]

@@ -45,17 +45,18 @@ lib/
   run.py                    the start file: checks the Python, then runs dotkit or dotkit-migrate
   dotkit/
     __main__.py             main(): the environment, the command, and the exit code
+    cli.py                  COMMANDS: each command, its argparse parser, and how to run it
     core/                   what the commands share
       env.py                DOTFILES, DOTKIT_DIR, and the paths of a run
       ui.py                 messages, errors as exceptions, the question, the width of the terminal
       proc.py               the only place that starts processes
       nix.py                the flake commands: the override of DOTKIT_DIR, the build, the switch
-      args.py               the option parser
       lists.py              the list files: read (the rules of nix/read-*.nix), append, delete
       mise_toml.py          the [tools] table of a mise config, read as TOML
       backup.py             copies of files to restore on a failure or a signal
-    commands/               the usage, the dispatch, apply, upgrade, clean, history, rollback, migrate, tidy
+    commands/               apply, upgrade, clean, history, rollback, migrate, tidy
     pkg/                    add, remove, info, list
+      names.py              the declared names for the completion (imports only the readers)
       lookups.py            ask Nixpkgs, Homebrew, mise, npm, PyPI, and mas
       declared.py           where a tool is declared, and which global tool has a command
       resolve.py            select the source; choose() has the rules and runs no command
@@ -127,8 +128,11 @@ cd lib && /usr/bin/python3 -B -m unittest discover -s tests -t .
 
 1. Add the behavior to `PARITY.md`: new rows, with "scenarios" or the unit
    test that covers each.
-2. Add the command to `commands/__init__.py` (the usage, the dispatch) or
-   to `pkg/cli.py`, and to `nix/completions/_dotkit`.
+2. Add an entry to `COMMANDS` in `cli.py`: its group, its summary, and a
+   setup function that adds its options to the parser and returns how to
+   run it. Put the code in `commands/` or `pkg/`, and add the command to
+   `nix/completions/_dotkit`. The help of `dotkit --help` comes from
+   `COMMANDS`.
 3. Add scenarios to `tests/cli/scenarios.py` with the rows, and write their
    goldens with `DOTKIT_CLI_REGOLD=1`. Read each new golden before you
    commit it.

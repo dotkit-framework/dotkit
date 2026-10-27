@@ -4,9 +4,9 @@
   "-z",
   "-h"
  ],
- "exit": 2,
- "stdout": "",
- "stderr": "dotkit: unknown option: -z. Use dotkit --help.\n",
+ "exit": 0,
+ "stdout": "usage: dotkit clean [-h] [-n] [-y] [age]\n\nDelete old Nix generations, Homebrew downloads, and mise versions.\n\nDeletes Nix generations older than the age, old Homebrew downloads, and unused mise\nversions.\n\npositional arguments:\n  age            Days, for example 30d. Default: 14d.\n\noptions:\n  -h, --help     show this help message and exit\n  -n, --dry-run  Show the plan. Change nothing.\n  -y, --yes      Do not ask. Required without a terminal.\n",
+ "stderr": "",
  "files": {},
  "calls": [],
  "tmp_left": 0

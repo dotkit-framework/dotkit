@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: migrate takes no arguments. Use dotkit --help.\n",
+ "stderr": "usage: dotkit migrate [-h] [-n] [-y] [-a]\ndotkit migrate: error: unrecognized arguments: x\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

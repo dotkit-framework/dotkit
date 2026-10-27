@@ -4,7 +4,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: 'tools' is now 'upgrade mise'. Use dotkit --help.\n",
+ "stderr": "dotkit: 'tools' is now 'upgrade mise'. Run dotkit --help.\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

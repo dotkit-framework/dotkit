@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: unknown option: --dry. Use dotkit --help.\n",
+ "stderr": "usage: dotkit apply [-h] [-n]\ndotkit apply: error: unrecognized arguments: --dry\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

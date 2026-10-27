@@ -6,7 +6,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: history takes no options. Use dotkit --help.\n",
+ "stderr": "usage: dotkit history [-h]\ndotkit history: error: unrecognized arguments: x -n\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

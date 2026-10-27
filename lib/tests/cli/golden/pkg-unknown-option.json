@@ -6,7 +6,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: unknown option: -z. Use dotkit add --help.\n",
+ "stderr": "usage: dotkit add [-h] [-n] [-y] [-f] tool [tool ...]\ndotkit add: error: unrecognized arguments: -z\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

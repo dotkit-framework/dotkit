@@ -4,7 +4,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: 'gc' is now 'clean'. Use dotkit --help.\n",
+ "stderr": "dotkit: 'gc' is now 'clean'. Run dotkit --help.\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

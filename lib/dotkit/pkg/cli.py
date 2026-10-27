@@ -1,55 +1,17 @@
-"""The commands add, remove, info, list, and __names (PARITY.md, rows P, L, N, I, Ad, and Rm)."""
+"""The commands add, remove, info, and list (PARITY.md, rows L, I, Ad, and Rm). dotkit/cli.py parses them."""
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from typing import List, Optional, Sequence
 
-from ..core import args, lists, mise_toml, nix, proc, ui
+from ..core import lists, mise_toml, nix, proc, ui
 from ..core.env import Env
 from . import declared, edit, picker
 from .lookups import Lookups
 from .resolve import KEYS, Candidates, Outcome, Resolver, Selection
 
-USAGE = """\
-Usage: dotkit add [-n] [-y] [-f] <tool>...
-       dotkit remove [-n] [-y] <tool>...
-       dotkit info <tool>...
-       dotkit list [nix|brew|mise]
-
-add looks up each tool in all sources, selects one, shows the plan, asks to
-confirm, writes the config, and applies it (dotkit apply or mise install).
-
-Examples:
-  dotkit add lazygit           Nix, when Nixpkgs has the current release
-  dotkit add hk                mise, when Nixpkgs is older or does not have it
-  dotkit add zed               Homebrew, because it is a macOS app
-  dotkit add @biomejs/biome    npm, because the name is a scoped npm package
-  dotkit add -n ripgrep fd     show the plan only
-
-A prefix selects the source. Use the one that matches the install line in the
-tool's README:
-  nix:ATTR    Nixpkgs                                  -> nix/packages.txt
-  brew:NAME   brew install NAME (formula, else cask)   -> nix/brews.txt, casks.txt
-  cask:NAME   brew install --cask NAME                 -> nix/casks.txt
-  mise:NAME   the mise registry                        -> config/mise.toml
-  npm:PKG     npm install -g PKG                       -> config/mise.toml
-  pipx:PKG    pipx install PKG, uv tool install PKG    -> config/mise.toml
-  mas:ID      mas install ID, an App Store app         -> nix/mas.txt
-  Other mise backends: cargo:CRATE, go:MODULE, github:OWNER/REPO, aqua:OWNER/REPO, ...
-
-Options:
-  -n, --dry-run  Show the plan. Change nothing.
-  -y, --yes      Do not ask for confirmation. Required without a terminal.
-  -f, --force    Add a tool even when a global tool already supplies its command.
-  -h, --help     Show this help.
-
-Tools in the dotkit base are not added again, and remove does not remove them.
-Homebrew taps: edit nix/taps.txt."""
-
-COMMANDS = ("add", "remove", "info", "list")
 FAILED = "nothing changed. Fix the errors above, then run the command again."
 # The reason of a source that the user selected in the picker.
 PICKED = "selected in the list"
@@ -350,9 +312,6 @@ class Pkg:
     # --- list
 
     def list(self, sources: Sequence[str]) -> int:
-        for src in sources:
-            if src not in ("nix", "brew", "mise"):
-                raise ui.die(f"'{src}' is not a source. Use nix, brew, or mise.")
         for src in sources or ("nix", "brew", "mise"):
             # The dotkit base first, marked "(dotkit)".
             for root, base in ((self.env.dotkit, " (dotkit)"), (self.env.repo, "")):
@@ -382,42 +341,3 @@ class Pkg:
             name = re.sub(r'\\([\\"#])', r"\1", name)
             # jq pads by code points, not by bytes.
             ui.out(f"brew  {name}{' ' * max(36 - len(name), 0)} app store")
-
-    # --- __names
-
-    def names(self, which: str) -> int:
-        """The declared names for the zsh completion: user for the lists of the dotfiles repository, all for
-        the base lists too. Sorted by code point (PARITY.md, DV4)."""
-        roots = [self.env.repo] + ([self.env.dotkit] if which == "all" else [])
-        out = set()
-        for root in roots:
-            for rel in ("nix/packages.txt", "nix/brews.txt", "nix/casks.txt"):
-                out.update(lists.names(root / rel))
-            out.update("mas:" + app_id for app_id, _ in lists.mas_apps(root / "nix/mas.txt"))
-            out.update(mise_toml.tools(root / "config/mise.toml"))
-        for n in sorted(out):
-            ui.out(n)
-        return 0
-
-
-def main(env: Env, argv: Sequence[str]) -> int:
-    """dotkit CMD ARGS for the pkg commands: argv starts with the command."""
-    cmd, rest = (argv[0], list(argv[1:])) if argv else ("", [])
-    if cmd == "__names":
-        return Pkg(env).names(rest[0] if rest else "user")
-    spec = args.Spec(flags={"-n": "dry_run", "--dry-run": "dry_run", "-y": "yes", "--yes": "yes",
-                            "-f": "force", "--force": "force"}, hint=f"Use dotkit {cmd} --help.")
-    try:
-        opts, tools = args.parse(rest, spec)
-    except args.Help:
-        ui.out(USAGE)
-        return 0
-    if cmd not in COMMANDS:
-        if cmd in ("", "-h", "--help"):
-            ui.out(USAGE)
-            return 0
-        raise ui.Exit(2, f"dotkit: unknown command: {cmd}. Use --help.")
-    if cmd != "list" and not tools:
-        raise ui.Exit(2, f"Usage: dotkit {cmd} <tool>... Use dotkit {cmd} --help for examples.")
-    pkg = Pkg(env, bool(opts["dry_run"]), bool(opts["yes"]), bool(opts["force"]))
-    return {"add": pkg.add, "remove": pkg.remove, "info": pkg.info, "list": pkg.list}[cmd](tools)

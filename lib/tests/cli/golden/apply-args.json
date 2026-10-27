@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: apply takes no arguments. Use dotkit --help.\n",
+ "stderr": "usage: dotkit apply [-h] [-n]\ndotkit apply: error: unrecognized arguments: x\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

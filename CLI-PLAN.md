@@ -6,6 +6,9 @@ After a review, the command and the wizard share one reader for each
 file, with the rules of the code that installs from it (Nix and mise), and
 the awk-style readers and the port of `sort -V` are gone (PARITY.md, DV7
 and DV8).
+argparse replaced the parser of section 5.2: the text of an error is not an
+interface, and a standard parser beats one of our own (DV9). The picker uses
+questionary (`lib/dotkit/_vendor`).
 
 This plan replaces the Bash scripts of the `dotkit` command with one Python
 package. The behavior stays the same, with one new feature: `dotkit add`

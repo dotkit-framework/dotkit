@@ -129,7 +129,8 @@ class Upgrade:
                 found = [(i, n) for i, n in inputs if n in (a, "dotkit/" + a)]
                 if not found:
                     names = " ".join(n for _, n in inputs)
-                    raise ui.usage_error(f"'{a}' is not a source or a flake input. Use nix, brew, mise, or: {names}.")
+                    raise ui.usage_error(f"'{a}' is not a source or a flake input. Use nix, brew, mise, or: {names}.",
+                                         "Run dotkit upgrade --help.")
                 up_nix = True
                 selected += found
         if not (up_nix or up_brew or up_mise):

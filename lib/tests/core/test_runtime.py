@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from dotkit.core import args, backup, env, nix, proc, ui
+from dotkit.core import backup, env, nix, proc, ui
 from tests import fake
 from tests.cli import harness
 
@@ -82,46 +82,6 @@ class EnvTests(unittest.TestCase):
 
     def test_dotkit_root(self):
         self.assertTrue((env.DOTKIT / "lib/dotkit/core/env.py").is_file())
-
-
-TOP = args.Spec(flags={"-n": "dry_run", "--dry-run": "dry_run", "-y": "yes", "--yes": "yes"},
-                values={"--plan": ("plan", "--plan needs a file.")})
-
-
-class ArgsTests(unittest.TestCase):
-    def test_parse(self):
-        opts, rest = args.parse(["a", "-n", "b", "--plan", "p", "--yes", "--", "-x", "--plan"], TOP)
-        self.assertEqual(opts, {"dry_run": True, "yes": True, "plan": "p"})
-        self.assertEqual(rest, ["a", "b", "-x", "--plan"])
-
-    def test_help_stops_at_once(self):
-        with self.assertRaises(args.Help):
-            args.parse(["a", "-h", "-z"], TOP)
-        with self.assertRaises(ui.Exit) as c:
-            args.parse(["-z", "--help"], TOP)
-        self.assertEqual((c.exception.code, c.exception.text), (2, "dotkit: unknown option: -z. Use dotkit --help."))
-
-    def test_errors(self):
-        cases = [(["--plan"], "dotkit: --plan needs a file. Use dotkit --help."),
-                 (["-ny"], "dotkit: unknown option: -ny. Use dotkit --help."),
-                 (["--dry"], "dotkit: unknown option: --dry. Use dotkit --help."),
-                 (["-"], "dotkit: unknown option: -. Use dotkit --help.")]
-        for argv, text in cases:
-            with self.subTest(argv=argv), self.assertRaises(ui.Exit) as c:
-                args.parse(argv, TOP)
-            self.assertEqual(c.exception.text, text)
-
-    def test_value_can_look_like_an_option(self):
-        self.assertEqual(args.parse(["--plan", "--"], TOP)[0]["plan"], "--")
-
-    def test_other_hint(self):
-        spec = args.Spec(flags={"-f": "force"}, hint="Use dotkit add --help.")
-        with self.assertRaises(ui.Exit) as c:
-            args.parse(["-z"], spec)
-        self.assertEqual(c.exception.text, "dotkit: unknown option: -z. Use dotkit add --help.")
-
-    def test_empty_word_is_an_argument(self):
-        self.assertEqual(args.parse([""], TOP)[1], [""])
 
 
 CONFIRM = ("import sys; sys.path.insert(0, sys.argv[1]); from dotkit.core import ui\n"

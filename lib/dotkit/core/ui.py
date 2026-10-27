@@ -26,7 +26,7 @@ def die(msg: str) -> Exit:
     return Exit(1, f"dotkit: {msg}")
 
 
-def usage_error(msg: str, hint: str = "Use dotkit --help.") -> Exit:
+def usage_error(msg: str, hint: str = "Run dotkit --help.") -> Exit:
     return Exit(2, f"dotkit: {msg} {hint}")
 
 

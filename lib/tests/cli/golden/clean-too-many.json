@@ -6,7 +6,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: clean takes one age, for example 30d. Use dotkit --help.\n",
+ "stderr": "usage: dotkit clean [-h] [-n] [-y] [age]\ndotkit clean: error: unrecognized arguments: 2d\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

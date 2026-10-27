@@ -4,7 +4,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: 'changes' is now 'history'. Use dotkit --help.\n",
+ "stderr": "dotkit: 'changes' is now 'history'. Run dotkit --help.\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

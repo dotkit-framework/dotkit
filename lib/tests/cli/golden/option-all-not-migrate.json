@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: --all is for migrate only. Use dotkit --help.\n",
+ "stderr": "usage: dotkit tidy [-h] [-n] [-y] [--plan FILE]\ndotkit tidy: error: unrecognized arguments: -a\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

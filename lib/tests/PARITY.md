@@ -34,33 +34,35 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| C1 | No command, `-h`, `--help`, and `help` print the usage of dotkit on stdout, exit code 0. | scenarios |
-| C2 | `add`, `remove`, `info`, and `list` go to the pkg commands with all their arguments; the options of dotkit do not apply to them. | scenarios |
+| C1 | No command, `-h`, `--help`, and `help` print the usage of dotkit on stdout, exit code 0: the commands by group with a summary each, then examples (dotkit/cli.py, COMMANDS). `help CMD` prints the help of the command. | scenarios |
+| C2 | Each command has its own options (argparse): an option of another command is an error of this one. | scenarios |
 | C3 | `__complete inputs` prints the inputs of nix/flake.lock that do not follow another input, one per line; with `DOTKIT_DIR`, then the inputs of the checkout's flake.lock as `dotkit/NAME`. It runs no nix. | scenarios |
-| C4 | `__complete tools-user` and `__complete tools-all` print the names of `__names` (rows N). | scenarios |
-| C5 | `__complete` with another argument, or none: usage error "__complete takes inputs, tools-user, or tools-all." | scenarios |
-| C6 | The old names stop with a usage error that names the new command: switch, build, diff, update, brew, tools, changes, where, gc. | scenarios |
-| C7 | Another command: usage error "unknown command: CMD." | scenarios |
+| C4 | `__complete tools-user` and `__complete tools-all` print the names of rows N. | scenarios |
+| C5 | `__complete` with another argument, or none: "dotkit: __complete takes inputs, tools-user, or tools-all.", exit code 2. | scenarios |
+| C6 | The old names stop with "dotkit: 'OLD' is now 'NEW'. Run dotkit --help.", exit code 2: switch, build, diff, update, brew, tools, changes, where, gc. | scenarios |
+| C7 | Another command: "dotkit: unknown command: CMD. Run dotkit --help.", exit code 2. | scenarios |
 
-## O. Options of the dotkit commands
+## O. Options
+
+argparse reads the options of each command (DV9). An error of the options
+prints the usage of the command and "dotkit CMD: error: MESSAGE" on stderr,
+exit code 2.
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| O1 | `-n`/`--dry-run`, `-y`/`--yes`, and `-a`/`--all` can come anywhere after the command; the other words are the arguments. | scenarios |
-| O2 | `-h`/`--help` after the command prints the usage of dotkit and exits 0, also after arguments; an unknown option before it stops first. | scenarios |
+| O1 | Options can come anywhere after the command; the other words are the arguments. | scenarios |
+| O2 | `-h`/`--help` after the command prints the help of the command on stdout, exit code 0. | scenarios |
 | O3 | `--` ends the options: the words after it are arguments. | scenarios |
-| O4 | An unknown option: usage error "unknown option: OPT." | scenarios |
-| O5 | `--plan FILE` gives the wizard an absolute path: the directory resolved, the file name kept. `--plan` without a file: usage error "--plan needs a file." | scenarios |
-| O6 | `history` and `rollback` with `-n` or `-y`: usage error "CMD takes no options." | scenarios |
-| O7 | `apply -y`: usage error "apply does not ask, so it takes no -y." | scenarios |
-| O8 | `--all` with a command other than migrate: usage error "--all is for migrate only."; `--plan` with a command other than tidy: "--plan is for tidy only." | scenarios |
-| O9 | The checks of O6 to O8 come after all options are read, and before the checks of the arguments. | scenarios |
+| O4 | An unknown option, an argument that a command does not take, or a long option that is not complete: an error. | scenarios |
+| O5 | `--plan FILE` gives the wizard an absolute path: the directory resolved, the file name kept. Without FILE, or with a directory that does not exist: an error. | scenarios |
+| O6 | The options: apply `-n`; upgrade `-n -y`; add `-n -y -f`; remove `-n -y`; migrate `-n -y -a`; tidy `-n -y --plan FILE`; clean `-n -y`; info, list, history, and rollback none. add, remove, and info need one tool or more. | scenarios |
+| O7 | `clean` takes one age, `[0-9]+d`, default 14d; `list` takes nix, brew, or mise. Another value: an error. | scenarios |
 
 ## A. apply
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| A1 | With arguments: usage error "apply takes no arguments." | scenarios |
+| A1 | apply takes no arguments (O4). | scenarios |
 | A2 | Builds `path:REPO/nix#darwinConfigurations.mac.system` with the link `REPO/.build/system`, then runs `sudo -H /usr/bin/env NIX_REMOTE=daemon SYSTEM/sw/bin/nix-env -p /nix/var/nix/profiles/system --set SYSTEM` and `sudo SYSTEM/sw/bin/darwin-rebuild activate` (SYSTEM is the target of the link), then `mise install` in `$HOME`. | scenarios |
 | A3 | When the build fails, apply stops with the exit code of nix and no message. Nothing is activated. | scenarios |
 | A4 | When a sudo command fails, apply stops with its exit code; the later commands do not run. | scenarios |
@@ -75,7 +77,7 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| U1 | The arguments are sources (nix, brew, mise) or flake inputs. A name matches an input of nix/flake.lock, or `dotkit/NAME` of the checkout's lock. Another word: usage error "'X' is not a source or a flake input. Use nix, brew, mise, or: NAMES." (NAMES as in C3, on one line). | scenarios |
+| U1 | The arguments are sources (nix, brew, mise) or flake inputs. A name matches an input of nix/flake.lock, or `dotkit/NAME` of the checkout's lock. Another word: usage error "'X' is not a source or a flake input. Use nix, brew, mise, or: NAMES. Run dotkit upgrade --help." (NAMES as in C3, on one line). | scenarios |
 | U2 | Without arguments: nix, brew, and mise. | scenarios |
 | U3 | `nix` with input names updates all inputs. | scenarios |
 | U4 | Nix: "Checking Nix..." on stderr (without `dotkit: `). For each lock file (nix/flake.lock; with `DOTKIT_DIR` also the checkout's flake.lock): a backup, then `nix flake update [INPUTS] --flake path:REPO/nix` (or `git+file://DIR`), with its output captured. A lock file without selected inputs is skipped when inputs are given. On failure: the output, then die "nix flake update failed for FILE. The lock files are restored." | scenarios |
@@ -102,8 +104,8 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| K1 | More than one argument: usage error "clean takes one age, for example 30d." | scenarios |
-| K2 | The age is `14d` by default and must match `^[0-9]+d$`, else usage error "'X' is not an age. Use days, for example 30d." | scenarios |
+| K1 | clean takes one age (O7). | scenarios |
+| K2 | The age is `14d` by default (O7). | scenarios |
 | K3 | `-n`: `sudo nix-collect-garbage --delete-older-than AGE --dry-run`, `brew cleanup --dry-run`, `mise prune --dry-run` in `$HOME`, then "No change. Run dotkit clean to delete." on stderr. | scenarios |
 | K4 | The question "Delete Nix generations older than AGE, old Homebrew downloads, and unused mise versions?"; no: die "nothing changed." | scenarios |
 | K5 | Yes: `sudo nix-collect-garbage --delete-older-than AGE`, `brew cleanup`, `mise prune --yes` in `$HOME`. | scenarios |
@@ -112,36 +114,26 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| H1 | `history` with arguments: usage error "history takes no arguments." | scenarios |
+| H1 | `history` takes no arguments (O4). | scenarios |
 | H2 | `history` reads the link `/nix/var/nix/profiles/system` (`system-N-link`). Without `system-(N-1)-link`: die "there is no previous generation." Else it prints "system-(N-1)-link -> system-N-link" on stdout and runs `nix store diff-closures` of the two. | unit (step 6), e2e |
-| H3 | `rollback` with arguments: usage error "rollback takes no arguments." | scenarios |
+| H3 | `rollback` takes no arguments (O4). | scenarios |
 | H4 | `rollback` runs `sudo darwin-rebuild switch --rollback`; its exit code is the exit code of dotkit. | scenarios |
 
 ## M. migrate and tidy
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| M1 | With arguments: usage error "migrate takes no arguments." and "tidy takes no arguments." | scenarios |
+| M1 | migrate and tidy take no arguments (O4). | scenarios |
 | M2 | Both evaluate `homebrew` of the configuration with `--apply 'h: { taps = map (t: t.name) h.taps; masApps = h.masApps; }'` through the filter of A10. | scenarios |
 | M3 | migrate runs `DOTKIT/migrate/dotkit-migrate adopt --repo REPO --declared JSON`, then `--dry-run`, `--yes`, `--all` for the options that are set; its exit code is the exit code of dotkit. | scenarios |
 | M4 | tidy runs `DOTKIT/migrate/dotkit-migrate tidy --repo REPO --declared JSON`, then `--dry-run`, `--yes`, `--plan FILE`. | scenarios |
 | M5 | When the evaluation fails, the command stops with its exit code and no message. | scenarios |
 
-## P. Options of the pkg commands
-
-| Row | Behavior | Covered by |
-|---|---|---|
-| P2 | `-n`, `-y`, `-f` (and the long forms) can come anywhere; `--` ends the options. An unknown option: "dotkit: unknown option: OPT. Use dotkit CMD --help." and exit code 2. | scenarios |
-| P3 | `-h`/`--help` prints the usage of the pkg commands on stdout, exit code 0. | scenarios |
-| P4 | add, remove, and info without tools: "Usage: dotkit CMD <tool>... Use dotkit CMD --help for examples." on stderr, exit code 2. | scenarios |
-| P5 | The commands stop when jq is not on PATH (deviation DV1). macOS 15 and later have /usr/bin/jq, so the scenarios cannot reach this. | unit (step 3) |
-| P6 | Each pkg command accepts all of `-n`, `-y`, and `-f`, also when it does not use them. | scenarios |
-
 ## L. list
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| L1 | A source other than nix, brew, or mise: die "'X' is not a source. Use nix, brew, or mise.", before any output. | scenarios |
+| L1 | list takes nix, brew, or mise (O7). | scenarios |
 | L2 | Without sources: nix, brew, mise. With sources: in their order, also a source twice. | scenarios |
 | L3 | nix: `nix   NAME`, the base list first with ` (dotkit)` after the name. | scenarios |
 | L4 | brew: the formulae (`brew  %-36s formula`), then the casks, base first; then the App Store apps of the configuration (`homebrew.masApps`), sorted by name, with the escapes `\\`, `\"`, `\#` removed, as `brew  NAME` padded to 36, then ` app store`. | scenarios |
@@ -274,7 +266,7 @@ New in the Python code. The goldens of these rows come from the Python code.
 
 | Row | Deviation | Reason |
 |---|---|---|
-| DV1 | Python needs no jq, so "jq is not on PATH. Run dotkit apply first." goes away (P5). | The Python standard library reads JSON. |
+| DV1 | Python needs no jq, so "jq is not on PATH. Run dotkit apply first." goes away. | The Python standard library reads JSON. |
 | DV2 | `dotkit add` asks for the source of a bare name in a terminal (CLI-PLAN.md, section 7). | The new feature. |
 | DV3 | Bash prints its own errors with a line number: `cd` when `DOTFILES` or `DOTKIT_DIR` is not a directory, and "command not found". Python prints only the dotkit message ("DOTFILES is not a directory: X", "NAME: command not found"). The exit codes stay (1, 2, and 127). | Bash internals are not part of the interface. |
 | DV4 | `__complete tools-*` prints the names sorted by code point, not with `sort` in the locale of the user. | zsh sorts the completions itself. |
@@ -282,6 +274,7 @@ New in the Python code. The goldens of these rows come from the Python code.
 | DV6 | Output that dotkit cannot use is a message, exit code 1: a lock file that is not a JSON object ("FILE is not valid JSON: ...", "FILE is not a JSON object."), output of brew, mise, or nix that is not a JSON object ("COMMAND did not print a JSON object."), and a file that dotkit cannot read or write ("dotkit: [Errno N] ..."). Bash printed the error of jq (exit code 5) or went on with no data, and "Everything is up to date." could be false. | Tracebacks and false reports are defects. |
 | DV7 | The readers of the lists and of config/mise.toml have the rules of the code that installs from them: nix/read-list.nix, nix/read-taps.nix, nix/read-mas.nix, and the TOML parser of mise. The awk of the Bash scripts took the first word of a line, kept `\r`, did not read indented mise keys, kept comments in mise values, and did not see `[tools.NAME]` tables, so dotkit could disagree with what Nix and mise install. A delete keeps the other lines as they are. The wizard uses the same readers. | One rule for each file, the rule of its real reader. |
 | DV8 | Versions compare with `builtins.compareVersions` of Nix, not with `sort -V` of macOS. | The question is whether Nixpkgs has the current release, and Nixpkgs orders its versions with this function. |
+| DV9 | argparse reads the options: its usage line, its error messages ("dotkit CMD: error: ..."), and the help of each command, made from COMMANDS of dotkit/cli.py. Each command accepts only its own options (the pkg commands accepted -n, -y, and -f all three; the others rejected an option of another command with their own message). `-h` after an unknown option prints the help. The rules stay: options anywhere, `--`, no abbreviations, exit code 2. | A standard parser, not one of our own; the text of an error is not an interface. |
 
 ## Bash bugs
 

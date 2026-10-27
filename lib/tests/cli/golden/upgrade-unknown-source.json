@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: 'frob' is not a source or a flake input. Use nix, brew, mise, or: dotkit. Use dotkit --help.\n",
+ "stderr": "dotkit: 'frob' is not a source or a flake input. Use nix, brew, mise, or: dotkit. Run dotkit upgrade --help.\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

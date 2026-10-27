@@ -22,8 +22,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     try:
         e = env.load()
-        from . import commands
-        return commands.main(e, argv)
+        from . import cli
+        return cli.main(e, argv)
     except ui.Exit as x:
         if x.text:
             ui.note(x.text)

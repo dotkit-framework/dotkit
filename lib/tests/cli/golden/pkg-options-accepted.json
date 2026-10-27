@@ -6,9 +6,9 @@
   "-y",
   "nix"
  ],
- "exit": 0,
- "stdout": "nix   ripgrep (dotkit)\nnix   fd (dotkit)\nnix   jq\n",
- "stderr": "",
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit list [-h] [source ...]\ndotkit list: error: unrecognized arguments: -f -n -y\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

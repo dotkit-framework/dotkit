@@ -4,7 +4,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "Usage: dotkit remove <tool>... Use dotkit remove --help for examples.\n",
+ "stderr": "usage: dotkit remove [-h] [-n] [-y] tool [tool ...]\ndotkit remove: error: the following arguments are required: tool\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

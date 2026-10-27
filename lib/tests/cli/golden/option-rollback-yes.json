@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: rollback takes no options. Use dotkit --help.\n",
+ "stderr": "usage: dotkit rollback [-h]\ndotkit rollback: error: unrecognized arguments: --yes\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

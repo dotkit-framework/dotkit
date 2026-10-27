@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "Usage: dotkit info <tool>... Use dotkit info --help for examples.\n",
+ "stderr": "usage: dotkit info [-h] tool [tool ...]\ndotkit info: error: the following arguments are required: tool\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

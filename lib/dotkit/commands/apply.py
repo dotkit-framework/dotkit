@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import List
 
 from ..core import nix, proc, ui
 from ..core.env import Env
@@ -14,9 +13,7 @@ REPORT_END = "Run `brew bundle cleanup --force` to make these changes."
 DOWNLOADS = "Would `brew cleanup`:"
 
 
-def apply(env: Env, words: List[str], dry_run: bool) -> int:
-    if words:
-        raise ui.usage_error("apply takes no arguments.")
+def apply(env: Env, dry_run: bool) -> int:
     n = nix.Nix(env)
     if dry_run:
         code = n.build_system()

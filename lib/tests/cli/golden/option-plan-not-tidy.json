@@ -6,7 +6,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: --plan is for tidy only. Use dotkit --help.\n",
+ "stderr": "usage: dotkit migrate [-h] [-n] [-y] [-a]\ndotkit migrate: error: unrecognized arguments: --plan p.txt\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

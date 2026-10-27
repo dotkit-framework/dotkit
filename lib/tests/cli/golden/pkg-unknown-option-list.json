@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "stderr": "dotkit: unknown option: --frob. Use dotkit list --help.\n",
+ "stderr": "usage: dotkit list [-h] [source ...]\ndotkit list: error: unrecognized arguments: --frob\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

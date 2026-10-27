@@ -3,7 +3,7 @@
 The scenarios (tests/cli) cover the commands end to end. These tests cover
 the rules of resolve.choose as a table, the cut of the descriptions in a
 terminal (Pc1), the directories of global tools (X1), the restore on a
-signal (Ad13), and that no jq is needed (P5, DV1).
+signal (Ad13), and that no jq is needed (DV1).
 """
 
 from __future__ import annotations
@@ -117,10 +117,10 @@ class Sandbox(unittest.TestCase):
 
 class NoJqTests(Sandbox):
     def test_list_without_jq(self):
-        """PARITY.md, P5 and DV1: the commands do not need jq."""
+        """PARITY.md, DV1: the commands do not need jq."""
         self.fakes([{"tool": "nix", "re": "masApps", "stdout": '{"Keynote": 1}'}], path=str(self.dir / "bin"))
         out, _ = self.quiet()
-        self.assertEqual(cli.main(self.env, ["list", "brew"]), 0)
+        self.assertEqual(cli.Pkg(self.env).list(["brew"]), 0)
         sys.stdout.flush()
         self.assertIn("brew  Keynote", out.getvalue().decode())
 

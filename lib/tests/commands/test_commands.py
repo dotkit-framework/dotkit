@@ -19,7 +19,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from dotkit import commands
+import argparse
+
+from dotkit import cli
 from dotkit.commands import apply, recovery, upgrade
 from dotkit.core import backup, env as env_mod, nix, ui
 from tests import fake
@@ -124,7 +126,7 @@ class HistoryTests(Sandbox):
         (d / "system").symlink_to("system-42-link")
         self.fakes([{"tool": "nix", "re": "^store diff-closures"}])
         with mock.patch.object(recovery, "PROFILES", str(d)):
-            self.assertEqual(recovery.history(self.env, []), 0)
+            self.assertEqual(recovery.history(self.env), 0)
         # The output of nix goes to the real stdout, not to the buffer of this test.
         self.assertEqual(self.text()[0], "system-41-link -> system-42-link\n")
         self.assertEqual(self.calls(), [["nix", "store", "diff-closures", f"{d}/system-41-link",
@@ -134,13 +136,13 @@ class HistoryTests(Sandbox):
         d = self.profiles("system-1-link")
         (d / "system").symlink_to("system-1-link")
         with mock.patch.object(recovery, "PROFILES", str(d)), self.assertRaises(ui.Exit) as c:
-            recovery.history(self.env, [])
+            recovery.history(self.env)
         self.assertEqual(c.exception.text, "dotkit: there is no previous generation.")
 
     def test_no_system_link(self):
         d = self.profiles()
         with mock.patch.object(recovery, "PROFILES", str(d)):
-            self.assertEqual(recovery.history(self.env, []), 1)
+            self.assertEqual(recovery.history(self.env), 1)
 
 
 class UpgradeSignalTests(Sandbox):
@@ -181,13 +183,11 @@ class PlanTests(unittest.TestCase):
         os.chdir(d)
         self.addCleanup(os.chdir, cwd)
         (d / "sub").mkdir()
-        self.assertEqual(commands.plan_path("p.txt"), f"{d}/p.txt")
-        self.assertEqual(commands.plan_path("sub/p.txt"), f"{d}/sub/p.txt")
-        self.assertEqual(commands.plan_path("sub/"), f"{d}/sub")
-        with self.assertRaises(ui.Exit) as c:
-            commands.plan_path("nope/p.txt")
-        self.assertEqual((c.exception.code, c.exception.text),
-                         (2, "dotkit: 'nope/p.txt' is not in a directory that exists. Use dotkit --help."))
+        self.assertEqual(cli.plan_path("p.txt"), f"{d}/p.txt")
+        self.assertEqual(cli.plan_path("sub/p.txt"), f"{d}/sub/p.txt")
+        self.assertEqual(cli.plan_path("sub/"), f"{d}/sub")
+        with self.assertRaisesRegex(argparse.ArgumentTypeError, "'nope/p.txt' is not in a directory that exists"):
+            cli.plan_path("nope/p.txt")
 
 
 if __name__ == "__main__":
