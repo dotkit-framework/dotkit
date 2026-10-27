@@ -126,7 +126,7 @@
 
       checks.${system} = {
         example = example.system;
-        migrate = pkgs.callPackage ./migrate/tests.nix { };
+        migrate = pkgs.callPackage ./lib/tests.nix { };
       };
 
       formatter.${system} = pkgs.nixfmt;

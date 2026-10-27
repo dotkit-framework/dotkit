@@ -283,14 +283,14 @@ nix flake check                                     # evaluates
 nix build .#checks.aarch64-darwin.example           # builds the example Mac
 ```
 
-The migration wizard is in `migrate/`. `migrate/ARCHITECTURE.md` describes
+The migration wizard is in `lib/dotkit/migrate/`. `migrate/ARCHITECTURE.md` describes
 its parts, the rules for secrets, writes, and errors, and how to add a
-migration; the docstring of `migrate/dotkit_migrate/__init__.py` has the
+migration; the docstring of `lib/dotkit/migrate/__init__.py` has the
 short version and the Python 3.9 rules. Run its tests with the macOS
 Python:
 
 ```sh
-cd migrate && /usr/bin/python3 -B -m unittest discover -s tests -t .
+cd lib && /usr/bin/python3 -B -m unittest discover -s tests -t .
 ```
 
 To release a change, commit it and push it. Each dotfiles repository gets
@@ -300,7 +300,7 @@ it with `dotkit upgrade dotkit`.
 
 `.github/workflows/ci.yml` runs on each push and pull request, on macOS 26
 arm64 runners. The `check` job runs the two `nix` commands above, the tests of
-the migration wizard (`migrate/tests`, with the macOS Python and with the
+the migration wizard (`lib/tests`, with the macOS Python and with the
 Python of Nixpkgs), `tests/setup.sh` (functions of
 setup in a temporary home directory), shellcheck, nixfmt, statix, and
 deadnix. The `e2e` job runs `scripts/setup --yes` on a

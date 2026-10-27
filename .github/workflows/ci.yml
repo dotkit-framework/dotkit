@@ -68,14 +68,14 @@ jobs:
 
       # The wizard runs with the macOS Python (3.9 in the Command Line Tools);
       # the Python of Nixpkgs checks a newer version.
-      - name: migration wizard tests, macOS Python
-        working-directory: migrate
+      - name: Python tests, macOS Python
+        working-directory: lib
         run: |
           /usr/bin/python3 --version
           nix shell --inputs-from .. nixpkgs#nixfmt -c /usr/bin/python3 -m unittest discover -s tests -t . -v
 
-      - name: migration wizard tests, Nixpkgs Python
-        working-directory: migrate
+      - name: Python tests, Nixpkgs Python
+        working-directory: lib
         run: nix shell --inputs-from .. nixpkgs#python3 nixpkgs#nixfmt -c python3 -m unittest discover -s tests -t . -v
 
       - name: nixfmt
