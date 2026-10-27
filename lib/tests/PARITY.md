@@ -225,6 +225,20 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 | Ad14 | Then mise: `mise use -g SPEC` in `$HOME` for each mise entry, in order; when one fails: die "mise could not add SPEC. The tools before it in the list are added." | scenarios |
 | Ad15 | The entries: Nixpkgs to packages.txt, casks to casks.txt, formulae to brews.txt, App Store apps to mas.txt as "ID LABEL"; mise entries are NAME, `npm:NAME`, `pipx:NAME`, or the spec. | scenarios |
 
+## Pk. The picker of add (DV2)
+
+New in the Python code. The goldens of these rows come from the Python code.
+
+| Row | Behavior | Covered by |
+|---|---|---|
+| Pk1 | add asks for the source of a bare name when stdin and stderr are a terminal, without `-y` and `-n`, and when two sources or more have the tool, or when the rules select none of them (R10, R15). It does not ask for a prefix, for one source, when the nix evaluation fails, or when no source has the tool. | scenarios |
+| Pk2 | The list on stderr: the title "TOOL: REASON. Select the source:", one row per candidate in the order of Pc1 with `>` at the cursor, npm and PyPI rows with "(anyone can publish here; check the package)", and the line of keys. Each line is cut to the width of the terminal. The list is drawn again in place after each key, without the text cursor, and goes away at the end. | scenarios |
+| Pk3 | Up and Down (also `k` and `j`) move the cursor; Enter selects the row at the cursor. `s` skips the tool ("TOOL: skipped" on stdout). `q` and the end of the input stop: die "nothing changed." | scenarios |
+| Pk4 | The cursor starts on the source that the rules select. When they select none, it starts on no row, and Enter does nothing until a key moves it; the title is "TOOL: Homebrew has an app and a command-line tool with this name. Select one:" or "TOOL: only npm or PyPI has this name. Anyone can publish there: check the package, then select it:". | scenarios |
+| Pk5 | After the selection, add goes on as without the picker: the checks of Ad6 and Ad7, the plan line, the candidates, the question. For a source other than the selection of the rules, the reason is "selected in the list". | scenarios |
+| Pk6 | With `TERM=dumb`, without `TERM`, or with fewer than 60 columns: a numbered list on stderr and the question "Select 1-N, Enter for D, s to skip, q to stop: " (without ", Enter for D" when the rules select none), asked again until the answer is valid. The end of the input stops. | scenarios |
+| Pk7 | Ctrl-C in the picker: the terminal is restored, exit code 130, nothing changed. | scenarios |
+
 ## Rm. remove
 
 | Row | Behavior | Covered by |

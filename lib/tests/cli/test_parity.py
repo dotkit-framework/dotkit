@@ -55,6 +55,9 @@ class ParityTests(unittest.TestCase):
         if REGOLD:
             GOLDEN.mkdir(exist_ok=True)
             for s in todo:
+                # The golden of a deviation is the behavior of the Bash scripts: it stays.
+                if s.deviation and (GOLDEN / f"{s.name}.json").exists():
+                    continue
                 (GOLDEN / f"{s.name}.json").write_text(json.dumps(results[s.name], indent=1, ensure_ascii=False)
                                                        + "\n", encoding="utf-8")
         for s in todo:

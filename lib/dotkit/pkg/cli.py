@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import List, Optional, Sequence
 
 from ..core import args, lists, mise_toml, nix, proc, ui
 from ..core.env import Env
-from . import declared, edit
+from . import declared, edit, picker
 from .lookups import Lookups
-from .resolve import KEYS, Candidates, Resolver, Selection
+from .resolve import KEYS, Candidates, Outcome, Resolver, Selection
 
 USAGE = """\
 Usage: dotkit add [-n] [-y] [-f] <tool>...
@@ -50,6 +51,13 @@ Homebrew taps: edit nix/taps.txt."""
 
 COMMANDS = ("add", "remove", "info", "list")
 FAILED = "nothing changed. Fix the errors above, then run the command again."
+# The reason of a source that the user selected in the picker.
+PICKED = "selected in the list"
+# The title of the picker when the rules select no source.
+PICK_ONE = {
+    "app": "Homebrew has an app and a command-line tool with this name. Select one",
+    "registry": "only npm or PyPI has this name. Anyone can publish there: check the package, then select it",
+}
 # The list file of each kind of entry.
 FILES = {"nix": "nix/packages.txt", "cask": "nix/casks.txt", "formula": "nix/brews.txt", "mas": "nix/mas.txt"}
 
@@ -97,6 +105,12 @@ class Pkg:
                 ui.out(f"{tool}: already in {found[0][0]}")
                 continue
             outcome = self.resolver.resolve(tool)
+            if self._can_ask(outcome):
+                picked = self._pick(tool, outcome)
+                if picked is None:
+                    ui.out(f"{tool}: skipped")
+                    continue
+                outcome = picked
             if not outcome.ok:
                 ui.warn(f"{tool}: {outcome.reason}")
                 print_candidates(outcome.candidates, None)
@@ -159,6 +173,38 @@ class Pkg:
             if not proc.mise(self.env.home, ["use", "-g", spec]).ok:
                 raise ui.die(f"mise could not add {spec}. The tools before it in the list are added.")
         return 0
+
+    def _can_ask(self, outcome: Outcome) -> bool:
+        """The picker asks for a bare name in a terminal, without -y and -n, when two sources or more have
+        the tool, or when the rules select none of them (PARITY.md, Pk1)."""
+        c = outcome.candidates
+        if not outcome.bare or c.nix_failed or not c.found or self.yes or self.dry_run:
+            return False
+        if not (os.isatty(0) and os.isatty(2)):
+            return False
+        return len(c.found) > 1 or not outcome.ok
+
+    def _pick(self, tool: str, outcome: Outcome) -> Optional[Outcome]:
+        """The outcome with the source that the user selected; None to skip the tool."""
+        c = outcome.candidates
+        keys = [k for k in KEYS if k in c.found]
+        rows = [picker.Row(c.spec_of(k), c.found[k].version, c.found[k].description,
+                           picker.REGISTRY_NOTE if k in ("npm", "pypi") else "") for k in keys]
+        if outcome.ok:
+            title = f"{tool}: {outcome.selection.reason}. Select the source"
+            cursor = keys.index(outcome.selection.key)
+        else:
+            which = "app" if "app" in c.found and "formula" in c.found else "registry"
+            title, cursor = f"{tool}: {PICK_ONE[which]}", None
+        what, index = picker.ask(picker.Picker(title + ":", rows, cursor))
+        if what == picker.STOP:
+            raise ui.die("nothing changed.")
+        if what == picker.SKIP:
+            return None
+        key = keys[index]
+        if outcome.ok and key == outcome.selection.key:
+            return outcome
+        return Outcome(c, self.resolver.select(c, key, PICKED), bare=True)
 
     def _plan_mas(self, tool: str, s: Selection, nix_edits: List[str]) -> Optional[str]:
         """The entry of an App Store app, or None after the warning (PARITY.md, Ad5)."""

@@ -233,41 +233,39 @@ step 4.
 
 ## 7. The interactive picker of `dotkit add`
 
-It asks for a bare name (no prefix) when stdin and stderr are a terminal and
-there is no `-y` and no `-n`.
+Done in step 5: `lib/dotkit/pkg/picker.py`, PARITY.md rows Pk1 to Pk7.
 
-It does not ask with `-y`, with `-n`, without a terminal, with a prefix, or
-when only one source has the tool. Then the result is the same as now: `-n`
-shows the plan with the source that the rules select.
+It asks for a bare name (no prefix) when stdin and stderr are a terminal,
+without `-y` and `-n`, and when two sources or more have the tool, or when
+the rules select none of them. In all other cases, the result is the same as
+before: `-n` shows the plan with the source that the rules select.
 
-The screen, on stderr, for each tool:
+The list, on stderr, for each tool:
 
 ```
-lazygit: Nixpkgs has the current release
-> nix:lazygit      0.55.1   Simple terminal UI for git commands
-  mise:lazygit     0.55.1   Simple terminal UI for git commands
-  brew:lazygit     0.55.1   Simple terminal UI for git commands
+lazygit: Nixpkgs has the current release. Select the source:
+> nix:lazygit                    0.66.2         Simple terminal UI for git commands
+  mise:lazygit                   0.66.2         simple terminal UI for git commands
+  brew:lazygit                   0.66.2         Simple terminal UI for git commands
+  pipx:lazygit                   1.1            Automating the daily git push (anyone can publish here; check…
 ↑/↓ select · enter add · s skip · q stop
 ```
 
 - The cursor starts on the source that the rules select, so Enter does what
-  `add` does now.
-- An app cask and a formula with the same name now stop with an error. With
-  the picker, you select one, and the cursor starts on neither.
-- When only npm or PyPI has the name, it now stops. With the picker, you can
-  select them. They show "anyone can publish here; check the package", and
-  the cursor starts on neither.
-- The checks after the selection stay the same: "already installed" (unless
-  `--force`), and the same command from two arguments.
-- After all tools, the plan and the single question "Add the tools?" do not
-  change.
-- `s` skips the tool. `q` stops with "nothing changed." and exit 1.
-- Ctrl-C exits with 130 and changes nothing.
+  `add` did before.
+- An app cask and a formula with the same name, and a name that only npm or
+  PyPI has, stopped with an error. Now the user selects one; the cursor
+  starts on no row, so Enter does nothing until a key moves it.
+- After the selection, the checks ("already installed", the same command
+  from two arguments), the plan, and the question "Add the tools?" are the
+  same as before. Another source than the selection of the rules has the
+  reason "selected in the list".
+- `s` skips the tool ("TOOL: skipped"). `q`, Ctrl-D, and the end of the input
+  stop with "nothing changed." and exit 1. Ctrl-C exits 130.
 
-The picker is a small inline widget: raw mode with `termios` and `tty`,
-redrawn in place with ANSI codes. It does not use full-screen curses, so the
-plan and the earlier output stay on the screen. It falls back to a numbered
-prompt when the terminal is too narrow or `TERM=dumb`.
+The list is drawn in place in cbreak mode, without full-screen curses, so
+the earlier output stays. With `TERM=dumb`, without `TERM`, or with fewer
+than 60 columns, a numbered prompt replaces it.
 
 ## 8. Risks
 

@@ -462,6 +462,43 @@ def add_apply() -> List[S]:
     ]
 
 
+def picker() -> List[S]:
+    """The picker of add (PARITY.md, Pk and DV2): a bare name in a terminal."""
+    n = "dkt-tool"
+    xterm = {"TERM": "xterm-256color"}
+    nix_mise = bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs"), mise=fx.mise_tool(n, "aqua:o/t", "1.2.0", "mise"))
+    down, up = "\x1b[B", "\x1b[A"
+
+    def p(name, rules, typed, rows, argv=None, env=xterm, **kw):
+        return S(name, argv or ["add", n], rules=rules, tty=typed, env=env, unordered=True, rows=rows, **kw)
+
+    return [
+        p("pick-default", nix_mise, "\nn\n", ["Pk1", "Pk2", "Pk4", "Pk5"]),
+        p("pick-other", nix_mise + fx.mise_ok("use -g dkt-tool$"), f"{down}\ny\n", ["Pk3", "Pk5"]),
+        p("pick-keys", nix_mise, f"j{down}{down}k{up}{up}\nn\n", ["Pk3"]),
+        p("pick-skip", nix_mise, "s", ["Pk3"]),
+        p("pick-skip-one", nix_mise + fx.nix_pkg("dkt-a", "1.0", "A"), "sn\n", ["Pk3"],
+          argv=["add", n, "nix:dkt-a"]),
+        p("pick-stop", nix_mise, "q", ["Pk3"]),
+        p("pick-end-of-input", nix_mise, "\x04", ["Pk3"]),
+        p("pick-ctrl-c", nix_mise, ["", "\x03"], ["Pk7"]),
+        p("pick-app-and-formula", bare(n, cask=fx.cask(n, "3", "App", app="T.app"), formula=fx.formula(n, "4", "CLI")),
+          f"\n{down}{down}\nn\n", ["Pk4", "Pk5"]),
+        p("pick-registry-only", bare(n, npm=fx.npm(n, "1.0.0", "npm", {n: "x.js"}), pypi=fx.pypi(n, "2.0", "Py"))
+          + fx.nix_no_pkg(n), f"{up}\nn\n", ["Pk2", "Pk4", "Pk5"]),
+        p("pick-installed", nix_mise + fx.mise_which(n, "/opt/homebrew/Cellar/dkt-tool/1.0/bin/dkt-tool"),
+          f"{down}\n", ["Pk5"]),
+        p("pick-numbered", nix_mise, "x\n9\n2\nn\n", ["Pk6"], env={"TERM": "dumb"}),
+        p("pick-numbered-default", nix_mise, "\nn\n", ["Pk6"], env={}),
+        p("pick-numbered-end-of-input", nix_mise, "\x04", ["Pk6"], env={"TERM": "dumb"}),
+        p("pick-not-one-source", bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs")), "n\n", ["Pk1"]),
+        p("pick-not-dry-run", nix_mise, "", ["Pk1"], argv=["add", "-n", n]),
+        p("pick-not-yes", nix_mise + fx.build_once() + fx.apply_ok(), "", ["Pk1"], argv=["add", "-y", n]),
+        p("pick-not-nix-failed", fx.nix_eval_fails() + nix_mise, "", ["Pk1"]),
+        p("pick-not-none", bare(n), "", ["Pk1"]),
+    ]
+
+
 def remove() -> List[S]:
     ok = fx.build_once() + fx.apply_ok()
     return [
@@ -499,7 +536,7 @@ def remove() -> List[S]:
 def all_scenarios() -> List[S]:
     out = (start() + dispatch() + options() + apply() + upgrade() + clean() + recovery() + wizard()
            + pkg_parse() + listing() + info() + add_prefix() + add_mas() + add_bare() + add_checks() + add_apply()
-           + remove())
+           + picker() + remove())
     names = [s.name for s in out]
     dup = sorted({n for n in names if names.count(n) > 1})
     if dup:

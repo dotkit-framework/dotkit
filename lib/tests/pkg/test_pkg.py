@@ -18,7 +18,7 @@ from unittest import mock
 
 from dotkit.core import env as env_mod
 from dotkit.core import ui
-from dotkit.pkg import cli, declared, edit
+from dotkit.pkg import cli, declared, edit, picker
 from dotkit.pkg.lookups import Found
 from dotkit.pkg.resolve import Candidates, choose
 from tests import fake
@@ -184,6 +184,41 @@ class SignalTests(Sandbox):
         self.assertEqual((c.exception.code, c.exception.text),
                          (1, "dotkit: could not change the Nix files. They are restored."))
         self.assertEqual(packages.read_text(), "jq\n")
+
+
+class PickerTests(unittest.TestCase):
+    def rows(self):
+        return [picker.Row("nix:t", "1", "Nix"), picker.Row("mise:t", "", "mise"),
+                picker.Row("npm:t", "2", "npm", picker.REGISTRY_NOTE)]
+
+    def test_keys(self):
+        cases = [
+            (0, [picker.ENTER], (picker.PICK, 0)),
+            (0, [picker.DOWN, picker.DOWN, picker.DOWN, picker.ENTER], (picker.PICK, 2)),
+            (2, [picker.UP, picker.UP, picker.UP, picker.ENTER], (picker.PICK, 0)),
+            (None, [picker.ENTER, picker.DOWN, picker.ENTER], (picker.PICK, 0)),
+            (None, [picker.UP, picker.ENTER], (picker.PICK, 2)),
+            (1, ["x", "", "s"], (picker.SKIP, None)),
+            (1, ["Q"], (picker.STOP, None)),
+        ]
+        for cursor, keys, want in cases:
+            with self.subTest(cursor=cursor, keys=keys):
+                p = picker.Picker("t", self.rows(), cursor)
+                results = [p.key(k) for k in keys]
+                self.assertEqual([r for r in results if r is not None], [want])
+                self.assertIsNotNone(results[-1])
+
+    def test_lines(self):
+        p = picker.Picker("tool: why. Select the source:", self.rows(), 1)
+        lines = p.lines(200)
+        self.assertEqual(lines[0], "tool: why. Select the source:")
+        self.assertEqual(lines[1], f"  nix:t{' ' * 25} 1{' ' * 13} Nix")
+        self.assertEqual(lines[2], f"> mise:t{' ' * 24} ?{' ' * 13} mise")
+        self.assertTrue(lines[3].endswith("npm (anyone can publish here; check the package)"))
+        self.assertEqual(lines[4], picker.FOOTER)
+        for line in p.lines(40):
+            self.assertLessEqual(len(line), 39)
+        self.assertTrue(p.lines(40)[3].endswith("…"))
 
 
 if __name__ == "__main__":

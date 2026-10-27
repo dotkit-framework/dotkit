@@ -78,13 +78,26 @@ def confirm(question: str, yes: bool) -> bool:
     if not (os.isatty(0) and os.isatty(2)):
         raise die("confirmation needs a terminal. Use -y to continue without one.")
     _write(sys.stderr, f"{question} [y/N] ")
-    line = sys.stdin.buffer.readline().decode("utf-8", "surrogateescape")
-    return line.rstrip("\n").strip(" \t") in ("y", "Y")
+    return (read_line() or "").strip(" \t") in ("y", "Y")
 
 
-def terminal_columns() -> Optional[int]:
-    """The width of the terminal when stdout is one, else None. It asks /dev/tty, as `stty size` does."""
-    if not os.isatty(1):
+def read_line() -> Optional[str]:
+    """A line from stdin without its line break; None at the end of the input. It reads byte by byte, so
+    that the keys after the line stay for the next reader (the picker and the question share stdin)."""
+    data = b""
+    while True:
+        b = os.read(0, 1)
+        if not b:
+            return data.decode("utf-8", "surrogateescape") if data else None
+        if b == b"\n":
+            return data.decode("utf-8", "surrogateescape")
+        data += b
+
+
+def terminal_columns(fd: int = 1) -> Optional[int]:
+    """The width of the terminal when fd (stdout by default) is one, else None. It asks /dev/tty, as
+    `stty size` does."""
+    if not os.isatty(fd):
         return None
     try:
         fd = os.open("/dev/tty", os.O_RDONLY)

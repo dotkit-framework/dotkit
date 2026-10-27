@@ -10,18 +10,20 @@ scripts and the Python code must give the same Result for each scenario
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import pty
 import re
 import select
 import shutil
+import struct
 import subprocess
 import sys
 import termios
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Union
 
 from tests import fake
 
@@ -67,8 +69,9 @@ class Scenario:
     # Files to write before the run, by path in the sandbox; None removes the file.
     files: Dict[str, Optional[str]] = field(default_factory=dict)
     env: Dict[str, str] = field(default_factory=dict)
-    # Text to type: stdin and stderr are a terminal, without echo. None: stdin is /dev/null.
-    tty: Optional[str] = None
+    # Text to type: stdin and stderr are a terminal, without echo. None: stdin is /dev/null. A list: each
+    # part after the first goes to the terminal when new text shows on it (Ctrl-C after the list shows).
+    tty: Union[str, List[str], None] = None
     # The calls run at the same time (the lookups of a bare name): compare them sorted.
     unordered: bool = False
     # Set DOTKIT_DIR to a checkout with its own flake.lock.
@@ -174,16 +177,25 @@ def _snapshot(sb: Path) -> Dict[str, str]:
     return out
 
 
-def run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: str) -> tuple[int, str, str]:
-    """stdin and stderr on a terminal without echo, stdout on a pipe. Returns the exit code, stdout, the terminal."""
+def _controlling_terminal() -> None:
+    """In the child, after setsid: stdin becomes the controlling terminal, for /dev/tty and Ctrl-C."""
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+
+def run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: Union[str, List[str]]) -> tuple[int, str, str]:
+    """stdin and stderr on a terminal of 120 columns without echo, stdout on a pipe. The terminal is the
+    controlling terminal of the command, so \x03 in text is Ctrl-C. Returns the exit code, stdout, and the
+    text of the terminal."""
     master, slave = pty.openpty()
     attrs = termios.tcgetattr(slave)
     attrs[3] &= ~termios.ECHO
     termios.tcsetattr(slave, termios.TCSANOW, attrs)
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
     p = subprocess.Popen(argv, env=env, cwd=cwd, stdin=slave, stdout=subprocess.PIPE, stderr=slave,
-                         start_new_session=True)
+                         start_new_session=True, preexec_fn=_controlling_terminal)
     os.close(slave)
-    os.write(master, text.encode())
+    parts = [text] if isinstance(text, str) else list(text)
+    os.write(master, parts.pop(0).encode())
     out, term = b"", b""
     while True:
         ready, _, _ = select.select([master, p.stdout], [], [], 120)
@@ -202,6 +214,8 @@ def run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: str) -> tuple
             except OSError:  # EIO: the terminal has no process left
                 chunk = b""
             term += chunk
+            if chunk and parts:
+                os.write(master, parts.pop(0).encode())
             if not chunk and p.poll() is not None:
                 break
     p.wait()

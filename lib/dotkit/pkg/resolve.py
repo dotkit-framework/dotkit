@@ -63,6 +63,8 @@ class Outcome:
     candidates: Candidates
     selection: Optional[Selection] = None
     reason: str = ""
+    # A bare name: the rules of choose() selected the source, so the picker can ask.
+    bare: bool = False
 
     @property
     def ok(self) -> bool:
@@ -202,8 +204,8 @@ class Resolver:
         c = self.gather(arg)
         key, reason = choose(c)
         if key is None:
-            return Outcome(c, reason=reason)
-        return Outcome(c, self.select(c, key, reason))
+            return Outcome(c, reason=reason, bare=True)
+        return Outcome(c, self.select(c, key, reason), bare=True)
 
     def _mas(self, arg: str) -> Outcome:
         c = Candidates(name=arg[4:])
