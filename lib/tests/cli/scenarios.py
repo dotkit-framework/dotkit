@@ -468,42 +468,42 @@ def add_apply() -> List[S]:
 
 
 def picker() -> List[S]:
-    """The picker of add (PARITY.md, Pk and DV2): a bare name in a terminal. The list is questionary: the arrow
-    keys move, Enter selects; below the candidates, "Skip this tool" and "Stop, and change nothing"."""
+    """The picker of add (PARITY.md, Pk and DV2): a bare name in a terminal. The first row is the source of the
+    rules; the arrow keys move, Enter selects, Esc cancels."""
     n = "dkt-tool"
     xterm = {"TERM": "xterm-256color"}
     nix_mise = bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs"), mise=fx.mise_tool(n, "aqua:o/t", "1.2.0", "mise")) \
         + fx.compare("1.2.0", "1.2.0", 0)
-    down, up, enter = "\x1b[B", "\x1b[A", "\r"
+    older = bare(n, nix=fx.nix_pkg(n, "1.0", "From Nixpkgs"), mise=fx.mise_tool(n, "aqua:o/t", "2.0", "mise")) \
+        + fx.compare("1.0", "2.0", -1)
+    down, up, enter, esc = "\x1b[B", "\x1b[A", "\r", "\x1b"
 
     def p(name, rules, keys, rows, argv=None, env=xterm, then="", **kw):
         """keys go to the list once it shows; then is the answer to "Add the tool?"."""
-        typed = [("(↑/↓, Enter)", keys)] + ([("Add the", then)] if then else [])
+        typed = [("esc cancel", keys)] + ([("Add the", then)] if then else [])
         return S(name, argv or ["add", n], rules=rules, tty=typed, env=env, unordered=True, rows=rows,
                  no_terminal=True, **kw)
 
     return [
         p("pick-default", nix_mise, enter, ["Pk1", "Pk2", "Pk4", "Pk5"], then="n\r"),
         p("pick-other", nix_mise + fx.mise_ok("use -g dkt-tool$"), down + enter, ["Pk3", "Pk5"], then="y\r"),
-        # j: mise, down: Skip, k: mise, up: nix.
-        p("pick-keys", nix_mise, f"j{down}k{up}" + enter, ["Pk3"], then="n\r"),
-        p("pick-skip", nix_mise, down + down + enter, ["Pk3"]),
-        p("pick-skip-one", nix_mise + fx.nix_pkg("dkt-a", "1.0", "A"), down + down + enter, ["Pk3"],
-          argv=["add", n, "nix:dkt-a"], then="n\r"),
-        # The list wraps: up from the first row is "Stop, and change nothing".
-        p("pick-stop", nix_mise, up + enter, ["Pk3"]),
+        p("pick-first-row-is-the-rules", older, down + enter, ["Pk4", "Pk5"], then="n\r"),
+        p("pick-keys-stop-at-the-ends", nix_mise, up + up + down + down + down + up + enter, ["Pk3"], then="n\r"),
+        p("pick-escape", nix_mise, down + esc, ["Pk3"]),
         p("pick-ctrl-c", nix_mise, "\x03", ["Pk7"]),
         p("pick-app-and-formula", bare(n, cask=fx.cask(n, "3", "App", app="T.app"), formula=fx.formula(n, "4", "CLI")),
-          up + enter, ["Pk4", "Pk5"], then="n\r"),
-        p("pick-app-and-formula-enter", bare(n, cask=fx.cask(n, "3", "App", app="T.app"),
-                                             formula=fx.formula(n, "4", "CLI")), enter, ["Pk4"]),
+          down + enter, ["Pk4", "Pk5"], then="n\r"),
         p("pick-registry-only", bare(n, npm=fx.npm(n, "1.0.0", "npm", {n: "x.js"}), pypi=fx.pypi(n, "2.0", "Py"))
-          + fx.nix_no_pkg(n), up + up + enter, ["Pk2", "Pk4", "Pk5"], then="n\r"),
+          + fx.nix_no_pkg(n), down + enter, ["Pk2", "Pk4", "Pk5"], then="n\r"),
         p("pick-installed", nix_mise + fx.mise_which(n, "/opt/homebrew/Cellar/dkt-tool/1.0/bin/dkt-tool"),
           down + enter, ["Pk5"]),
+        p("pick-two-tools", nix_mise + fx.nix_pkg("dkt-a", "1.0", "A"), enter, ["Pk1"], argv=["add", n, "nix:dkt-a"],
+          then="n\r"),
         S("pick-numbered", ["add", n], rules=nix_mise, tty="x\n9\n2\nn\n", env={"TERM": "dumb"}, unordered=True,
           rows=["Pk6"]),
         S("pick-numbered-default", ["add", n], rules=nix_mise, tty="\nn\n", env={}, unordered=True, rows=["Pk6"]),
+        S("pick-numbered-cancel", ["add", n], rules=nix_mise, tty="q\n", env={"TERM": "dumb"}, unordered=True,
+          rows=["Pk6"]),
         S("pick-numbered-end-of-input", ["add", n], rules=nix_mise, tty="\x04", env={"TERM": "dumb"}, unordered=True,
           rows=["Pk6"]),
         S("pick-not-one-source", ["add", n], rules=bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs")), tty="n\n",

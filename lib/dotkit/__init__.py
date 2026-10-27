@@ -1,7 +1,7 @@
 """dotkit: the dotkit command (run.py dotkit) and the migration wizard (migrate/).
 
 _vendor/ has the third-party packages that dotkit carries (_vendor/README.md).
-They go first on sys.path, so that `import questionary` finds them; dotkit runs
+They go first on sys.path, so that `import prompt_toolkit` finds them; dotkit runs
 with -I, which leaves out the user site-packages, so nothing else competes.
 """
 

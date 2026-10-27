@@ -7,14 +7,14 @@ directory first on `sys.path`.
 
 | Package | Used for |
 |---|---|
-| `questionary`, `prompt_toolkit` | the source picker of `dotkit add` |
+| `prompt_toolkit` | the source picker of `dotkit add` |
 | `wcwidth` | the width of text in the terminal (also a dependency of `prompt_toolkit`) |
 | `tomli` | TOML on Python 3.9 and 3.10, which have no `tomllib` |
 
 Rules:
 
 - Pure Python wheels only, each with a release that supports Python 3.9.
-  `prompt_toolkit` 3.0.52 is the last one; `questionary` 2.1.1 works with it.
+  `prompt_toolkit` 3.0.52 is the last one.
 - No changes to the vendored code. A fix goes upstream, or into dotkit.
 - `vendor.txt` pins each version with the hash of its wheel. To change one,
   edit `vendor.txt` (`pip hash` gives the hash), run

@@ -14,13 +14,8 @@ from .lookups import Lookups
 from .resolve import KEYS, Candidates, Outcome, Resolver, Selection
 
 FAILED = "nothing changed. Fix the errors above, then run the command again."
-# The reason of a source that the user selected in the picker.
+# The reason of a source that the user selected in the picker, when it is not the one of the rules.
 PICKED = "selected in the list"
-# The title of the picker when the rules select no source.
-PICK_ONE = {
-    "app": "Homebrew has an app and a command-line tool with this name. Select one",
-    "registry": "only npm or PyPI has this name. Anyone can publish there: check the package, then select it",
-}
 
 
 def print_candidates(c: Candidates, selected: Optional[Selection]) -> None:
@@ -67,11 +62,7 @@ class Pkg:
                 continue
             outcome = self.resolver.resolve(tool)
             if self._can_ask(outcome):
-                picked = self._pick(tool, outcome)
-                if picked is None:
-                    ui.out(f"{tool}: skipped")
-                    continue
-                outcome = picked
+                outcome = self._pick(tool, outcome)
             if not outcome.ok:
                 ui.warn(f"{tool}: {outcome.reason}")
                 print_candidates(outcome.candidates, None)
@@ -142,23 +133,19 @@ class Pkg:
             return False
         return len(c.found) > 1 or not outcome.ok
 
-    def _pick(self, tool: str, outcome: Outcome) -> Optional[Outcome]:
-        """The outcome with the source that the user selected; None to skip the tool."""
+    def _pick(self, tool: str, outcome: Outcome) -> Outcome:
+        """The outcome with the source that the user selects. The source of the rules is the first row; when
+        the rules select none, the rows have the order of KEYS. Esc stops add with "nothing changed."."""
         c = outcome.candidates
         keys = [k for k in KEYS if k in c.found]
-        rows = [picker.Row(c.spec_of(k), c.found[k].version, c.found[k].description,
-                           picker.REGISTRY_NOTE if k in ("npm", "pypi") else "") for k in keys]
         if outcome.ok:
-            title = f"{tool}: {outcome.selection.reason}. Select the source"
-            cursor = keys.index(outcome.selection.key)
-        else:
-            which = "app" if "app" in c.found and "formula" in c.found else "registry"
-            title, cursor = f"{tool}: {PICK_ONE[which]}", None
-        what, index = picker.ask(title + ":", rows, cursor)
-        if what == picker.STOP:
+            keys.remove(outcome.selection.key)
+            keys.insert(0, outcome.selection.key)
+        rows = [picker.Row(c.spec_of(k).split(":", 1)[0], c.found[k].version, c.found[k].description,
+                           picker.REGISTRY_NOTE if k in ("npm", "pypi") else "") for k in keys]
+        index = picker.ask(tool, rows)
+        if index is None:
             raise ui.die("nothing changed.")
-        if what == picker.SKIP:
-            return None
         key = keys[index]
         if outcome.ok and key == outcome.selection.key:
             return outcome

@@ -5,7 +5,7 @@
  ],
  "exit": 1,
  "stdout": "dkt-tool: nix:dkt-tool -> nix/packages.txt (Nixpkgs has the current release)\n  ✓ nix:dkt-tool                   1.2.0          From Nixpkgs\n    mise:dkt-tool                  1.2.0          mise\n",
- "terminal": "dkt-tool: Nixpkgs has the current release. Select the source:\n  1) nix:dkt-tool                   1.2.0          From Nixpkgs\n  2) mise:dkt-tool                  1.2.0          mise\nSelect 1-2, Enter for 1, s to skip, q to stop: Add the tool? [y/N] dotkit: nothing changed.\n",
+ "terminal": "dkt-tool\n  1) nix   1.2.0  From Nixpkgs\n  2) mise  1.2.0  mise\nSelect 1-2 (Enter for 1), or q to cancel: Add the tool? [y/N] dotkit: nothing changed.\n",
  "files": {},
  "calls": [
   {

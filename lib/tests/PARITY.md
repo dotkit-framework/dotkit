@@ -225,11 +225,11 @@ New in the Python code. The goldens of these rows come from the Python code.
 | Row | Behavior | Covered by |
 |---|---|---|
 | Pk1 | add asks for the source of a bare name when stdin and stderr are a terminal, without `-y` and `-n`, and when two sources or more have the tool, or when the rules select none of them (R10, R15). It does not ask for a prefix, for one source, when the nix evaluation fails, or when no source has the tool. | scenarios |
-| Pk2 | The list is questionary.select on stderr: the title "TOOL: REASON. Select the source:", one row per candidate in the order of Pc1 (spec, version, description, and for npm and PyPI "(anyone can publish here; check the package)", cut to the width of the terminal), then "Skip this tool" and "Stop, and change nothing". | scenarios |
-| Pk3 | The arrow keys and `j`/`k` move, and the list wraps at its ends; Enter selects. "Skip this tool" skips it ("TOOL: skipped" on stdout). "Stop, and change nothing": die "nothing changed." | scenarios |
-| Pk4 | The cursor starts on the source that the rules select. When they select none, it starts on "Skip this tool"; the title is "TOOL: Homebrew has an app and a command-line tool with this name. Select one:" or "TOOL: only npm or PyPI has this name. Anyone can publish there: check the package, then select it:". | scenarios |
+| Pk2 | The list, on stderr (prompt_toolkit): the tool name as the title; one row per candidate in three columns, the manager (nix, mise, brew, cask, npm, pipx, or the mise backend), the version, and the description, which takes the rest of the width and is cut with …; npm and PyPI rows end with "· anyone can publish" when it fits; then the help "↑/↓ move · enter select · esc cancel". The selected row is in reverse video. With `NO_COLOR`, no colors. The list goes away when it ends. | scenarios; unit (tests/pkg/test_pkg.py) for the lines |
+| Pk3 | Up and Down move, and stop at the first and the last row; Enter selects. Esc cancels: die "nothing changed." There is no skip: each tool needs a source or the cancel. | scenarios |
+| Pk4 | The first row is the source that the rules select, and the cursor starts there; the other rows follow in the order of Pc1. When the rules select none, the rows have the order of Pc1 and the cursor starts on the first. | scenarios |
 | Pk5 | After the selection, add goes on as without the picker: the checks of Ad6 and Ad7, the plan line, the candidates, the question. For a source other than the selection of the rules, the reason is "selected in the list". | scenarios |
-| Pk6 | With `TERM=dumb` or without `TERM`: a numbered list on stderr and the question "Select 1-N, Enter for D, s to skip, q to stop: " (without ", Enter for D" when the rules select none), asked again until the answer is valid. The end of the input stops. | scenarios |
+| Pk6 | With `TERM=dumb` or without `TERM`: a numbered list on stderr in the same columns, and "Select 1-N (Enter for 1), or q to cancel: ", asked again until the answer is valid. q and the end of the input cancel. | scenarios |
 | Pk7 | Ctrl-C in the list: exit code 130, nothing changed. | scenarios |
 
 ## Rm. remove

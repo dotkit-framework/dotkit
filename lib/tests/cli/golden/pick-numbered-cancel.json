@@ -3,9 +3,9 @@
   "add",
   "dkt-tool"
  ],
- "exit": 0,
- "stdout": "dkt-tool: skipped\n",
- "terminal": null,
+ "exit": 1,
+ "stdout": "",
+ "terminal": "dkt-tool\n  1) nix   1.2.0  From Nixpkgs\n  2) mise  1.2.0  mise\nSelect 1-2 (Enter for 1), or q to cancel: dotkit: nothing changed.\n",
  "files": {},
  "calls": [
   {

@@ -8,7 +8,7 @@ the awk-style readers and the port of `sort -V` are gone (PARITY.md, DV7
 and DV8).
 argparse replaced the parser of section 5.2: the text of an error is not an
 interface, and a standard parser beats one of our own (DV9). The picker uses
-questionary (`lib/dotkit/_vendor`).
+prompt_toolkit (`lib/dotkit/_vendor`).
 
 This plan replaces the Bash scripts of the `dotkit` command with one Python
 package. The behavior stays the same, with one new feature: `dotkit add`
@@ -243,40 +243,35 @@ step 4.
 
 ## 7. The interactive picker of `dotkit add`
 
-Done in step 5: `lib/dotkit/pkg/picker.py`, PARITY.md rows Pk1 to Pk7.
+`lib/dotkit/pkg/picker.py`, PARITY.md rows Pk1 to Pk7.
 
 It asks for a bare name (no prefix) when stdin and stderr are a terminal,
 without `-y` and `-n`, and when two sources or more have the tool, or when
 the rules select none of them. In all other cases, the result is the same as
 before: `-n` shows the plan with the source that the rules select.
 
-The list, on stderr, for each tool:
-
 ```
-lazygit: Nixpkgs has the current release. Select the source:
-> nix:lazygit                    0.66.2         Simple terminal UI for git commands
-  mise:lazygit                   0.66.2         simple terminal UI for git commands
-  brew:lazygit                   0.66.2         Simple terminal UI for git commands
-  pipx:lazygit                   1.1            Automating the daily git push (anyone can publish here; check…
-↑/↓ select · enter add · s skip · q stop
+lazygit
+ nix   0.66.2  Simple terminal UI for git commands        (reverse video: the selected row)
+ mise  0.66.2  simple terminal UI for git commands
+ brew  0.66.2  Simple terminal UI for git commands
+ pipx  1.1     Automating the daily git push operations · anyone can publish
+↑/↓ move · enter select · esc cancel
 ```
 
-- The cursor starts on the source that the rules select, so Enter does what
-  `add` did before.
-- An app cask and a formula with the same name, and a name that only npm or
-  PyPI has, stopped with an error. Now the user selects one; the cursor
-  starts on no row, so Enter does nothing until a key moves it.
-- After the selection, the checks ("already installed", the same command
-  from two arguments), the plan, and the question "Add the tools?" are the
-  same as before. Another source than the selection of the rules has the
-  reason "selected in the list".
-- `s` skips the tool ("TOOL: skipped"). `q`, Ctrl-D, and the end of the input
-  stop with "nothing changed." and exit 1. Ctrl-C exits 130.
+- The title is the tool name. The columns are the manager, the version, and
+  the description, which takes the rest of the width.
+- The first row is the source that the rules select, and the cursor starts
+  there, so Enter does what `add` did before.
+- The arrow keys move; Enter selects; Esc cancels with "nothing changed.";
+  Ctrl-C exits 130. There is no skip: a tool gets a source, or add stops.
+- After the selection, the checks, the plan, and the question "Add the
+  tools?" are the same as before. A source other than the selection of the
+  rules has the reason "selected in the list".
 
-The list is `questionary.select` (prompt_toolkit, vendored), drawn on
-stderr. Below the candidates it has "Skip this tool" and "Stop, and change
-nothing"; when the rules select none, the cursor starts on "Skip". With
-`TERM=dumb` or without `TERM`, a numbered prompt replaces it.
+The list is a small prompt_toolkit application on stderr, removed when it
+ends; `NO_COLOR` turns off its colors. With `TERM=dumb` or without `TERM`, a
+numbered question replaces it.
 
 ## 8. Risks
 

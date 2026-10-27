@@ -1,11 +1,10 @@
 {
  "argv": [
   "add",
-  "dkt-tool",
-  "nix:dkt-a"
+  "dkt-tool"
  ],
  "exit": 1,
- "stdout": "dkt-tool: skipped\nnix:dkt-a -> nix/packages.txt\n  ✓ nix:dkt-a                      1.0            A\n",
+ "stdout": "dkt-tool: nix:dkt-tool -> nix/packages.txt (selected in the list)\n  ✓ nix:dkt-tool                   1.0            From Nixpkgs\n    mise:dkt-tool                  2.0            mise\n",
  "terminal": null,
  "files": {},
  "calls": [
@@ -46,22 +45,8 @@
    "cwd": "@SB/home",
    "env": {
     "DOTFILES": "@SB/repo",
-    "DOTKIT_VERSION_A": "1.2.0",
-    "DOTKIT_VERSION_B": "1.2.0"
-   }
-  },
-  {
-   "tool": "nix",
-   "argv": [
-    "eval",
-    "--json",
-    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
-    "--apply",
-    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-a\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
-   ],
-   "cwd": "@SB/home",
-   "env": {
-    "DOTFILES": "@SB/repo"
+    "DOTKIT_VERSION_A": "1.0",
+    "DOTKIT_VERSION_B": "2.0"
    }
   },
   {
@@ -144,7 +129,7 @@
    "tool": "mise",
    "argv": [
     "which",
-    "dkt-a"
+    "dkt-tool"
    ],
    "cwd": "@SB/home",
    "env": {

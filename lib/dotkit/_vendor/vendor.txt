@@ -2,6 +2,5 @@
 # Pure Python wheels with hashes. Each version must support Python 3.9, the
 # Python of the Xcode Command Line Tools. Refresh: /usr/bin/python3 lib/tools/vendor.py
 prompt_toolkit==3.0.52 --hash=sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955
-questionary==2.1.1 --hash=sha256:a51af13f345f1cdea62347589fbb6df3b290306ab8930713bfae4d475a7d4a59
 tomli==2.3.2 --hash=sha256:d29fba4bd126060fc106865d5703e8380d62b23e43d6318633637c99b413f76c
 wcwidth==0.9.4 --hash=sha256:901eace6d2dd25ebb917d0ce5db18e5c537e1504c905cf32f0d006c12098b05d

@@ -31,10 +31,9 @@ class VendorTests(unittest.TestCase):
 
     def test_packages_load_from_vendor(self):
         import prompt_toolkit
-        import questionary
         import tomli
         import wcwidth
-        for module in (prompt_toolkit, questionary, tomli, wcwidth):
+        for module in (prompt_toolkit, tomli, wcwidth):
             with self.subTest(module=module.__name__):
                 self.assertEqual(Path(module.__file__).resolve().parents[1], VENDOR.resolve())
         self.assertEqual(prompt_toolkit.__version__, pins()["prompt_toolkit"])

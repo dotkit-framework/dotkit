@@ -208,14 +208,32 @@ class RealNixTests(unittest.TestCase):
 
 
 class PickerTests(unittest.TestCase):
-    def test_row_text(self):
-        r = picker.Row("npm:t", "2", "npm 中文 🙂", picker.REGISTRY_NOTE)
-        self.assertEqual(r.text(200), f"npm:t{' ' * 25} 2{' ' * 13} npm 中文 🙂 ({picker.REGISTRY_NOTE})")
-        self.assertEqual(picker.Row("mise:t", "", "x").text(200), f"mise:t{' ' * 24} ?{' ' * 13} x")
-        for columns in (40, 51, 52):
+    ROWS = [picker.Row("nix", "0.66.2", "Simple terminal UI for git commands"),
+            picker.Row("pipx", "1.1", "Automating the daily git push 中文", picker.REGISTRY_NOTE)]
+
+    def text(self, line):
+        return "".join(t for _, t in line)
+
+    def test_lines(self):
+        out = picker.lines("lazygit", self.ROWS, 1, 100)
+        self.assertEqual([self.text(line).rstrip() for line in out], [
+            "lazygit",
+            " nix   0.66.2  Simple terminal UI for git commands",
+            " pipx  1.1     Automating the daily git push 中文 · anyone can publish",
+            picker.HELP,
+        ])
+        self.assertEqual(ui.width(self.text(out[2])), 100, "the selected row fills the width")
+        self.assertTrue(all("class:selected" in s for s, _ in out[2]))
+        self.assertFalse(any("class:selected" in s for s, _ in out[1]))
+
+    def test_narrow(self):
+        for columns in (20, 40, 52):
             with self.subTest(columns=columns):
-                self.assertLessEqual(ui.width(r.text(columns)), columns)
-                self.assertTrue(r.text(columns).endswith("…"))
+                for line in picker.lines("lazygit", self.ROWS, 0, columns):
+                    self.assertLessEqual(ui.width(self.text(line)), columns)
+        row = self.text(picker.lines("lazygit", self.ROWS, 0, 40)[2])
+        self.assertNotIn(picker.REGISTRY_NOTE, row, "the note goes first when the row does not fit")
+        self.assertTrue(row.endswith("…"))
 
 
 class WidthTests(unittest.TestCase):
