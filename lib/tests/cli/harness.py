@@ -23,7 +23,7 @@ import sys
 import termios
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from tests import fake
 
@@ -68,9 +68,9 @@ class Scenario:
     # Files to write before the run, by path in the sandbox; None removes the file.
     files: Dict[str, Optional[str]] = field(default_factory=dict)
     env: Dict[str, str] = field(default_factory=dict)
-    # Text to type: stdin and stderr are a terminal, without echo. None: stdin is /dev/null. A list: each
-    # part after the first goes to the terminal when new text shows on it (Ctrl-C after the list shows).
-    tty: Union[str, List[str], None] = None
+    # Text to type: stdin and stderr are a terminal, without echo. None: stdin is /dev/null. A list of
+    # (marker, text): each text goes to the terminal once its marker shows on it after the text before.
+    tty: Union[str, List[Tuple[str, str]], None] = None
     # The calls run at the same time (the lookups of a bare name): compare them sorted.
     unordered: bool = False
     # Set DOTKIT_DIR to a checkout with its own flake.lock.
@@ -81,6 +81,8 @@ class Scenario:
     skip: Callable[[], Optional[str]] = lambda: None
     # What the scenario checks: the rows of PARITY.md.
     rows: List[str] = field(default_factory=list)
+    # The text of the terminal is not compared: it has the redraws of prompt_toolkit, which depend on timing.
+    no_terminal: bool = False
     # A deviation (DV...) or a Bash bug (B...) of PARITY.md. test_parity.COMPARE says what the other
     # implementations must match; a Bash bug runs with the Bash scripts only.
     deviation: Optional[str] = None
@@ -173,7 +175,8 @@ def _controlling_terminal() -> None:
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
 
-def run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: Union[str, List[str]]) -> tuple[int, str, str]:
+def run_tty(argv: List[str], env: Dict[str, str], cwd: Path,
+            text: Union[str, List[Tuple[str, str]]]) -> tuple[int, str, str]:
     """stdin and stderr on a terminal of 120 columns without echo, stdout on a pipe. The terminal is the
     controlling terminal of the command, so \x03 in text is Ctrl-C. Returns the exit code, stdout, and the
     text of the terminal."""
@@ -185,9 +188,17 @@ def run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: Union[str, Li
     p = subprocess.Popen(argv, env=env, cwd=cwd, stdin=slave, stdout=subprocess.PIPE, stderr=slave,
                          start_new_session=True, preexec_fn=_controlling_terminal)
     os.close(slave)
-    parts = [text] if isinstance(text, str) else list(text)
-    os.write(master, parts.pop(0).encode())
-    out, term = b"", b""
+    parts = [("", text)] if isinstance(text, str) else list(text)
+    out, term, seen = b"", b"", 0
+
+    def send() -> None:
+        """Types the next part when its marker shows after the text that came before."""
+        nonlocal seen
+        while parts and parts[0][0].encode() in term[seen:]:
+            seen = len(term)
+            os.write(master, parts.pop(0)[1].encode())
+
+    send()
     while True:
         ready, _, _ = select.select([master, p.stdout], [], [], 120)
         if not ready:
@@ -205,8 +216,7 @@ def run_tty(argv: List[str], env: Dict[str, str], cwd: Path, text: Union[str, Li
             except OSError:  # EIO: the terminal has no process left
                 chunk = b""
             term += chunk
-            if chunk and parts:
-                os.write(master, parts.pop(0).encode())
+            send()
             if not chunk and p.poll() is not None:
                 break
     p.wait()
@@ -226,7 +236,8 @@ def run(impl: Impl, s: Scenario) -> dict:
     sb = fake.tempdir("cli").resolve()
     try:
         setup(sb, impl, s)
-        env = {"HOME": str(sb / "home"), "TMPDIR": str(sb / "tmp"), "LC_ALL": "en_US.UTF-8",
+        # PROMPT_TOOLKIT_NO_CPR: the test terminal does not answer the cursor position requests of prompt_toolkit.
+        env = {"HOME": str(sb / "home"), "TMPDIR": str(sb / "tmp"), "LC_ALL": "en_US.UTF-8", "PROMPT_TOOLKIT_NO_CPR": "1",
                "PATH": f"{sb / 'bin'}:/usr/bin:/bin:/usr/sbin:/sbin", "FAKE_DIR": str(sb / "fake"),
                "USER": os.environ.get("USER", "")}
         if not s.no_dotfiles:
@@ -251,7 +262,7 @@ def run(impl: Impl, s: Scenario) -> dict:
             "argv": s.argv,
             "exit": code,
             "stdout": out,
-            ("terminal" if s.tty is not None else "stderr"): err,
+            ("terminal" if s.tty is not None else "stderr"): None if s.no_terminal else err,
             "files": files,
             "calls": calls,
             "tmp_left": len(list((sb / "tmp").iterdir())),

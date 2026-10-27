@@ -4,8 +4,8 @@
   "dkt-tool"
  ],
  "exit": 1,
- "stdout": "dkt-tool: pipx:dkt-tool -> config/mise.toml (selected in the list)\n    npm:dkt-tool                   1.0.0          npm\n  ✓ pipx:dkt-tool                  2.0            Py\n",
- "terminal": "\u001b[?25ldkt-tool: only npm or PyPI has this name. Anyone can publish there: check the package, then select it:\n  npm:dkt-tool                   1.0.0          npm (anyone can publish here; check the package)\n  pipx:dkt-tool                  2.0            Py (anyone can publish here; check the package)\n↑/↓ select · enter add · s skip · q stop\n\u001b[4A\r\u001b[Jdkt-tool: only npm or PyPI has this name. Anyone can publish there: check the package, then select it:\n  npm:dkt-tool                   1.0.0          npm (anyone can publish here; check the package)\n> pipx:dkt-tool                  2.0            Py (anyone can publish here; check the package)\n↑/↓ select · enter add · s skip · q stop\n\u001b[4A\r\u001b[J\u001b[?25hAdd the tool? [y/N] dotkit: nothing changed.\n",
+ "stdout": "dkt-tool: npm:dkt-tool -> config/mise.toml (selected in the list)\n  ✓ npm:dkt-tool                   1.0.0          npm\n    pipx:dkt-tool                  2.0            Py\n",
+ "terminal": null,
  "files": {},
  "calls": [
   {
@@ -28,20 +28,6 @@
     "--max-time",
     "10",
     "https://registry.npmjs.org/dkt-tool/latest"
-   ],
-   "cwd": "@SB/home",
-   "env": {
-    "DOTFILES": "@SB/repo"
-   }
-  },
-  {
-   "tool": "nix",
-   "argv": [
-    "eval",
-    "--json",
-    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
-    "--apply",
-    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-tool\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
    ],
    "cwd": "@SB/home",
    "env": {

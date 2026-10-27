@@ -469,40 +469,52 @@ def add_apply() -> List[S]:
 
 
 def picker() -> List[S]:
-    """The picker of add (PARITY.md, Pk and DV2): a bare name in a terminal."""
+    """The picker of add (PARITY.md, Pk and DV2): a bare name in a terminal. The list is questionary: the arrow
+    keys move, Enter selects; below the candidates, "Skip this tool" and "Stop, and change nothing"."""
     n = "dkt-tool"
     xterm = {"TERM": "xterm-256color"}
     nix_mise = bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs"), mise=fx.mise_tool(n, "aqua:o/t", "1.2.0", "mise")) \
         + fx.compare("1.2.0", "1.2.0", 0)
-    down, up = "\x1b[B", "\x1b[A"
+    down, up, enter = "\x1b[B", "\x1b[A", "\r"
 
-    def p(name, rules, typed, rows, argv=None, env=xterm, **kw):
-        return S(name, argv or ["add", n], rules=rules, tty=typed, env=env, unordered=True, rows=rows, **kw)
+    def p(name, rules, keys, rows, argv=None, env=xterm, then="", **kw):
+        """keys go to the list once it shows; then is the answer to "Add the tool?"."""
+        typed = [("(↑/↓, Enter)", keys)] + ([("Add the", then)] if then else [])
+        return S(name, argv or ["add", n], rules=rules, tty=typed, env=env, unordered=True, rows=rows,
+                 no_terminal=True, **kw)
 
     return [
-        p("pick-default", nix_mise, "\nn\n", ["Pk1", "Pk2", "Pk4", "Pk5"]),
-        p("pick-other", nix_mise + fx.mise_ok("use -g dkt-tool$"), f"{down}\ny\n", ["Pk3", "Pk5"]),
-        p("pick-keys", nix_mise, f"j{down}{down}k{up}{up}\nn\n", ["Pk3"]),
-        p("pick-skip", nix_mise, "s", ["Pk3"]),
-        p("pick-skip-one", nix_mise + fx.nix_pkg("dkt-a", "1.0", "A"), "sn\n", ["Pk3"],
-          argv=["add", n, "nix:dkt-a"]),
-        p("pick-stop", nix_mise, "q", ["Pk3"]),
-        p("pick-end-of-input", nix_mise, "\x04", ["Pk3"]),
-        p("pick-ctrl-c", nix_mise, ["", "\x03"], ["Pk7"]),
+        p("pick-default", nix_mise, enter, ["Pk1", "Pk2", "Pk4", "Pk5"], then="n\r"),
+        p("pick-other", nix_mise + fx.mise_ok("use -g dkt-tool$"), down + enter, ["Pk3", "Pk5"], then="y\r"),
+        # j: mise, down: Skip, k: mise, up: nix.
+        p("pick-keys", nix_mise, f"j{down}k{up}" + enter, ["Pk3"], then="n\r"),
+        p("pick-skip", nix_mise, down + down + enter, ["Pk3"]),
+        p("pick-skip-one", nix_mise + fx.nix_pkg("dkt-a", "1.0", "A"), down + down + enter, ["Pk3"],
+          argv=["add", n, "nix:dkt-a"], then="n\r"),
+        # The list wraps: up from the first row is "Stop, and change nothing".
+        p("pick-stop", nix_mise, up + enter, ["Pk3"]),
+        p("pick-ctrl-c", nix_mise, "\x03", ["Pk7"]),
         p("pick-app-and-formula", bare(n, cask=fx.cask(n, "3", "App", app="T.app"), formula=fx.formula(n, "4", "CLI")),
-          f"\n{down}{down}\nn\n", ["Pk4", "Pk5"]),
+          up + enter, ["Pk4", "Pk5"], then="n\r"),
+        p("pick-app-and-formula-enter", bare(n, cask=fx.cask(n, "3", "App", app="T.app"),
+                                             formula=fx.formula(n, "4", "CLI")), enter, ["Pk4"]),
         p("pick-registry-only", bare(n, npm=fx.npm(n, "1.0.0", "npm", {n: "x.js"}), pypi=fx.pypi(n, "2.0", "Py"))
-          + fx.nix_no_pkg(n), f"{up}\nn\n", ["Pk2", "Pk4", "Pk5"]),
+          + fx.nix_no_pkg(n), up + up + enter, ["Pk2", "Pk4", "Pk5"], then="n\r"),
         p("pick-installed", nix_mise + fx.mise_which(n, "/opt/homebrew/Cellar/dkt-tool/1.0/bin/dkt-tool"),
-          f"{down}\n", ["Pk5"]),
-        p("pick-numbered", nix_mise, "x\n9\n2\nn\n", ["Pk6"], env={"TERM": "dumb"}),
-        p("pick-numbered-default", nix_mise, "\nn\n", ["Pk6"], env={}),
-        p("pick-numbered-end-of-input", nix_mise, "\x04", ["Pk6"], env={"TERM": "dumb"}),
-        p("pick-not-one-source", bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs")), "n\n", ["Pk1"]),
-        p("pick-not-dry-run", nix_mise, "", ["Pk1"], argv=["add", "-n", n]),
-        p("pick-not-yes", nix_mise + fx.build_once() + fx.apply_ok(), "", ["Pk1"], argv=["add", "-y", n]),
-        p("pick-not-nix-failed", fx.nix_eval_fails() + nix_mise, "", ["Pk1"]),
-        p("pick-not-none", bare(n), "", ["Pk1"]),
+          down + enter, ["Pk5"]),
+        S("pick-numbered", ["add", n], rules=nix_mise, tty="x\n9\n2\nn\n", env={"TERM": "dumb"}, unordered=True,
+          rows=["Pk6"]),
+        S("pick-numbered-default", ["add", n], rules=nix_mise, tty="\nn\n", env={}, unordered=True, rows=["Pk6"]),
+        S("pick-numbered-end-of-input", ["add", n], rules=nix_mise, tty="\x04", env={"TERM": "dumb"}, unordered=True,
+          rows=["Pk6"]),
+        S("pick-not-one-source", ["add", n], rules=bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs")), tty="n\n",
+          env=xterm, unordered=True, rows=["Pk1"]),
+        S("pick-not-dry-run", ["add", "-n", n], rules=nix_mise, tty="", env=xterm, unordered=True, rows=["Pk1"]),
+        S("pick-not-yes", ["add", "-y", n], rules=nix_mise + fx.build_once() + fx.apply_ok(), tty="", env=xterm,
+          unordered=True, rows=["Pk1"]),
+        S("pick-not-nix-failed", ["add", n], rules=fx.nix_eval_fails() + nix_mise, tty="", env=xterm, unordered=True,
+          rows=["Pk1"]),
+        S("pick-not-none", ["add", n], rules=bare(n), tty="", env=xterm, unordered=True, rows=["Pk1"]),
     ]
 
 

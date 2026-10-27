@@ -5,7 +5,7 @@
  ],
  "exit": 1,
  "stdout": "dkt-tool: brew:dkt-tool -> nix/brews.txt (selected in the list)\n    cask:dkt-tool                  3              App\n  ✓ brew:dkt-tool                  4              CLI\n",
- "terminal": "\u001b[?25ldkt-tool: Homebrew has an app and a command-line tool with this name. Select one:\n  cask:dkt-tool                  3              App\n  brew:dkt-tool                  4              CLI\n↑/↓ select · enter add · s skip · q stop\n\u001b[4A\r\u001b[Jdkt-tool: Homebrew has an app and a command-line tool with this name. Select one:\n  cask:dkt-tool                  3              App\n  brew:dkt-tool                  4              CLI\n↑/↓ select · enter add · s skip · q stop\n\u001b[4A\r\u001b[Jdkt-tool: Homebrew has an app and a command-line tool with this name. Select one:\n> cask:dkt-tool                  3              App\n  brew:dkt-tool                  4              CLI\n↑/↓ select · enter add · s skip · q stop\n\u001b[4A\r\u001b[Jdkt-tool: Homebrew has an app and a command-line tool with this name. Select one:\n  cask:dkt-tool                  3              App\n> brew:dkt-tool                  4              CLI\n↑/↓ select · enter add · s skip · q stop\n\u001b[4A\r\u001b[J\u001b[?25hAdd the tool? [y/N] dotkit: nothing changed.\n",
+ "terminal": null,
  "files": {},
  "calls": [
   {

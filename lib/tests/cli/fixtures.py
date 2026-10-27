@@ -35,9 +35,9 @@ def nix_no_pkg(attr: str) -> List[dict]:
 
 
 def compare(a: str, b: str, result: int) -> List[dict]:
-    """builtins.compareVersions a b, as `nix eval --expr` prints it: -1, 0, or 1."""
-    return [_r("nix", rf"^eval --expr \{{ a, b \}}: builtins\.compareVersions a b --argstr a {re.escape(a)} "
-                      rf"--argstr b {re.escape(b)}$", f"{result}\n")]
+    """builtins.compareVersions of the versions in DOTKIT_VERSION_A and _B: -1, 0, or 1. The rule matches the
+    command; the log shows the versions in its env."""
+    return [_r("nix", r"^eval --impure --expr builtins\.compareVersions", f"{result}\n", once=True)]
 
 
 def nix_eval_fails() -> List[dict]:

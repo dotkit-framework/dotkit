@@ -39,18 +39,15 @@
    "tool": "nix",
    "argv": [
     "eval",
+    "--impure",
     "--expr",
-    "{ a, b }: builtins.compareVersions a b",
-    "--argstr",
-    "a",
-    "2.0.0-rc1",
-    "--argstr",
-    "b",
-    "2.0.0"
+    "builtins.compareVersions (builtins.getEnv \"DOTKIT_VERSION_A\") (builtins.getEnv \"DOTKIT_VERSION_B\")"
    ],
    "cwd": "@SB/home",
    "env": {
-    "DOTFILES": "@SB/repo"
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_VERSION_A": "2.0.0-rc1",
+    "DOTKIT_VERSION_B": "2.0.0"
    }
   },
   {

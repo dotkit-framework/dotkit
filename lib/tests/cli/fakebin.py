@@ -33,7 +33,7 @@ import re
 import sys
 
 # The variables that change what a command does. The log keeps them when they are set.
-WATCH = ("DOTFILES", "DOTKIT_DIR", "HOMEBREW_NO_AUTO_UPDATE", "HOMEBREW_NO_INSTALL_CLEANUP", "NIX_REMOTE",
+WATCH = ("DOTFILES", "DOTKIT_DIR", "DOTKIT_VERSION_A", "DOTKIT_VERSION_B", "HOMEBREW_NO_AUTO_UPDATE", "HOMEBREW_NO_INSTALL_CLEANUP", "NIX_REMOTE",
          "MISE_DATA_DIR")
 
 

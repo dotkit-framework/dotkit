@@ -79,6 +79,9 @@ NIX_EXPR = '''
     in if r.success then r.value else null'''
 
 
+COMPARE = 'builtins.compareVersions (builtins.getEnv "DOTKIT_VERSION_A") (builtins.getEnv "DOTKIT_VERSION_B")'
+
+
 def _json(text: str) -> Any:
     """The JSON value of a text, or a ValueError."""
     return json.loads(text)
@@ -116,8 +119,9 @@ class Lookups:
         """True when version a is the same as or newer than version b, by builtins.compareVersions: the
         order that Nixpkgs uses for its versions. A leading v does not count."""
         a, b = (v[1:] if v.startswith("v") else v for v in (a, b))
-        r = proc.run(["nix", "eval", "--expr", "{ a, b }: builtins.compareVersions a b", "--argstr", "a", a,
-                      "--argstr", "b", b], stdout=proc.CAPTURE)
+        # The versions go in the environment: no escaping, and `nix eval --expr` does not apply --argstr.
+        r = proc.run(["nix", "eval", "--impure", "--expr", COMPARE], env={"DOTKIT_VERSION_A": a, "DOTKIT_VERSION_B": b},
+                     stdout=proc.CAPTURE)
         if not r.ok or r.value not in ("-1", "0", "1"):
             raise ui.die(f"nix could not compare the versions {a} and {b}.")
         return r.value != "-1"

@@ -33,9 +33,7 @@ def print_candidates(c: Candidates, selected: Optional[Selection]) -> None:
         if found is None:
             continue
         mark = "✓" if selected is not None and key == selected.key else " "
-        desc = found.description
-        if width is not None and len(desc) > width:
-            desc = desc[:width - 1] + "…"
+        desc = found.description if width is None else ui.cut(found.description, width)
         ui.out(f"  {mark} {ui.pad(c.spec_of(key), 30)} {ui.pad(found.version or '?', 14)} {desc}")
 
 
@@ -158,7 +156,7 @@ class Pkg:
         else:
             which = "app" if "app" in c.found and "formula" in c.found else "registry"
             title, cursor = f"{tool}: {PICK_ONE[which]}", None
-        what, index = picker.ask(picker.Picker(title + ":", rows, cursor))
+        what, index = picker.ask(title + ":", rows, cursor)
         if what == picker.STOP:
             raise ui.die("nothing changed.")
         if what == picker.SKIP:
@@ -339,5 +337,4 @@ class Pkg:
         for name in sorted(apps):
             # The names in nix/mas.txt are escaped for the Brewfile: \\, \", and \#.
             name = re.sub(r'\\([\\"#])', r"\1", name)
-            # jq pads by code points, not by bytes.
-            ui.out(f"brew  {name}{' ' * max(36 - len(name), 0)} app store")
+            ui.out(f"brew  {ui.pad(name, 36)} app store")

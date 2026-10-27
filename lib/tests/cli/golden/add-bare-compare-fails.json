@@ -6,7 +6,7 @@
  ],
  "exit": 1,
  "stdout": "",
- "stderr": "fake nix: no rule for: eval --expr { a, b }: builtins.compareVersions a b --argstr a 1.2.0 --argstr b 1.2.0\ndotkit: nix could not compare the versions 1.2.0 and 1.2.0.\n",
+ "stderr": "fake nix: no rule for: eval --impure --expr builtins.compareVersions (builtins.getEnv \"DOTKIT_VERSION_A\") (builtins.getEnv \"DOTKIT_VERSION_B\")\ndotkit: nix could not compare the versions 1.2.0 and 1.2.0.\n",
  "files": {},
  "calls": [
   {
@@ -39,18 +39,15 @@
    "tool": "nix",
    "argv": [
     "eval",
+    "--impure",
     "--expr",
-    "{ a, b }: builtins.compareVersions a b",
-    "--argstr",
-    "a",
-    "1.2.0",
-    "--argstr",
-    "b",
-    "1.2.0"
+    "builtins.compareVersions (builtins.getEnv \"DOTKIT_VERSION_A\") (builtins.getEnv \"DOTKIT_VERSION_B\")"
    ],
    "cwd": "@SB/home",
    "env": {
-    "DOTFILES": "@SB/repo"
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_VERSION_A": "1.2.0",
+    "DOTKIT_VERSION_B": "1.2.0"
    }
   },
   {

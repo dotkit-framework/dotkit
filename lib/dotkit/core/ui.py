@@ -62,9 +62,30 @@ def flush() -> None:
     sys.stderr.flush()
 
 
-def pad(text: str, width: int) -> str:
-    """Text padded with spaces to width bytes, as printf %-Ns of Bash and awk pads it."""
-    return text + " " * max(0, width - len(text.encode("utf-8", "surrogateescape")))
+def width(text: str) -> int:
+    """The columns that text takes in a terminal: 2 for a wide character such as 中 or 🙂 (wcwidth)."""
+    if text.isascii():
+        return len(text)
+    from wcwidth import wcswidth  # 60 ms to load: only for text that needs it
+    w = wcswidth(text)
+    return w if w >= 0 else len(text)
+
+
+def pad(text: str, columns: int) -> str:
+    """Text padded with spaces to columns, so that the next column lines up."""
+    return text + " " * max(0, columns - width(text))
+
+
+def cut(text: str, columns: int) -> str:
+    """Text that fits in columns: cut with … when it is longer."""
+    if width(text) <= columns:
+        return text
+    out = ""
+    for c in text:
+        if width(out + c) > columns - 1:
+            break
+        out += c
+    return out + "…"
 
 
 def confirm(question: str, yes: bool) -> bool:

@@ -273,9 +273,10 @@ lazygit: Nixpkgs has the current release. Select the source:
 - `s` skips the tool ("TOOL: skipped"). `q`, Ctrl-D, and the end of the input
   stop with "nothing changed." and exit 1. Ctrl-C exits 130.
 
-The list is drawn in place in cbreak mode, without full-screen curses, so
-the earlier output stays. With `TERM=dumb`, without `TERM`, or with fewer
-than 60 columns, a numbered prompt replaces it.
+The list is `questionary.select` (prompt_toolkit, vendored), drawn on
+stderr. Below the candidates it has "Skip this tool" and "Stop, and change
+nothing"; when the rules select none, the cursor starts on "Skip". With
+`TERM=dumb` or without `TERM`, a numbered prompt replaces it.
 
 ## 8. Risks
 

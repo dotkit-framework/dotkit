@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 import signal
 import sys
 import unittest
@@ -18,7 +19,7 @@ from unittest import mock
 
 from dotkit.core import env as env_mod
 from dotkit.core import ui
-from dotkit.pkg import cli, declared, edit, picker
+from dotkit.pkg import cli, declared, edit, lookups, picker
 from dotkit.pkg.lookups import Found
 from dotkit.pkg.resolve import Candidates, choose
 from tests import fake
@@ -193,39 +194,36 @@ class SignalTests(Sandbox):
         self.assertEqual(packages.read_text(), "jq\n")
 
 
+@unittest.skipUnless(shutil.which("nix"), "no nix")
+class RealNixTests(unittest.TestCase):
+    """The comparison with the real nix: the fake tools of the parity tests only answer it."""
+
+    def test_version_ge(self):
+        look = lookups.Lookups(env_mod.Env(repo=Path("/"), dotkit=Path("/"), home=Path("/")))
+        cases = [("1.2.0", "1.2.0", True), ("1.10.0", "1.9.0", True), ("1.2.0", "v1.3.0", False),
+                 ("2026.10.3", "2026.9.30", True), ("0.66.2", "0.66.3", False), ('1"$x', "1", True)]
+        for a, b, want in cases:
+            with self.subTest(a=a, b=b):
+                self.assertEqual(look.version_ge(a, b), want)
+
+
 class PickerTests(unittest.TestCase):
-    def rows(self):
-        return [picker.Row("nix:t", "1", "Nix"), picker.Row("mise:t", "", "mise"),
-                picker.Row("npm:t", "2", "npm", picker.REGISTRY_NOTE)]
+    def test_row_text(self):
+        r = picker.Row("npm:t", "2", "npm 中文 🙂", picker.REGISTRY_NOTE)
+        self.assertEqual(r.text(200), f"npm:t{' ' * 25} 2{' ' * 13} npm 中文 🙂 ({picker.REGISTRY_NOTE})")
+        self.assertEqual(picker.Row("mise:t", "", "x").text(200), f"mise:t{' ' * 24} ?{' ' * 13} x")
+        for columns in (40, 51, 52):
+            with self.subTest(columns=columns):
+                self.assertLessEqual(ui.width(r.text(columns)), columns)
+                self.assertTrue(r.text(columns).endswith("…"))
 
-    def test_keys(self):
-        cases = [
-            (0, [picker.ENTER], (picker.PICK, 0)),
-            (0, [picker.DOWN, picker.DOWN, picker.DOWN, picker.ENTER], (picker.PICK, 2)),
-            (2, [picker.UP, picker.UP, picker.UP, picker.ENTER], (picker.PICK, 0)),
-            (None, [picker.ENTER, picker.DOWN, picker.ENTER], (picker.PICK, 0)),
-            (None, [picker.UP, picker.ENTER], (picker.PICK, 2)),
-            (1, ["x", "", "s"], (picker.SKIP, None)),
-            (1, ["Q"], (picker.STOP, None)),
-        ]
-        for cursor, keys, want in cases:
-            with self.subTest(cursor=cursor, keys=keys):
-                p = picker.Picker("t", self.rows(), cursor)
-                results = [p.key(k) for k in keys]
-                self.assertEqual([r for r in results if r is not None], [want])
-                self.assertIsNotNone(results[-1])
 
-    def test_lines(self):
-        p = picker.Picker("tool: why. Select the source:", self.rows(), 1)
-        lines = p.lines(200)
-        self.assertEqual(lines[0], "tool: why. Select the source:")
-        self.assertEqual(lines[1], f"  nix:t{' ' * 25} 1{' ' * 13} Nix")
-        self.assertEqual(lines[2], f"> mise:t{' ' * 24} ?{' ' * 13} mise")
-        self.assertTrue(lines[3].endswith("npm (anyone can publish here; check the package)"))
-        self.assertEqual(lines[4], picker.FOOTER)
-        for line in p.lines(40):
-            self.assertLessEqual(len(line), 39)
-        self.assertTrue(p.lines(40)[3].endswith("…"))
+class WidthTests(unittest.TestCase):
+    def test_width_pad_cut(self):
+        self.assertEqual([ui.width(s) for s in ("abc", "é", "中", "🙂", "")], [3, 1, 2, 2, 0])
+        self.assertEqual(ui.pad("中", 4), "中  ")
+        self.assertEqual(ui.cut("中中中", 4), "中…")
+        self.assertEqual(ui.cut("abc", 3), "abc")
 
 
 if __name__ == "__main__":
