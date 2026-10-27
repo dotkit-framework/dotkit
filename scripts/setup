@@ -95,26 +95,59 @@ ensure_nix() {
 
   # Keep this at the version of nix.package in nix/darwin.nix
   # (pkgs.nixVersions.latest in the locked Nixpkgs). nix-darwin replaces the
-  # installed Nix with that one, and a downgrade is not supported.
-  local url='https://releases.nixos.org/nix/nix-2.35.2/install'
-  local sha256='9adda97297d9e8ab360df95c729eabff4f4f93d6db091953c3a68f29e3fb130c'
+  # installed Nix with that one, and a downgrade is not supported. The binary
+  # tarball and its hash are the ones that releases.nixos.org/nix/<version>/install
+  # downloads for aarch64-darwin.
+  local name='nix-2.35.2-aarch64-darwin'
+  local url="https://releases.nixos.org/nix/nix-2.35.2/$name.tar.xz"
+  local sha256='1695c13aba5afa7c2ecd6dc4a9393f602e7bbc440ed45e81602c831546580ec3'
   # Not in $repo: ensure_dotfiles runs later and needs $repo not to exist yet.
-  local installer="$HOME/Library/Caches/dotkit/nix-install.sh"
-  mkdir -p "${installer%/*}"
-  if [[ $(/usr/bin/shasum -a 256 "$installer" 2>/dev/null) != "$sha256 "* ]]; then
-    printf 'Downloading the pinned Nix installer.\n' >&2
+  local tarball="$HOME/Library/Caches/dotkit/$name.tar.xz"
+  mkdir -p "${tarball%/*}"
+  if [[ $(/usr/bin/shasum -a 256 "$tarball" 2>/dev/null) != "$sha256 "* ]]; then
+    printf 'Downloading the pinned Nix release.\n' >&2
     /usr/bin/curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-      --output "$installer.partial" "$url"
-    [[ $(/usr/bin/shasum -a 256 "$installer.partial") == "$sha256 "* ]] || {
-      rm -f "$installer.partial"
-      fail 'SHA256 mismatch for the Nix installer. The installer was not executed.'
+      --output "$tarball.partial" "$url"
+    [[ $(/usr/bin/shasum -a 256 "$tarball.partial") == "$sha256 "* ]] || {
+      rm -f "$tarball.partial"
+      fail 'SHA256 mismatch for the Nix release. The installer was not executed.'
     }
-    mv -f "$installer.partial" "$installer"
+    mv -f "$tarball.partial" "$tarball"
   fi
+  local unpack
+  unpack=$(mktemp -d)
+  /usr/bin/tar -xJf "$tarball" -C "$unpack"
+
+  # The installer adds its lines to /etc/zshrc and /etc/bashrc with
+  # { lines; cat FILE; } | sudo tee FILE. tee can empty FILE before cat reads
+  # it: then the file loses its macOS lines, or cat fails on the compressed
+  # file and the installation stops halfway. Read the copy
+  # FILE.backup-before-nix that the installer makes just before.
+  local script="$unpack/$name/install-multi-user" old new
+  # shellcheck disable=SC2016 # Lines of the installer, not to expand.
+  old='cat "$profile_target"'
+  # shellcheck disable=SC2016
+  new='if [ -e "$profile_target$PROFILE_BACKUP_SUFFIX" ]; then cat "$profile_target$PROFILE_BACKUP_SUFFIX"; fi'
+  /usr/bin/awk -v old="$old" -v new="$new" '
+    { line = $0; sub(/^ +/, "", line) }
+    line == old { $0 = substr($0, 1, length($0) - length(line)) new; n++ }
+    { print }
+    END { exit n != 1 }
+  ' "$script" >"$script.patched" || {
+    rm -rf "$unpack"
+    fail 'The Nix installer does not have the expected profile code. The installer was not executed.'
+  }
+  cat "$script.patched" >"$script"
+
   printf 'Installing official multi-user Nix. Follow its administrator prompts.\n' >&2
-  local args=(--daemon --no-channel-add)
+  local args=(--daemon --no-channel-add) status=0
   [[ -z $yes ]] || args+=(--yes)
-  (unset CI NONINTERACTIVE NIX_INSTALLER_YES; /bin/sh "$installer" "${args[@]}")
+  (
+    unset CI NONINTERACTIVE NIX_INSTALLER_YES
+    "$unpack/$name/install" "${args[@]}"
+  ) || status=$?
+  rm -rf "$unpack"
+  (( status == 0 )) || exit "$status"
   find_nix >/dev/null ||
     fail 'The installer finished, but Nix was not found. Inspect its output before retrying.'
 }

@@ -236,16 +236,12 @@ jobs:
           fetch-depth: 0
 
       # Nix is on the Mac before setup, so the /etc files from before setup
-      # have the lines of the Nix installer. The installer and its options are
-      # the ones of setup.
+      # have the lines of the Nix installer. The ensure_nix function of setup
+      # installs it.
       - name: Install Nix as setup does
         run: |
-          url=$(sed -n "s/^ *local url='\(.*\)'$/\1/p" scripts/setup)
-          sha256=$(sed -n "s/^ *local sha256='\(.*\)'$/\1/p" scripts/setup)
-          curl -fsSL --output "$RUNNER_TEMP/nix-install.sh" "$url"
-          echo "$sha256  $RUNNER_TEMP/nix-install.sh" | shasum -a 256 -c
-          env -u CI -u NONINTERACTIVE -u NIX_INSTALLER_YES \
-            /bin/sh "$RUNNER_TEMP/nix-install.sh" --daemon --no-channel-add --yes
+          # shellcheck disable=SC2016 # For the inner shell.
+          DOTKIT_SETUP_TEST=1 bash -c 'source scripts/setup --yes && ensure_nix'
           mkdir "$RUNNER_TEMP/etc-before"
           cp /etc/zshrc /etc/bashrc "$RUNNER_TEMP/etc-before/"
           grep -q '^# Nix$' /etc/zshrc
