@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "clean",
+  "1d",
+  "2d"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: clean takes one age, for example 30d. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "remove",
+  "-n",
+  "nix:jq"
+ ],
+ "exit": 0,
+ "stdout": "nix:jq: remove jq from nix/packages.txt\n",
+ "stderr": "No change. Run the command without -n to remove.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

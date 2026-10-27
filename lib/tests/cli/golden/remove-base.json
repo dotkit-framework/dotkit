@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "remove",
+  "ripgrep"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: ripgrep: in the dotkit base (dotkit:nix/packages.txt). Only dotkit can remove it.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

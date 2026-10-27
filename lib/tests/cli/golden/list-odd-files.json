@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "list",
+  "nix",
+  "mise"
+ ],
+ "exit": 0,
+ "stdout": "nix   ripgrep (dotkit)\nnix   fd (dotkit)\nnix   indented\nnix   last-no-newline\nmise  node                                 lts (dotkit)\nmise  npm:@dkt-ai/dkt-code                 latest (dotkit)\nmise  plain                                2\nmise  quoted:key                           3\nmise  table                                4.5\nmise  noversion                            { os = [macos] }\nmise  again                                6\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

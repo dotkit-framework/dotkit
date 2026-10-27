@@ -1,0 +1,14 @@
+{
+ "argv": [
+  "list",
+  "mise",
+  "nix",
+  "nix"
+ ],
+ "exit": 0,
+ "stdout": "mise  node                                 lts (dotkit)\nmise  npm:@dkt-ai/dkt-code                 latest (dotkit)\nmise  github:modem-dev/dkt-hunk            latest\nmise  npm:cowsay                           1.6.0\nnix   ripgrep (dotkit)\nnix   fd (dotkit)\nnix   jq\nnix   ripgrep (dotkit)\nnix   fd (dotkit)\nnix   jq\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

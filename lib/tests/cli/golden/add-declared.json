@@ -1,0 +1,16 @@
+{
+ "argv": [
+  "add",
+  "jq",
+  "ripgrep",
+  "nix:zed",
+  "dkt-hunk",
+  "@dkt-ai/dkt-code"
+ ],
+ "exit": 0,
+ "stdout": "jq: already in nix/packages.txt\nripgrep: already in dotkit:nix/packages.txt\nnix:zed: already in nix/casks.txt\ndkt-hunk: already in config/mise.toml\n@dkt-ai/dkt-code: already in dotkit:config/mise.toml\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

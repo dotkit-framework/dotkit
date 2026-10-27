@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "add",
+  "-n"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "Usage: dotkit add <tool>... Use dotkit add --help for examples.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

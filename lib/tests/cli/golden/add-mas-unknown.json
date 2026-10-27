@@ -1,0 +1,36 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "mas:1"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: mas:1: mas finds no App Store app with the ID 1.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mas",
+   "argv": [
+    "info",
+    "--json",
+    "1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

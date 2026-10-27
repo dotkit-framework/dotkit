@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "__complete",
+  "tools-user"
+ ],
+ "exit": 0,
+ "stdout": "github:modem-dev/dkt-hunk\njq\nnpm:cowsay\nzed\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

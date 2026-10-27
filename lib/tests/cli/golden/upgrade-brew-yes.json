@@ -1,0 +1,63 @@
+{
+ "argv": [
+  "upgrade",
+  "--yes",
+  "brew"
+ ],
+ "exit": 0,
+ "stdout": "  brew  wget                                 1.24.5                 -> 1.25.0\n  brew  zed                                  1.25.2 1.25.1          -> 1.25.3\n  brew  ghostty                              1.2.0                  -> 1.2.1\n",
+ "stderr": "Checking Homebrew...\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "brew",
+   "argv": [
+    "update",
+    "--quiet"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "outdated",
+    "--json=v2"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew.brewfile"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "bundle",
+    "install",
+    "--file=-"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_INSTALL_CLEANUP": "1"
+   },
+   "stdin": "brew \"wget\"\ncask \"ghostty\"\ncask \"zed\"\n"
+  }
+ ],
+ "tmp_left": 0
+}

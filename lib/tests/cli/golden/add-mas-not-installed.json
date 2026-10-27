@@ -1,0 +1,36 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "mas:497799835"
+ ],
+ "exit": 0,
+ "stdout": "mas:497799835 -> nix/mas.txt (Xcode)\n",
+ "stderr": "No change. Run the command without -n to add.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mas",
+   "argv": [
+    "info",
+    "--json",
+    "497799835"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

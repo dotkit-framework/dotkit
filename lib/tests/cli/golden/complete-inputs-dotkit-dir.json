@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "__complete",
+  "inputs"
+ ],
+ "exit": 0,
+ "stdout": "dotkit\ndotkit/nixpkgs\ndotkit/nix-darwin\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

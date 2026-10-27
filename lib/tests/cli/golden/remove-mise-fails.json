@@ -1,0 +1,27 @@
+{
+ "argv": [
+  "remove",
+  "-y",
+  "npm:cowsay",
+  "dkt-hunk"
+ ],
+ "exit": 1,
+ "stdout": "npm:cowsay: remove npm:cowsay from config/mise.toml\ndkt-hunk: remove github:modem-dev/dkt-hunk from config/mise.toml\n",
+ "stderr": "mise ERROR failed\ndotkit: mise could not remove npm:cowsay. The tools before it in the list are removed.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "unuse",
+    "-g",
+    "npm:cowsay"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "cargo:dkt-crate"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: cargo:dkt-crate: mise cannot find 'cargo:dkt-crate'.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "cargo:dkt-crate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

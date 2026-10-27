@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "mas:1234"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: mas:1234: mas is not installed, so the name of the app is unknown. Run dotkit add brew:mas first.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "tidy",
+  "--plan"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: --plan needs a file. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

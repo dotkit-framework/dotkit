@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "apply",
+  "-y"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: apply does not ask, so it takes no -y. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

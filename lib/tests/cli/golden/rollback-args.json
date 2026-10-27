@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "rollback",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: rollback takes no arguments. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

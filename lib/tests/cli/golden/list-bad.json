@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "list",
+  "nix",
+  "frob"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: 'frob' is not a source. Use nix, brew, or mise.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

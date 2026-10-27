@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "brew"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'brew' is now 'upgrade brew'. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

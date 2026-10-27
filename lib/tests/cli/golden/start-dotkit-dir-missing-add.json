@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "add",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "@SB/dotkit/scripts/nix.sh: line 17: cd: @SB/nope: No such file or directory\ndotkit: DOTKIT_DIR is not a directory: @SB/nope\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

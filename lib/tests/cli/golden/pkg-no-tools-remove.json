@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "remove"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "Usage: dotkit remove <tool>... Use dotkit remove --help for examples.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

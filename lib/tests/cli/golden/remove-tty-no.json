@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "remove",
+  "jq"
+ ],
+ "exit": 1,
+ "stdout": "jq: remove jq from nix/packages.txt\n",
+ "terminal": "Remove? [y/N] dotkit: nothing changed.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

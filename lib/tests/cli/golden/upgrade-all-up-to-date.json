@@ -1,0 +1,60 @@
+{
+ "argv": [
+  "upgrade",
+  "-n"
+ ],
+ "exit": 0,
+ "stdout": "Everything is up to date.\n",
+ "stderr": "Checking Nix...\nChecking Homebrew...\nChecking mise...\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "path:@SB/repo/nix"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "update",
+    "--quiet"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "outdated",
+    "--json=v2"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "outdated",
+    "--json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

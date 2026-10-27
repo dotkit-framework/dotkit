@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "--help"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: DOTFILES is not set. Run dotkit, or ./dotkit in your dotfiles repository.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

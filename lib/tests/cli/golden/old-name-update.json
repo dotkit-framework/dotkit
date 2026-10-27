@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "update"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'update' is now 'upgrade nix' (or 'upgrade <input>'). Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

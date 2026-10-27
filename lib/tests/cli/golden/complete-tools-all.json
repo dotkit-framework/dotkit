@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "__complete",
+  "tools-all"
+ ],
+ "exit": 0,
+ "stdout": "fd\nghostty\ngithub:modem-dev/dkt-hunk\njq\nmas:409183694\nnode\nnpm:@dkt-ai/dkt-code\nnpm:cowsay\nripgrep\nwget\nzed\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

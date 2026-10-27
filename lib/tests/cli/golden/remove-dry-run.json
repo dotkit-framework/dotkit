@@ -1,0 +1,14 @@
+{
+ "argv": [
+  "remove",
+  "-n",
+  "jq",
+  "zed"
+ ],
+ "exit": 0,
+ "stdout": "jq: remove jq from nix/packages.txt\nzed: remove zed from nix/casks.txt\n",
+ "stderr": "No change. Run the command without -n to remove.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

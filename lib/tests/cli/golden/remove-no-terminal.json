@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "remove",
+  "jq"
+ ],
+ "exit": 1,
+ "stdout": "jq: remove jq from nix/packages.txt\n",
+ "stderr": "dotkit: confirmation needs a terminal. Use -y to continue without one.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "apply",
+  "-x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: unknown option: -x. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "tools"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'tools' is now 'upgrade mise'. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "mise:dkt-tool"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: mise:dkt-tool: the mise registry has no tool 'dkt-tool' (without asdf or vfox).\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "registry",
+    "dkt-tool"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

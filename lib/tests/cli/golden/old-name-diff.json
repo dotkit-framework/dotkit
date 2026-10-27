@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "diff"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'diff' is now 'apply -n'. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,88 @@
+{
+ "argv": [
+  "upgrade",
+  "-n"
+ ],
+ "exit": 0,
+ "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n  brew  wget                                 1.24.5                 -> 1.25.0\n  brew  zed                                  1.25.2 1.25.1          -> 1.25.3\n  brew  ghostty                              1.2.0                  -> 1.2.1\n  mise  node                                 22.1.0                 -> 22.2.0\n  mise  npm:cowsay                           1.5.0                  -> 1.6.0\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
+ "stderr": "Checking Nix...\nChecking Homebrew...\nChecking mise...\nNo change. Run dotkit upgrade to apply.\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "path:@SB/repo/nix"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "update",
+    "--quiet"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "outdated",
+    "--json=v2"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "outdated",
+    "--json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "store",
+    "diff-closures",
+    "/run/current-system",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

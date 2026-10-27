@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "clean"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: confirmation needs a terminal. Use -y to continue without one.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

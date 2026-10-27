@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "apply",
+  "--dry"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: unknown option: --dry. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

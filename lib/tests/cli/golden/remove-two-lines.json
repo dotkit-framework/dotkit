@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "remove",
+  "-y",
+  "jq"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: jq: in more than one place: nix/packages.txt,nix/packages.txt. Use a prefix (nix:, brew:, cask:, mise:), or remove it by hand.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

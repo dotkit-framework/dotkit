@@ -1,0 +1,79 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "nix:dkt-a",
+  "brew:dkt-b"
+ ],
+ "exit": 1,
+ "stdout": "nix:dkt-a -> nix/packages.txt\n  ✓ nix:dkt-a                      1.0            A\n",
+ "stderr": "dotkit: brew:dkt-b: an earlier argument also supplies the command 'dkt-a'. Add only one of them.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-a\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-a"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--formula",
+    "dkt-b"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-b\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-a"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

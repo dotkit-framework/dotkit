@@ -1,0 +1,54 @@
+{
+ "argv": [
+  "upgrade",
+  "nix"
+ ],
+ "exit": 1,
+ "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
+ "terminal": "Checking Nix...\nUpgrade? [y/N] dotkit: nothing changed.\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "path:@SB/repo/nix"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "store",
+    "diff-closures",
+    "/run/current-system",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

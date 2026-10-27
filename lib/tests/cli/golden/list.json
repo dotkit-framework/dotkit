@@ -1,0 +1,24 @@
+{
+ "argv": [
+  "list"
+ ],
+ "exit": 0,
+ "stdout": "nix   ripgrep (dotkit)\nnix   fd (dotkit)\nnix   jq\nbrew  wget                                 formula (dotkit)\nbrew  ghostty                              cask (dotkit)\nbrew  zed                                  cask\nbrew  A \"q\" \\ #                            app store\nbrew  Keynote                              app store\nbrew  Zz                                   app store\nmise  node                                 lts (dotkit)\nmise  npm:@dkt-ai/dkt-code                 latest (dotkit)\nmise  github:modem-dev/dkt-hunk            latest\nmise  npm:cowsay                           1.6.0\n",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew.masApps"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "list",
+  "-f",
+  "-n",
+  "-y",
+  "nix"
+ ],
+ "exit": 0,
+ "stdout": "nix   ripgrep (dotkit)\nnix   fd (dotkit)\nnix   jq\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

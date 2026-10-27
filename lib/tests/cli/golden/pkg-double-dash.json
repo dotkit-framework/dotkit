@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "info",
+  "--",
+  "-n"
+ ],
+ "exit": 1,
+ "stdout": "-n\n  declared  no\n  add picks none: '-n' is not a valid tool name.\n",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "-n"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

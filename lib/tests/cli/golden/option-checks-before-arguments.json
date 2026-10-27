@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "history",
+  "x",
+  "-n"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: history takes no options. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

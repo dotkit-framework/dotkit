@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "clean",
+  "--",
+  "-5d"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: '-5d' is not an age. Use days, for example 30d. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

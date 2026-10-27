@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "list",
+  "--frob"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: unknown option: --frob. Use dotkit list --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

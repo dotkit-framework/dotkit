@@ -1,0 +1,37 @@
+{
+ "argv": [
+  "info",
+  "@dkt-ai/dkt-code"
+ ],
+ "exit": 0,
+ "stdout": "@dkt-ai/dkt-code\n  declared  dotkit:config/mise.toml (npm:@dkt-ai/dkt-code)\n  add picks npm:@dkt-ai/dkt-code (a scoped npm package)\n  sources\n  ✓ npm:@dkt-ai/dkt-code           2.1.304        Code\n",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://registry.npmjs.org/@dkt-ai%2Fdkt-code/latest"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-claude"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

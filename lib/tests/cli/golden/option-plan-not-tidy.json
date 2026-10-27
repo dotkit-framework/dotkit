@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "migrate",
+  "--plan",
+  "p.txt"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: --plan is for tidy only. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,45 @@
+{
+ "argv": [
+  "clean"
+ ],
+ "exit": 0,
+ "stdout": "",
+ "terminal": "Delete Nix generations older than 14d, old Homebrew downloads, and unused mise versions? [y/N] ",
+ "files": {},
+ "calls": [
+  {
+   "tool": "sudo",
+   "argv": [
+    "nix-collect-garbage",
+    "--delete-older-than",
+    "14d"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "cleanup"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "prune",
+    "--yes"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

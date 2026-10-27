@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "upgrade",
+  "frob"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'frob' is not a source or a flake input. Use nix, brew, mise, or: dotkit dotkit/nixpkgs dotkit/nix-darwin. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

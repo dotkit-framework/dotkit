@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "tidy",
+  "-a"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: --all is for migrate only. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

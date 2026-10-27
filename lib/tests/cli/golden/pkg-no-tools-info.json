@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "info",
+  "-y"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "Usage: dotkit info <tool>... Use dotkit info --help for examples.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

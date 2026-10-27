@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "tidy",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: tidy takes no arguments. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

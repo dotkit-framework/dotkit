@@ -1,0 +1,42 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "brew:dkt-none"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: brew:dkt-none: Homebrew has no formula or cask 'dkt-none'.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--formula",
+    "dkt-none"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--cask",
+    "dkt-none"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,0 +1,158 @@
+{
+ "argv": [
+  "upgrade",
+  "-y",
+  "nix"
+ ],
+ "exit": 0,
+ "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n  nix   dotkit/nixpkgs                       2025-10-09 aaaaaaa     -> 2025-10-22 eeeeeee\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
+ "stderr": "Checking Nix...\nwarning: Git tree '@SB/checkout' is dirty\nwarning: Git tree '@SB/checkout' is dirty\nCommit nix/flake.lock to keep the upgrade.\nCommit flake.lock in @SB/checkout too, if it changed.\n",
+ "files": {
+  "checkout/flake.lock": "{\n  \"nodes\": {\n    \"root\": {\n      \"inputs\": {\n        \"nixpkgs\": \"nixpkgs\",\n        \"nix-darwin\": \"nix-darwin\"\n      }\n    },\n    \"nixpkgs\": {\n      \"locked\": {\n        \"lastModified\": 1761100000,\n        \"rev\": \"eeeeeee5555555\"\n      }\n    },\n    \"nix-darwin\": {\n      \"locked\": {\n        \"lastModified\": 1760000000,\n        \"rev\": \"bbbbbbb2222222\"\n      }\n    }\n  },\n  \"root\": \"root\",\n  \"version\": 7\n}\n",
+  "repo/.build/system": "-> @SB/system-1",
+  "repo/nix/flake.lock": "{\n  \"nodes\": {\n    \"root\": {\n      \"inputs\": {\n        \"dotkit\": \"dotkit\",\n        \"nixpkgs\": [\n          \"dotkit\",\n          \"nixpkgs\"\n        ]\n      }\n    },\n    \"dotkit\": {\n      \"locked\": {\n        \"lastModified\": 1761000000,\n        \"rev\": \"ddddddd4444444\"\n      }\n    }\n  },\n  \"root\": \"root\",\n  \"version\": 7\n}\n"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "path:@SB/repo/nix"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "git+file://@SB/checkout"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system.drvPath",
+    "--override-input",
+    "dotkit",
+    "git+file://@SB/checkout",
+    "--no-write-lock-file",
+    "--option",
+    "warn-dirty",
+    "false"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "/nix/store/0000000000000000000000000000000a-darwin-system.drv^*",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "store",
+    "diff-closures",
+    "/run/current-system",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system.drvPath",
+    "--override-input",
+    "dotkit",
+    "git+file://@SB/checkout",
+    "--no-write-lock-file",
+    "--option",
+    "warn-dirty",
+    "false"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "/nix/store/0000000000000000000000000000000a-darwin-system.drv^*",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

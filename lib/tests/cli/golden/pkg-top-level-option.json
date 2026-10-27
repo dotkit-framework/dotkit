@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "add",
+  "--all",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: unknown option: --all. Use dotkit add --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

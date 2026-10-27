@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "migrate",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: migrate takes no arguments. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

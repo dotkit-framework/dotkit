@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "mas:409183694"
+ ],
+ "exit": 0,
+ "stdout": "mas:409183694: already in nix/mas.txt\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

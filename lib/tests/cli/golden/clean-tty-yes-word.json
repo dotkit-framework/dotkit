@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "clean"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "terminal": "Delete Nix generations older than 14d, old Homebrew downloads, and unused mise versions? [y/N] dotkit: nothing changed.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

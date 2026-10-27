@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "switch"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'switch' is now 'apply'. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}
