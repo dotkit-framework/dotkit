@@ -2,10 +2,10 @@
 
 Status: done. The `dotkit` command runs the Python code of `lib/dotkit`,
 and the Bash scripts are gone. `lib/ARCHITECTURE.md` describes the result.
-In step 8, the wizard kept its own readers of the lists and of
-`config/mise.toml`: they differ from the readers of the command on
-purpose (a TOML parser, other whitespace rules), so a shared reader would
-change the behavior of one of them.
+After a review, the command and the wizard share one reader for each
+file, with the rules of the code that installs from it (Nix and mise), and
+the awk-style readers and the port of `sort -V` are gone (PARITY.md, DV7
+and DV8).
 
 This plan replaces the Bash scripts of the `dotkit` command with one Python
 package. The behavior stays the same, with one new feature: `dotkit add`

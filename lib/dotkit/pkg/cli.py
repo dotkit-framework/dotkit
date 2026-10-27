@@ -216,9 +216,10 @@ class Pkg:
         # gets the label "Name (ID)".
         app_id, label = s.entry.split(" ", 1)[0], s.reason
         entry = f"mas:{s.entry}"
-        if lists.mas_id_of(label, self.mas_txt, nix_edits) is not None:
+        planned = [tuple(e[len("mas:"):].split(" ", 1)) for e in nix_edits if e.startswith("mas:")]
+        if lists.mas_id_of(label, self.mas_txt, planned) is not None:
             label = f"{s.reason} ({app_id})"
-            if lists.mas_id_of(label, self.mas_txt, nix_edits) is not None:
+            if lists.mas_id_of(label, self.mas_txt, planned) is not None:
                 ui.warn(f"{tool}: other apps have the names '{s.reason}' and '{label}'. Add it to nix/mas.txt "
                         f"under another name: {app_id} <name>")
                 return None
@@ -283,7 +284,10 @@ class Pkg:
             def change() -> None:
                 for e in nix_edits:
                     kind, text = e.split(":", 1)
-                    lists.delete(self.env.repo / FILES[kind], text)
+                    if kind == "mas":
+                        lists.delete_mas(self.env.repo / FILES[kind], text)
+                    else:
+                        lists.delete(self.env.repo / FILES[kind], text)
             edit.apply_nix(self.env, change)
             # Activation does not uninstall Homebrew packages (homebrew.onActivation.cleanup in
             # nix/darwin.nix), so uninstall the removed ones here. With cleanup = "uninstall", activation did
@@ -361,8 +365,8 @@ class Pkg:
                     for n in lists.names(root / "nix/casks.txt"):
                         ui.out(f"brew  {ui.pad(n, 36)} cask{base}")
                 else:
-                    for key, value in mise_toml.tool_lines(root / "config/mise.toml"):
-                        ui.out(f"mise  {ui.pad(key, 36)} {value}{base}")
+                    for key, value in mise_toml.tools(root / "config/mise.toml").items():
+                        ui.out(f"mise  {ui.pad(key, 36)} {mise_toml.version_text(value)}{base}")
             if src == "brew":
                 self._list_app_store()
         return 0
@@ -389,9 +393,8 @@ class Pkg:
         for root in roots:
             for rel in ("nix/packages.txt", "nix/brews.txt", "nix/casks.txt"):
                 out.update(lists.names(root / rel))
-            if (root / "nix/mas.txt").is_file():
-                out.update("mas:" + n for n in lists.names(root / "nix/mas.txt"))
-            out.update(mise_toml.keys(root / "config/mise.toml"))
+            out.update("mas:" + app_id for app_id, _ in lists.mas_apps(root / "nix/mas.txt"))
+            out.update(mise_toml.tools(root / "config/mise.toml"))
         for n in sorted(out):
             ui.out(n)
         return 0

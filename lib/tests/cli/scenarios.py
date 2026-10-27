@@ -258,18 +258,19 @@ def listing() -> List[S]:
         S("list-bad", ["list", "nix", "frob"], rows=["L1"]),
         S("list-brew-eval-fails", ["list", "brew"], rules=fx.nix_eval_fails(), rows=["L7"]),
         S("list-odd-files", ["list", "nix", "mise"], rows=["L5", "L6"],
-          files={"repo/nix/packages.txt": "# comment\n\n  indented  extra words\nlast-no-newline",
-                 "repo/config/mise.toml": '[tools]\n# c\n  spaced = "1"\nplain = "2"\n"quoted:key" = "3"\n'
-                                          'table = { version = "4.5", os = ["macos"] }\n'
-                                          'noversion = { os = ["macos"] }\n[tools.alias]\nx = "y"\n'
-                                          '[other]\nnot = "a tool"\n[tools]\nagain = "6"\n'}),
+          files={"repo/nix/packages.txt": "# comment\n\n  indented  # c\r\nlast-no-newline",
+                 "repo/config/mise.toml": '[tools] # c\n# c\n  spaced = "1"\nplain = "2"  # pinned\n'
+                                          '"quoted:key" = "3"\ntable = { version = "4.5", os = ["macos"] }\n'
+                                          'noversion = { os = ["macos"] }\nmany = ["22", "20"]\n'
+                                          '[other]\nnot = "a tool"\n[tools.python]\nversion = "3.13"\n'}),
+        S("list-invalid-toml", ["list", "mise"], rows=["L5"], files={"repo/config/mise.toml": '[tools]\nx = \n'}),
     ]
 
 
 def info() -> List[S]:
     rg = bare("ripgrep", nix=fx.nix_pkg("ripgrep", "15.1.0", "Fast grep", bin="dkt-rg"),
               mise=fx.mise_tool("ripgrep", "aqua:BurntSushi/ripgrep", "15.1.0", "Fast grep"),
-              formula=fx.formula("ripgrep", "15.1.0", "Search tool"))
+              formula=fx.formula("ripgrep", "15.1.0", "Search tool")) + fx.compare("15.1.0", "15.1.0", 0)
     return [
         S("info-declared-base", ["info", "ripgrep"], rules=rg, unordered=True, rows=["I1", "I2", "I4", "D2"]),
         S("info-nothing", ["info", "dkt-nothing"], rules=bare("dkt-nothing"), unordered=True, rows=["I1", "I5"]),
@@ -377,13 +378,15 @@ def add_bare() -> List[S]:
     return [
         a("add-bare-app", bare(n, cask=fx.cask(n, "3", "App", app="T.app"), nix=nix), ["R11", "R9", "Pc1"]),
         a("add-bare-app-and-formula", bare(n, cask=fx.cask(n, app="T.app"), formula=fx.formula(n)), ["R10"]),
-        a("add-bare-nix-current", bare(n, nix=nix, mise=mise, formula=fx.formula(n, "1.2.0")), ["R12", "Pc1"]),
-        a("add-bare-nix-newer", bare(n, nix=fx.nix_pkg(n, "1.10.0"), mise=fx.mise_tool(n, "aqua:o/t", "1.9.0")),
-          ["R12", "R17"]),
-        a("add-bare-nix-older", bare(n, nix=fx.nix_pkg(n, "1.2.0"), mise=fx.mise_tool(n, "aqua:o/t", "v1.3.0")),
-          ["R12", "R17"]),
-        a("add-bare-nix-older-rc", bare(n, nix=fx.nix_pkg(n, "2.0.0-rc1"), mise=fx.mise_tool(n, "aqua:o/t", "2.0.0")),
-          ["R17"]),
+        a("add-bare-nix-current", bare(n, nix=nix, mise=mise, formula=fx.formula(n, "1.2.0"))
+          + fx.compare("1.2.0", "1.2.0", 0), ["R12", "Pc1"]),
+        a("add-bare-nix-newer", bare(n, nix=fx.nix_pkg(n, "1.10.0"), mise=fx.mise_tool(n, "aqua:o/t", "1.9.0"))
+          + fx.compare("1.10.0", "1.9.0", 1), ["R12", "R17"]),
+        a("add-bare-nix-older", bare(n, nix=fx.nix_pkg(n, "1.2.0"), mise=fx.mise_tool(n, "aqua:o/t", "v1.3.0"))
+          + fx.compare("1.2.0", "1.3.0", -1), ["R12", "R17"]),
+        a("add-bare-nix-older-rc", bare(n, nix=fx.nix_pkg(n, "2.0.0-rc1"), mise=fx.mise_tool(n, "aqua:o/t", "2.0.0"))
+          + fx.compare("2.0.0-rc1", "2.0.0", 1), ["R17"]),
+        a("add-bare-compare-fails", bare(n, nix=nix, mise=mise), ["R17"]),
         a("add-bare-nix-no-version", bare(n, nix=fx.nix_pkg(n, ""), mise=fx.mise_tool(n, "aqua:o/t", None)),
           ["R12"]),
         a("add-bare-nix-only", bare(n, nix=nix, pypi=fx.pypi(n, "1.0", "Py")), ["R13"]),
@@ -469,7 +472,8 @@ def picker() -> List[S]:
     """The picker of add (PARITY.md, Pk and DV2): a bare name in a terminal."""
     n = "dkt-tool"
     xterm = {"TERM": "xterm-256color"}
-    nix_mise = bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs"), mise=fx.mise_tool(n, "aqua:o/t", "1.2.0", "mise"))
+    nix_mise = bare(n, nix=fx.nix_pkg(n, "1.2.0", "From Nixpkgs"), mise=fx.mise_tool(n, "aqua:o/t", "1.2.0", "mise")) \
+        + fx.compare("1.2.0", "1.2.0", 0)
     down, up = "\x1b[B", "\x1b[A"
 
     def p(name, rules, typed, rows, argv=None, env=xterm, **kw):

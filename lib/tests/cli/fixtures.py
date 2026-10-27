@@ -34,6 +34,12 @@ def nix_no_pkg(attr: str) -> List[dict]:
                "null\n")]
 
 
+def compare(a: str, b: str, result: int) -> List[dict]:
+    """builtins.compareVersions a b, as `nix eval --expr` prints it: -1, 0, or 1."""
+    return [_r("nix", rf"^eval --expr \{{ a, b \}}: builtins\.compareVersions a b --argstr a {re.escape(a)} "
+                      rf"--argstr b {re.escape(b)}$", f"{result}\n")]
+
+
 def nix_eval_fails() -> List[dict]:
     """Every evaluation of the configuration fails, as with an error in nix/darwin.nix."""
     return [_r("nix", r"^eval ", stderr="error: undefined variable 'oops'\n", exit=1)]

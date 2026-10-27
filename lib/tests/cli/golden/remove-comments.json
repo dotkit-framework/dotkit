@@ -9,7 +9,7 @@
  "stderr": "",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
-  "repo/nix/packages.txt": "# CLIs\njqq\n# jq\nlast\n"
+  "repo/nix/packages.txt": "# CLIs\njqq\n# jq\nlast"
  },
  "calls": [
   {

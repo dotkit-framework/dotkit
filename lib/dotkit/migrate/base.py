@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 
+from ..core import lists, mise_toml
 from ._compat import tomllib
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -125,30 +126,29 @@ BREW_PROVIDED_OTHERWISE = {
 
 
 def read_list(path: Path) -> list[str]:
-    """Names in a list file: the first word of each line, without comments."""
-    names = []
+    """Names in a list file (core/lists.py, the rules of nix/read-list.nix); [] when it cannot be read."""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        return lists.names(path)
     except OSError:
-        return names
-    for line in text.splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            names.append(line.split()[0])
-    return names
+        return []
+
+
+def read_taps(path: Path) -> list[str]:
+    """Tap names in nix/taps.txt (core/lists.py, the rules of nix/read-taps.nix); [] when it cannot be read."""
+    try:
+        return lists.taps(path)
+    except OSError:
+        return []
 
 
 def read_mas(path: Path) -> dict[str, int]:
     """The apps in nix/mas.txt, name -> ID, as nix/read-mas.nix reads them before it escapes the names."""
     apps: dict[str, int] = {}
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        for app_id, name in lists.mas_apps(path):
+            apps.setdefault(name, int(app_id))
     except OSError:
-        return apps
-    for line in text.splitlines():
-        m = re.fullmatch(r"(\d+)\s+(.+)", line.strip())
-        if m and not line.strip().startswith("#"):
-            apps.setdefault(m.group(2), int(m.group(1)))
+        pass
     return apps
 
 
@@ -162,13 +162,14 @@ def _mise_table(path: Path, name: str) -> dict[str, object]:
 
 
 def mise_tools(path: Path) -> dict[str, object]:
-    """The [tools] table of a mise config file, or {} when it cannot be read."""
-    return _mise_table(path, "tools")
+    """The [tools] table of a mise config file (core/mise_toml.py), or {} when it cannot be read."""
+    try:
+        return mise_toml.tools(path)
+    except (OSError, mise_toml.InvalidToml):
+        return {}
 
 
-def mise_short(key: str) -> str:
-    """The tool name of a mise key: github:herdrdev/herdr -> herdr."""
-    return re.split(r"[:/]", key)[-1]
+mise_short = mise_toml.short
 
 
 class Base:

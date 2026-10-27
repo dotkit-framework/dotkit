@@ -39,6 +39,24 @@
    "tool": "nix",
    "argv": [
     "eval",
+    "--expr",
+    "{ a, b }: builtins.compareVersions a b",
+    "--argstr",
+    "a",
+    "2.0.0-rc1",
+    "--argstr",
+    "b",
+    "2.0.0"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
     "--json",
     "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
     "--apply",

@@ -26,14 +26,13 @@ def find(env: Env, name: str) -> List[Tuple[str, str]]:
     # App Store apps: by ID, in the list of the dotfiles repository only.
     if name.startswith("mas:"):
         mas = env.repo / MAS
-        if mas.is_file():
-            out += [(MAS, bare) for n in lists.names(mas) if n == bare]
+        out += [(MAS, bare) for app_id, _ in lists.mas_apps(mas) if app_id == bare]
         return out
     for root, label in ((env.dotkit, "dotkit:"), (env.repo, "")):
         for rel in LISTS:
             out += [(label + rel, bare) for n in lists.names(root / rel) if n == bare]
-        for key in mise_toml.keys(root / MISE):
-            if key in (name, bare, "npm:" + name) or mise_toml.last_part(key) == bare:
+        for key in mise_toml.tools(root / MISE):
+            if key in (name, bare, "npm:" + name) or mise_toml.short(key) == bare:
                 out.append((label + MISE, key))
     return out
 

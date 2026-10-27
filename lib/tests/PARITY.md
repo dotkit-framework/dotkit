@@ -145,8 +145,8 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 | L2 | Without sources: nix, brew, mise. With sources: in their order, also a source twice. | scenarios |
 | L3 | nix: `nix   NAME`, the base list first with ` (dotkit)` after the name. | scenarios |
 | L4 | brew: the formulae (`brew  %-36s formula`), then the casks, base first; then the App Store apps of the configuration (`homebrew.masApps`), sorted by name, with the escapes `\\`, `\"`, `\#` removed, as `brew  NAME` padded to 36, then ` app store`. | scenarios |
-| L5 | mise: the keys of `[tools]` of the base and the repository config/mise.toml, without quotes. A key line starts with a character that is not `#` or a space. The value is the string without quotes, or `version = "..."` of an inline table, or else the text of the table without quotes. Other tables, such as `[tools.alias]`, end the section; a second `[tools]` starts it again. | scenarios |
-| L6 | A list file: the first word of each line, without comments (`#` to the end of the line) and without blank lines. A line can have spaces before the name and no final newline. | scenarios |
+| L5 | mise: the `[tools]` table of the base and the repository config/mise.toml, read as TOML (core/mise_toml.py), in the order of the file. The version is the string, the `version` of a table, the items of an array joined by ", ", or else the value as compact JSON. A file that is not valid TOML: "dotkit: FILE is not valid TOML: ERROR.", exit code 1 (DV7). | scenarios |
+| L6 | A list file has the names of nix/read-list.nix: the text of each line before `#`, without the whitespace at its ends (also `\r`); blank lines and comments give none (DV7). taps.txt: the first word of such a name. mas.txt: the lines `ID name` of nix/read-mas.nix. | scenarios; unit (tests/core/test_files.py, against the Nix code) |
 | L7 | When the evaluation of the App Store apps fails, list stops with exit code 1, after the rows before. | scenarios |
 
 ## N. Names for the completion
@@ -194,7 +194,7 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 | R14 | A formula, else a cask without an app: "not in Nixpkgs or mise". | scenarios |
 | R15 | Only npm or PyPI: "only npm or PyPI has this name. Anyone can publish there: check the package, then add it by the name in the list." | scenarios |
 | R16 | Nothing: "no source has this name. Check the name, or use a prefix (dotkit add --help)." | scenarios |
-| R17 | Versions compare without a leading `v`, with `sort -V`: 1.10.0 is newer than 1.9.0, and 2.0.0-rc1 is newer than 2.0.0. | scenarios; unit (step 3) for a table |
+| R17 | Versions compare with `builtins.compareVersions` of Nix, by `nix eval --expr '{ a, b }: builtins.compareVersions a b' --argstr a A --argstr b B`, without a leading `v` (DV8). When nix cannot compare them: die "nix could not compare the versions A and B." | scenarios |
 | R18 | The command of a formula, a mise tool, a PyPI package, or a spec that is not npm is the `meta.mainProgram` of the Nixpkgs package with the same name (the last part of the name), when Nixpkgs has one. That can be one more nix evaluation. Else the command of the lookup, else the entry after its last `:` or `/`. | scenarios |
 | R19 | For an `npm:` spec, the command comes from the npm registry, else the package name after its last `/`. | scenarios |
 | R20 | The package of a spec has no backend and no version: `npm:@scope/pkg@1.0` is `@scope/pkg`. | scenarios |
@@ -267,8 +267,8 @@ New in the Python code. The goldens of these rows come from the Python code.
 | Row | Behavior | Covered by |
 |---|---|---|
 | F1 | An append adds the missing final newline first, then "NAME\n". | scenarios |
-| F2 | A delete removes each line whose first word, without the comment, is the name. Comments and other lines stay. The file is written in place, so a link stays a link. | scenarios |
-| F3 | The ID of an App Store app name: the first line of mas.txt, or of the plan before, whose name (spaces at the ends removed) is the name exactly. | scenarios |
+| F2 | A delete removes each line whose name (L6) is the name, and each line of mas.txt with the ID. The other lines stay as they are, also without a final newline (DV7). The file is written in place, so a link stays a link. | scenarios |
+| F3 | The ID of an App Store app name: the first app of mas.txt (L6), or of the planned apps, whose name is the name exactly. | scenarios |
 
 ## Deviations
 
@@ -280,6 +280,8 @@ New in the Python code. The goldens of these rows come from the Python code.
 | DV4 | `__complete tools-*` prints the names sorted by code point, not with `sort` in the locale of the user. | zsh sorts the completions itself. |
 | DV5 | A list file or config/mise.toml that does not exist reads as empty. In Bash, awk printed an error, and most commands stopped with exit code 2. | The template has all the files; an empty list is the safe reading. |
 | DV6 | Output that dotkit cannot use is a message, exit code 1: a lock file that is not a JSON object ("FILE is not valid JSON: ...", "FILE is not a JSON object."), output of brew, mise, or nix that is not a JSON object ("COMMAND did not print a JSON object."), and a file that dotkit cannot read or write ("dotkit: [Errno N] ..."). Bash printed the error of jq (exit code 5) or went on with no data, and "Everything is up to date." could be false. | Tracebacks and false reports are defects. |
+| DV7 | The readers of the lists and of config/mise.toml have the rules of the code that installs from them: nix/read-list.nix, nix/read-taps.nix, nix/read-mas.nix, and the TOML parser of mise. The awk of the Bash scripts took the first word of a line, kept `\r`, did not read indented mise keys, kept comments in mise values, and did not see `[tools.NAME]` tables, so dotkit could disagree with what Nix and mise install. A delete keeps the other lines as they are. The wizard uses the same readers. | One rule for each file, the rule of its real reader. |
+| DV8 | Versions compare with `builtins.compareVersions` of Nix, not with `sort -V` of macOS. | The question is whether Nixpkgs has the current release, and Nixpkgs orders its versions with this function. |
 
 ## Bash bugs
 

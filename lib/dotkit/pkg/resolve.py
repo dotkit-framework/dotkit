@@ -11,9 +11,8 @@ from __future__ import annotations
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
-from ..core import versions
 from . import lookups as lk
 from .lookups import Found, Lookups
 
@@ -71,8 +70,9 @@ class Outcome:
         return self.selection is not None
 
 
-def choose(c: Candidates) -> Tuple[Optional[str], str]:
-    """The key of the candidate for a bare name and the reason, or None and the reason when there is none."""
+def choose(c: Candidates, version_ge: Callable[[str, str], bool]) -> Tuple[Optional[str], str]:
+    """The key of the candidate for a bare name and the reason, or None and the reason when there is none.
+    version_ge(a, b) is True when version a is the same as or newer than b."""
     f = c.found
     if c.nix_failed:
         return None, NIX_FAILED_REASON
@@ -85,7 +85,7 @@ def choose(c: Candidates) -> Tuple[Optional[str], str]:
     # 2 and 3. Nixpkgs when it is current, otherwise mise.
     if "nix" in f and "mise" in f:
         nixv, misev = f["nix"].version, f["mise"].version
-        if not nixv or not misev or versions.version_ge(nixv, misev):
+        if not nixv or not misev or version_ge(nixv, misev):
             return "nix", "Nixpkgs has the current release"
         return "mise", f"Nixpkgs has the older {nixv}"
     if "nix" in f:
@@ -202,7 +202,7 @@ class Resolver:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", arg):
             return Outcome(Candidates(), reason=f"'{arg}' is not a valid tool name.")
         c = self.gather(arg)
-        key, reason = choose(c)
+        key, reason = choose(c, look.version_ge)
         if key is None:
             return Outcome(c, reason=reason, bare=True)
         return Outcome(c, self.select(c, key, reason), bare=True)

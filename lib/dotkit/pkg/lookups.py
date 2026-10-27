@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Optional, Union
 
 from ..core import nix as nix_mod
-from ..core import proc
+from ..core import proc, ui
 from ..core.env import Env
 
 NIX_FAILED = "nix-failed"
@@ -111,6 +111,16 @@ class Lookups:
         if not isinstance(info, dict):
             return None
         return Found(field(info.get("version")), field(info.get("description")), field(info.get("bin")))
+
+    def version_ge(self, a: str, b: str) -> bool:
+        """True when version a is the same as or newer than version b, by builtins.compareVersions: the
+        order that Nixpkgs uses for its versions. A leading v does not count."""
+        a, b = (v[1:] if v.startswith("v") else v for v in (a, b))
+        r = proc.run(["nix", "eval", "--expr", "{ a, b }: builtins.compareVersions a b", "--argstr", "a", a,
+                      "--argstr", "b", b], stdout=proc.CAPTURE)
+        if not r.ok or r.value not in ("-1", "0", "1"):
+            raise ui.die(f"nix could not compare the versions {a} and {b}.")
+        return r.value != "-1"
 
     def mise_description(self, name: str) -> str:
         r = self._mise(["tool", "--description", name])

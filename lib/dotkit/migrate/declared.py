@@ -72,7 +72,7 @@ class Declared:
         for n in base_mod.read_list(repo / "nix/casks.txt"):
             d._add_brew(d._casks, n)
         d._mise |= set(base_mod.mise_tools(repo / "config/mise.toml"))
-        d._taps = set(nix_declared.get("taps") or []) | set(base_mod.read_list(repo / "nix/taps.txt"))
+        d._taps = set(nix_declared.get("taps") or []) | set(base_mod.read_taps(repo / "nix/taps.txt"))
         # The evaluated masApps has the names of nix/mas.txt escaped (nix/read-mas.nix), and the names
         # written by hand into homebrew.masApps as they are. The escape is one to one, so each key that is
         # not an escaped name of the file was written by hand.

@@ -27,6 +27,13 @@ from tests.cli import harness
 F = Found
 
 
+def VERSION_GE(a, b):
+    """A stand-in for builtins.compareVersions of Nix, for plain numeric versions."""
+    def key(v):
+        return [int(x) for x in v.lstrip("v").split(".")]
+    return key(a) >= key(b)
+
+
 class ChooseTests(unittest.TestCase):
     def test_table(self):
         app, cask, formula = F("1", app=True), F("1"), F("1")
@@ -48,14 +55,14 @@ class ChooseTests(unittest.TestCase):
         ]
         for found, key, reason in cases:
             with self.subTest(found=sorted(found)):
-                got_key, got_reason = choose(Candidates(name="x", found=found))
+                got_key, got_reason = choose(Candidates(name="x", found=found), VERSION_GE)
                 self.assertEqual(got_key, key)
                 self.assertTrue(got_reason.startswith(reason), got_reason)
 
     def test_nix_failure_comes_first(self):
         c = Candidates(name="x", found={"app": F(app=True)}, nix_failed=True)
-        self.assertEqual(choose(c)[0], None)
-        self.assertIn("nix eval failed", choose(c)[1])
+        self.assertEqual(choose(c, VERSION_GE)[0], None)
+        self.assertIn("nix eval failed", choose(c, VERSION_GE)[1])
 
 
 class CandidatesTests(unittest.TestCase):

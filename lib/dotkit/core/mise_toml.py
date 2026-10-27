@@ -1,60 +1,51 @@
-"""The [tools] keys of a mise config file, read line by line as the awk of the Bash scripts did (PARITY.md, L5).
+"""The tools of a mise config file: the [tools] table, read with a TOML parser, as mise reads it.
 
-This is not a TOML parser, and it must not become one without a deviation in
-PARITY.md: a key line starts with a character that is not `#` or a space,
-only a line that is exactly `[tools]` starts the section, and any other
-line that starts with `[` ends it. A file that does not exist has no tools.
+mise reads config/mise.toml of the base and of the dotfiles repository (nix/home.nix links them), so a
+file that is not valid TOML stops mise too. tools() raises InvalidToml for it, with the path in the
+text. The dotkit command and the migration wizard both use this module.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict
 
-# [[:space:]] of awk.
-_SPACE = " \t\n\r\f\v"
-_KEY_LINE = re.compile(r"[^#" + re.escape(_SPACE) + r"][^=]*=")
-_VERSION = re.compile(r'version = "[^"]*"')
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.9 and 3.10: tomli of dotkit/_vendor, the same parser.
+    import tomli as tomllib
 
 
-def _lines(path: Path) -> List[str]:
+class InvalidToml(ValueError):
+    pass
+
+
+def tools(path: Path) -> Dict[str, object]:
+    """The [tools] table, key -> value, in the order of the file. {} when the file does not exist."""
     try:
-        text = path.read_bytes().decode("utf-8", "surrogateescape")
+        data = tomllib.loads(path.read_bytes().decode("utf-8"))
     except FileNotFoundError:
-        return []
-    lines = text.split("\n")
-    if text.endswith("\n"):
-        lines.pop()
-    return lines
+        return {}
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
+        raise InvalidToml(f"{path} is not valid TOML: {e}.") from None
+    table = data.get("tools")
+    return table if isinstance(table, dict) else {}
 
 
-def tool_lines(path: Path) -> List[Tuple[str, str]]:
-    """(key, value) for each tool line, in order. The key has no quotes. The value is the string without
-    quotes, or the version of an inline table, or else the text of the table without quotes."""
-    out = []
-    on = False
-    for line in _lines(path):
-        if line.startswith("["):
-            on = line == "[tools]"
-            continue
-        if not on or not _KEY_LINE.match(line):
-            continue
-        eq = line.index("=")
-        key = line[:eq].rstrip(_SPACE).replace('"', "")
-        value = line[eq + 1:].lstrip(_SPACE)
-        if value.startswith("{"):
-            m = _VERSION.search(value)
-            if m:
-                value = m.group(0)[len('version = "'):-1]
-        out.append((key, value.replace('"', "")))
-    return out
+def version_text(value: object) -> str:
+    """The version of a tool for `dotkit list`: "lts" for "lts", "1.2" for { version = "1.2", ... },
+    "22, 20" for ["22", "20"]. Other values as compact JSON."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict) and isinstance(value.get("version"), str):
+        return value["version"]
+    if isinstance(value, list):
+        return ", ".join(version_text(v) for v in value)
+    return json.dumps(value, separators=(", ", ": "), default=str)
 
 
-def keys(path: Path) -> List[str]:
-    return [key for key, _ in tool_lines(path)]
-
-
-def last_part(key: str) -> str:
-    """The part of a key after its last `:` or `/`: github:modem-dev/hunk -> hunk."""
-    return re.sub(r".*[:/]", "", key)
+def short(key: str) -> str:
+    """The tool name of a key, after its last `:` or `/`: github:modem-dev/hunk -> hunk."""
+    return re.split(r"[:/]", key)[-1]

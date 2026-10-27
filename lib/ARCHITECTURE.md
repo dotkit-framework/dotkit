@@ -51,9 +51,8 @@ lib/
       proc.py               the only place that starts processes
       nix.py                the flake commands: the override of DOTKIT_DIR, the build, the switch
       args.py               the option parser
-      lists.py              the list files: read, append, delete
-      mise_toml.py          the [tools] keys of a mise config
-      versions.py           the order of `sort -V`
+      lists.py              the list files: read (the rules of nix/read-*.nix), append, delete
+      mise_toml.py          the [tools] table of a mise config, read as TOML
       backup.py             copies of files to restore on a failure or a signal
     commands/               the usage, the dispatch, apply, upgrade, clean, history, rollback, migrate, tidy
     pkg/                    add, remove, info, list
@@ -89,12 +88,16 @@ lib/
 - **The lookups are apart from the decisions.** `pkg/lookups.py` talks to
   the tools and returns data; `pkg/resolve.choose()` decides and runs no
   command, so its tests are a table.
-- **The readers copy the old awk.** `core/lists.py` and `core/mise_toml.py`
-  read the files line by line, as the awk programs of the Bash scripts did,
-  not with a TOML parser. The wizard has its own readers
-  (`migrate/base.py`): it parses `config/mise.toml` as TOML, because it
-  needs the values. The two do not share code, because each must keep its
-  own behavior.
+- **Each file has one reader, with the rules of its real consumer.**
+  `core/lists.py` reads the lists as `nix/read-list.nix`, `read-taps.nix`,
+  and `read-mas.nix` do, and its tests compare it with them;
+  `core/mise_toml.py` reads `config/mise.toml` with a TOML parser, as mise
+  does. The command and the wizard (`migrate/base.py`) use the same
+  readers; each caller has its own policy for a file that it cannot read.
+- **Do not write what a tool already does.** Versions compare with
+  `builtins.compareVersions` of Nix, TOML comes from `tomllib` (or the
+  vendored `tomli`), and third-party packages come from `dotkit/_vendor`
+  (`_vendor/README.md`).
 
 ## Tests
 

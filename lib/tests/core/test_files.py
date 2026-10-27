@@ -1,127 +1,113 @@
-"""core/lists.py, core/mise_toml.py, and core/versions.py against the awk programs and the sort that they replace.
+"""core/lists.py and core/mise_toml.py.
 
-The awk programs are copies of the ones in scripts/dotkit-pkg (deleted in step 4
-of CLI-PLAN.md), so that these tests keep their reference. /usr/bin/awk and
-/usr/bin/sort are the tools of macOS; without them the comparisons skip.
+The list readers must give what the Nix code gives that installs from the
+lists (nix/read-list.nix, read-taps.nix, read-mas.nix), so these tests
+evaluate that code with nix on odd files. Without nix (the sandbox of `nix
+flake check`), those comparisons skip; CI runs them in the check job.
 """
 
 from __future__ import annotations
 
-import os
-import random
+import json
+import shutil
 import subprocess
 import unittest
 from pathlib import Path
 
-from dotkit.core import lists, mise_toml, versions
+from dotkit.core import lists, mise_toml
 from tests import fake
 
-AWK = "/usr/bin/awk"
-SORT = "/usr/bin/sort"
-BASH = "/bin/bash"
-
-LIST_NAMES = '{ sub(/#.*/, "") } NF { print $1 }'
-DELETE = '{ line = $0; sub(/#.*/, "", line); split(line, w) } w[1] == e { next } { print }'
-MISE_LIST = r'''
-  /^\[/ { on = ($0 == "[tools]"); next }
-  on && /^[^#[:space:]][^=]*=/ {
-    key = $0; sub(/[[:space:]]*=.*/, "", key); gsub(/"/, "", key)
-    v = $0; sub(/^[^=]*=[[:space:]]*/, "", v)
-    if (v ~ /^\{/) { if (match(v, /version = "[^"]*"/)) v = substr(v, RSTART + 11, RLENGTH - 12) }
-    gsub(/"/, "", v)
-    printf "%s\t%s\n", key, v
-  }
-'''
-MISE_KEYS = r'''
-  /^\[/ { on = ($0 == "[tools]"); next }
-  on && /^[^#[:space:]][^=]*=/ {
-    key = $0; sub(/[[:space:]]*=.*/, "", key); gsub(/"/, "", key)
-    last = key; sub(/.*[:\/]/, "", last)
-    printf "%s\t%s\n", key, last
-  }
-'''
-MAS_ID_OF = r'''
-mas_id_of() {
-  local name=$1 file=$2
-  shift 2
-  {
-    awk '{ sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, "") } /^[0-9]+[[:space:]]/ { print }' "$file"
-    local e
-    for e in "$@"; do [[ $e != mas:* ]] || printf '%s\n' "${e#mas:}"; done
-  } | N=$name awk '{ id = $1; sub(/^[0-9]+[[:space:]]+/, "") } $0 == ENVIRON["N"] && !f { print id; f = 1 }'
-}
-mas_id_of "$@"
-'''
-APPEND = r'''
-[[ ! -s $1 || -z $(tail -c 1 "$1") ]] || printf '\n' >>"$1"
-printf '%s\n' "$2" >>"$1"
-'''
+NIX = shutil.which("nix")
+ROOT = fake.ROOT
 
 LIST_FILES = [
     "",
     "\n",
-    "\n\n",
     "jq\n",
     "jq",
     "# comment\njq\n",
-    "  jq  # spaced\n\tfd\tx\n",
+    "  jq  # spaced\n\tfd\t\n",
     "jq#nospace\n#only\n   \n",
     "a b c\nlast-no-newline",
     "crlf\r\nnext\r\n",
-    "ünïcode\n\xff\xfe-bytes\n",
+    "ünïcode\n",
     "# jq\njq # one\n  jq\njqq\nx jq\n",
 ]
-
-MISE_FILES = [
+TAP_FILES = ["", "acme/tools\n", "# taps\nacme/tools git@x:y.git  # comment\n  corp/tap\r\nacme/tools\n"]
+MAS_FILES = [
     "",
-    '[tools]\nnode = "lts"\n',
-    '# c\n[tools]\n"npm:@a/b" = "latest"\n"github:o/r" = { version = "1.2", os = ["macos"] }\n',
-    '[tools]\n  spaced = "1"\n#c = "2"\nplain="3"\nx  =  "4"  # comment\n',
-    '[tools]\nt = { os = ["macos"] }\nu = {version="5"}\nv = { version = "6" }\n',
-    '[settings]\na = "1"\n[tools]\nb = "2"\n[tools.alias]\nc = "3"\n[tools]\nd = "4"\n[tools] # c\ne = "5"\n',
-    '[tools]\r\nf = "6"\r\n[tools]\ng = "7"\r\n',
-    '[tools]\nh = "8"\nno-newline = "9"',
-    '[tools]\n"a b" = "1"\n"a=b" = "2"\nk = "v=w"\n',
-    'x = "before"\n[tools]\n= "empty key"\n',
+    "# apps\n409183694 Keynote\n1234 Keynote\n",
+    "  5   Back\\slash  \n6 Backslash\n7\tTabbed  Name\n9 Two  Spaces\r\n",
+    "1 C# Toolkit\n#2 Commented\n",
 ]
 
 
 def _write(path: Path, data: str) -> None:
-    path.write_bytes(data.encode("utf-8", "surrogateescape"))
+    path.write_bytes(data.encode("utf-8"))
 
 
-def _awk(program: str, path: Path, *assigns: str) -> str:
-    argv = [AWK]
-    for a in assigns:
-        argv += ["-v", a]
-    r = subprocess.run([*argv, program, str(path)], capture_output=True, check=True)
-    return r.stdout.decode("utf-8", "surrogateescape")
+def nix_read(reader: str, path: Path):
+    """The value that nix/<reader> gives for one file, as JSON."""
+    files = f"/. + {json.dumps(str(path))}"
+    arg = f"[ ({files}) ]" if reader in ("read-taps.nix", "read-mas.nix") else f"({files})"
+    expr = f"lib: import (/. + {json.dumps(str(ROOT / 'nix' / reader))}) lib {arg}"
+    r = subprocess.run([NIX, "eval", "--impure", "--json", "--inputs-from", str(ROOT), "nixpkgs#lib", "--apply",
+                        expr], capture_output=True, text=True, timeout=600)
+    if r.returncode:
+        raise AssertionError(r.stderr)
+    return json.loads(r.stdout)
 
 
-@unittest.skipUnless(os.access(AWK, os.X_OK) and os.access(BASH, os.X_OK), "no /usr/bin/awk or /bin/bash")
 class ListTests(unittest.TestCase):
     def setUp(self):
         self.dir = fake.tempdir()
         self.addCleanup(fake.remove, self.dir)
         self.path = self.dir / "list.txt"
 
-    def test_names(self):
-        for text in LIST_FILES:
-            with self.subTest(text=text):
+    @unittest.skipUnless(NIX, "no nix")
+    def test_readers_agree_with_nix(self):
+        for reader, files, ours in (("read-list.nix", LIST_FILES, lists.names),
+                                    ("read-taps.nix", TAP_FILES, lists.taps)):
+            for text in files:
+                with self.subTest(reader=reader, text=text):
+                    _write(self.path, text)
+                    want = [t if isinstance(t, str) else t["name"] for t in nix_read(reader, self.path)]
+                    # read-taps.nix keeps each tap once; the order of the first lines stays.
+                    got = list(dict.fromkeys(ours(self.path))) if reader == "read-taps.nix" else ours(self.path)
+                    self.assertEqual(got, want)
+        for text in MAS_FILES:
+            with self.subTest(reader="read-mas.nix", text=text):
                 _write(self.path, text)
-                self.assertEqual(lists.names(self.path), _awk(LIST_NAMES, self.path).split("\n")[:-1])
+                ruby = {"\\": "\\\\", '"': '\\"', "#": "\\#"}
+                got = {}
+                for app_id, name in lists.mas_apps(self.path):
+                    got.setdefault("".join(ruby.get(c, c) for c in name), int(app_id))
+                self.assertEqual(got, nix_read("read-mas.nix", self.path))
 
     def test_a_missing_list_has_no_names(self):
         self.assertEqual(lists.names(self.dir / "missing.txt"), [])
+        self.assertEqual(lists.mas_apps(self.dir / "missing.txt"), [])
+
+    def test_append(self):
+        cases = [(None, "new\n"), ("", "new\n"), ("jq", "jq\nnew\n"), ("jq\n", "jq\nnew\n"),
+                 ("a\r\n", "a\r\nnew\n")]
+        for text, want in cases:
+            with self.subTest(text=text):
+                if self.path.exists():
+                    self.path.unlink()
+                if text is not None:
+                    _write(self.path, text)
+                lists.append(self.path, "new")
+                self.assertEqual(self.path.read_bytes().decode(), want)
 
     def test_delete(self):
-        for text in LIST_FILES:
-            for name in ("jq", "fd", "a", "x", "crlf"):
-                with self.subTest(text=text, name=name):
-                    _write(self.path, text)
-                    want = _awk(DELETE, self.path, f"e={name}")
-                    lists.delete(self.path, name)
-                    self.assertEqual(self.path.read_bytes().decode("utf-8", "surrogateescape"), want)
+        cases = [("jq\nfd\n", "jq", "fd\n"), ("# CLIs\njq # JSON\n  jq\r\njqq\n# jq\nlast", "jq", "# CLIs\njqq\n# jq\nlast"),
+                 ("", "jq", ""), ("jq", "jq", ""), ("a b\nab\n", "a b", "ab\n")]
+        for text, name, want in cases:
+            with self.subTest(text=text, name=name):
+                _write(self.path, text)
+                lists.delete(self.path, name)
+                self.assertEqual(self.path.read_bytes().decode(), want)
 
     def test_delete_writes_through_a_link(self):
         real = self.dir / "real.txt"
@@ -129,103 +115,48 @@ class ListTests(unittest.TestCase):
         self.path.symlink_to(real)
         lists.delete(self.path, "jq")
         self.assertTrue(self.path.is_symlink())
-        self.assertEqual(real.read_text(), "fd\n")
+        self.assertEqual(real.read_bytes().decode(), "fd\n")
 
-    def test_append(self):
-        for text in LIST_FILES + [None]:
-            with self.subTest(text=text):
-                want_path = self.dir / "want.txt"
-                for p in (self.path, want_path):
-                    if p.exists():
-                        p.unlink()
-                    if text is not None:
-                        _write(p, text)
-                subprocess.run([BASH, "-c", APPEND, "_", str(want_path), "new"], check=True)
-                lists.append(self.path, "new")
-                self.assertEqual(self.path.read_bytes(), want_path.read_bytes())
+    def test_delete_mas(self):
+        _write(self.path, "# apps\n409183694 Keynote\n  1234 Keynote (1234)  \n#1234 old\n")
+        lists.delete_mas(self.path, "1234")
+        self.assertEqual(self.path.read_bytes().decode(), "# apps\n409183694 Keynote\n#1234 old\n")
 
     def test_mas_id_of(self):
-        text = ("# apps\n  5   Back\\slash  \n6 Backslash\n409183694 Keynote\n1234 Keynote\n"
-                "7\tTabbed  Name\n8 \n9 Two  Spaces\nx 10 Not\n")
-        _write(self.path, text)
-        cases = [("Keynote", []), ("Back\\slash", []), ("Backslash", []), ("Tabbed  Name", []),
-                 ("Two  Spaces", []), ("Missing", []), ("Missing", ["mas:77 Missing"]),
-                 ("Keynote (1234)", ["mas:1234 Keynote (1234)", "nix:jq"]), ("", []), ("Not", [])]
-        for name, planned in cases:
-            with self.subTest(name=name, planned=planned):
-                r = subprocess.run([BASH, "-c", MAS_ID_OF, "_", name, str(self.path), *planned],
-                                   capture_output=True, text=True, check=True)
-                self.assertEqual(lists.mas_id_of(name, self.path, planned) or "", r.stdout.strip())
-
-    def test_mas_id_of_a_long_file(self):
-        """The first match counts, also with more than a pipe buffer after it."""
-        _write(self.path, "7 Keynote\n" + "".join(f"{i} App {i}\n" for i in range(100, 8100)) + "8 Keynote\n")
-        self.assertEqual(lists.mas_id_of("Keynote", self.path), "7")
+        _write(self.path, "# apps\n  5   Back\\slash  \n409183694 Keynote\n1234 Keynote\n7\tTabbed  Name\n")
+        cases = [("Keynote", [], "409183694"), ("Back\\slash", [], "5"), ("Tabbed  Name", [], "7"),
+                 ("Missing", [], None), ("Missing", [("77", "Missing")], "77"), ("", [], None)]
+        for name, planned, want in cases:
+            with self.subTest(name=name):
+                self.assertEqual(lists.mas_id_of(name, self.path, planned), want)
 
 
-@unittest.skipUnless(os.access(AWK, os.X_OK), "no /usr/bin/awk")
 class MiseTomlTests(unittest.TestCase):
     def setUp(self):
         self.dir = fake.tempdir()
         self.addCleanup(fake.remove, self.dir)
         self.path = self.dir / "mise.toml"
 
-    def test_tool_lines(self):
-        for text in MISE_FILES:
-            with self.subTest(text=text):
-                _write(self.path, text)
-                want = [tuple(line.split("\t", 1)) for line in _awk(MISE_LIST, self.path).split("\n")[:-1]]
-                self.assertEqual(mise_toml.tool_lines(self.path), want)
+    def test_tools(self):
+        _write(self.path, '[tools] # c\n  spaced = "1"\nplain = "2"  # pinned\n"npm:@a/b" = "latest"\n'
+                          'table = { version = "4.5", os = ["macos"] }\nmany = ["22", "20"]\n'
+                          '[settings]\nexperimental = true\n[tools.python]\nversion = "3.13"\n')
+        got = {k: mise_toml.version_text(v) for k, v in mise_toml.tools(self.path).items()}
+        self.assertEqual(got, {"spaced": "1", "plain": "2", "npm:@a/b": "latest", "table": "4.5",
+                               "many": "22, 20", "python": "3.13"})
 
-    def test_keys_and_last_parts(self):
-        for text in MISE_FILES:
-            with self.subTest(text=text):
-                _write(self.path, text)
-                want = [tuple(line.split("\t", 1)) for line in _awk(MISE_KEYS, self.path).split("\n")[:-1]]
-                self.assertEqual([(k, mise_toml.last_part(k)) for k in mise_toml.keys(self.path)], want)
+    def test_missing_and_invalid(self):
+        self.assertEqual(mise_toml.tools(self.dir / "missing.toml"), {})
+        _write(self.path, "[settings]\nx = 1\n")
+        self.assertEqual(mise_toml.tools(self.path), {})
+        _write(self.path, "[tools]\nx = \n")
+        with self.assertRaises(mise_toml.InvalidToml) as c:
+            mise_toml.tools(self.path)
+        self.assertTrue(str(c.exception).startswith(f"{self.path} is not valid TOML: "))
 
-    def test_a_missing_file_has_no_tools(self):
-        self.assertEqual(mise_toml.tool_lines(self.dir / "missing.toml"), [])
-
-
-VERSIONS = [
-    "1.0", "1.0.0", "1.00", "1.01", "1.1", "1.9.0", "1.10.0", "2.0.0", "2.0.0-rc1", "2.0.0rc1", "2.0.0~rc1",
-    "2.0.0.rc1", "2.0.0+build", "2.0.0-alpha", "2.0.0-beta.2", "2.0.0-beta.10", "v1.3.0", "1.3.0", "0.9",
-    "10", "9", "1.2.3a", "1.2.3b", "1.2.3-1", "1.2.3_1", "2026.10.3", "2026.9.30", "1.0.tar.gz", "1.0.zip",
-    "1.0a.b", ".", "..", ".hidden", "1.~", "1..2", "1.2-", "15.1.0", "0.55.1", "abc", "ABC", "a~", "~",
-    "1.2.3.4.5", "3.10", "3.9", "1:2.0", "2.12.3", "2.12",
-]
-
-
-@unittest.skipUnless(os.access(SORT, os.X_OK), "no /usr/bin/sort")
-class VersionTests(unittest.TestCase):
-    def sort_v(self, a: str, b: str) -> str:
-        """The last line of `sort -V`, as version_ge of the Bash script reads it."""
-        r = subprocess.run([SORT, "-V"], input=f"{a}\n{b}\n", capture_output=True, text=True, check=True,
-                           env={**os.environ, "LC_ALL": "C"})
-        return r.stdout.splitlines()[-1]
-
-    def test_against_sort(self):
-        pairs = [(a, b) for a in VERSIONS for b in VERSIONS if a != b]
-        rng = random.Random(7)
-        rng.shuffle(pairs)
-        alphabet = "0123456789.-~+abzAZ_"
-        for _ in range(300):
-            pairs.append(tuple("".join(rng.choice(alphabet) for _ in range(rng.randint(1, 6))) for _ in range(2)))
-        for a, b in pairs[:1500]:
-            if a == b:
-                continue
-            with self.subTest(a=a, b=b):
-                last = self.sort_v(a, b)
-                self.assertEqual(versions.compare(a, b) > 0, last == a)
-
-    def test_version_ge(self):
-        self.assertTrue(versions.version_ge("1.10.0", "1.9.0"))
-        self.assertFalse(versions.version_ge("1.2.0", "v1.3.0"))
-        self.assertTrue(versions.version_ge("v2.0", "2.0"))
-        self.assertTrue(versions.version_ge("2.0.0-rc1", "2.0.0"))
-        self.assertFalse(versions.version_ge("1.01", "1.1"))
-        self.assertTrue(versions.version_ge("1.1", "1.01"))
+    def test_short(self):
+        for key, want in (("github:modem-dev/hunk", "hunk"), ("npm:@a/b", "b"), ("node", "node")):
+            self.assertEqual(mise_toml.short(key), want)
 
 
 if __name__ == "__main__":
