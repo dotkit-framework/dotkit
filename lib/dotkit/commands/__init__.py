@@ -95,8 +95,7 @@ SPEC = args.Spec(flags={"-n": "dry_run", "--dry-run": "dry_run", "-y": "yes", "-
 
 def main(env: Env, argv: Sequence[str]) -> int:
     cmd, rest = (argv[0], list(argv[1:])) if argv else ("", [])
-    # __names: the Bash dotkit asks it for the completion until step 7 of CLI-PLAN.md.
-    if cmd in ("add", "remove", "info", "list", "__names"):
+    if cmd in ("add", "remove", "info", "list"):
         from ..pkg import cli
         return cli.main(env, [cmd, *rest])
     # For the zsh completion (nix/completions/_dotkit). Reads files, runs no nix.

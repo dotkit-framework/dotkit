@@ -1,8 +1,8 @@
 """core/env.py, args.py, ui.py, proc.py, nix.py, and backup.py.
 
 The Nix tests use the fake tools of the parity tests (tests/cli/fakebin.py).
-The lock warning filter is compared with the awk program of scripts/nix.sh,
-copied here.
+The lock warning filter is compared with the awk program of scripts/nix.sh
+(deleted in step 7 of CLI-PLAN.md), copied here.
 """
 
 from __future__ import annotations

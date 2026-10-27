@@ -1,4 +1,4 @@
-"""Nix commands for the flake of the dotfiles repository (scripts/nix.sh before the port).
+"""Nix commands for the flake of the dotfiles repository.
 
 With DOTKIT_DIR, the commands that read the flake get the override of
 env.Env.override, and their stderr goes through LockWarning: it drops the

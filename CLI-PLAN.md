@@ -1,5 +1,8 @@
 # Plan: the dotkit command in Python
 
+Status: steps 0 to 7 are done. The `dotkit` command runs the Python code
+of `lib/dotkit`, and the Bash scripts are gone. Step 8 is open.
+
 This plan replaces the Bash scripts of the `dotkit` command with one Python
 package. The behavior stays the same, with one new feature: `dotkit add`
 lets you select the source in a terminal. The scripts are:

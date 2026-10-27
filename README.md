@@ -283,11 +283,15 @@ nix flake check                                     # evaluates
 nix build .#checks.aarch64-darwin.example           # builds the example Mac
 ```
 
-The migration wizard is in `lib/dotkit/migrate/`. `migrate/ARCHITECTURE.md` describes
-its parts, the rules for secrets, writes, and errors, and how to add a
-migration; the docstring of `lib/dotkit/migrate/__init__.py` has the
-short version and the Python 3.9 rules. Run its tests with the macOS
-Python:
+The `dotkit` command and the migration wizard are Python, in `lib/dotkit/`,
+and run with the macOS Python of the Xcode Command Line Tools. The command
+is in `commands/` (apply, upgrade, and the others), `pkg/` (add, remove,
+info, list), and `core/` (what they share). `lib/tests/PARITY.md` lists its
+behavior, row by row, with the tests that cover each row. The wizard is in
+`lib/dotkit/migrate/`: `migrate/ARCHITECTURE.md` describes its parts, the
+rules for secrets, writes, and errors, and how to add a migration; the
+docstring of `lib/dotkit/migrate/__init__.py` has the short version and the
+Python 3.9 rules. Run the tests with the macOS Python:
 
 ```sh
 cd lib && /usr/bin/python3 -B -m unittest discover -s tests -t .

@@ -9,8 +9,8 @@ again after such a change on purpose:
     cd lib && DOTKIT_CLI_REGOLD=1 /usr/bin/python3 -B -m unittest tests.cli.test_parity
 
 then review the diff of tests/cli/golden/ and commit it with the change.
-The sandbox of `nix flake check` has no Bash 3.2 and no scripts/, so these
-tests are skipped there.
+The sandbox of `nix flake check` has no copy of the launcher dotkit, so
+these tests are skipped there; CI runs them in the check job.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from tests.cli.scenarios import SCENARIOS
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 PARITY = Path(__file__).resolve().parents[1] / "PARITY.md"
-IMPL = {"python": harness.PYTHON, "full": harness.FULL}[os.environ.get("DOTKIT_CLI_IMPL", "full")]
+IMPL = harness.PYTHON
 REGOLD = os.environ.get("DOTKIT_CLI_REGOLD") == "1"
 
 

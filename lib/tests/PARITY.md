@@ -1,7 +1,8 @@
 # Parity inventory of the dotkit command
 
 The behavior of the Bash scripts (`dotkit`, `scripts/dotkit-pkg`, and
-`scripts/nix.sh`), one row per behavior. The Python code must keep each row,
+`scripts/nix.sh`, deleted in steps 4 and 7 of CLI-PLAN.md; git history has
+them), one row per behavior. The Python code must keep each row,
 unless the row is a deviation or a Bash bug (the last two sections).
 CLI-PLAN.md, section 4, explains the method.
 
