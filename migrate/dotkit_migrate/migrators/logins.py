@@ -27,6 +27,8 @@ STEPS = {
     ".aws/credentials": "on a new Mac, `aws configure`",
     ".gem/credentials": "on a new Mac, `gem signin`",
     ".pypirc": "copy it by hand",
+    ".pi/agent/auth.json": "on a new Mac, `/login` in pi",
+    ".pi/agent/mcp-auth.json": "sign in to the MCP servers of pi again on a new Mac",
 }
 
 

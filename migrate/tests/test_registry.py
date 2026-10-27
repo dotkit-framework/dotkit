@@ -206,7 +206,7 @@ class RegistryTests(unittest.TestCase):
         plan = s.build(s.defaults(str(h.home / ".dotfiles")))
         self.assertEqual((s.failures, plan.failures), ([], []))
         self.assertEqual(sorted(plan.files), ["MIGRATION.md", "nix/user.nix"])
-        self.assertEqual((plan.copies, plan.local, plan.links, plan.move_links, plan.blockers), ({}, {}, {}, [], []))
+        self.assertEqual((plan.copies, plan.secrets, plan.links, plan.move_links, plan.blockers), ({}, "", {}, [], []))
         self.assertIn("## Carried over\n\nNothing.\n\n## To do\n\nNothing.\n", plan.report)
 
 
@@ -217,6 +217,13 @@ class NoWriteTests(unittest.TestCase):
         for f in files:
             with self.subTest(f=f.name):
                 self.assertEqual(write_findings(f.read_text(encoding="utf-8"), f.name), [])
+
+    def test_the_scan_and_the_plan_of_tidy_do_not_write_or_run_commands(self):
+        """TIDY.md, section 7: only tidy/actions.py and tidy/cli.py change the Mac."""
+        for name in ("apps.py", "clis.py", "pkgs.py", "plan.py"):
+            f = PACKAGE / "tidy" / name
+            with self.subTest(f=name):
+                self.assertEqual(write_findings(f.read_text(encoding="utf-8"), name), [])
 
     def test_the_check_finds_writes(self):
         """The check itself: each of these fails it."""
@@ -242,9 +249,9 @@ class NoWriteTests(unittest.TestCase):
 # The .todo(...) calls whose intro the static check cannot read, and why.
 NOT_STATIC = {
     # ReportView.todo hands its arguments on to ReportDoc.todo: the intro is whatever its caller gave.
-    "dotkit_migrate/docs.py:1000",
+    "dotkit_migrate/docs.py:1059",
     # rcparse.hint(...): test_rcparse_hints_have_no_secret checks every hint with both file names.
-    "dotkit_migrate/migrators/shell.py:295",
+    "dotkit_migrate/migrators/shell.py:324",
 }
 
 

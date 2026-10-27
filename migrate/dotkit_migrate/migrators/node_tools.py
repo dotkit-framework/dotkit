@@ -45,7 +45,9 @@ def node_version_globs(ctx: Context) -> List[Tuple[Path, str, str, int]]:
     return globs
 
 
-def _node_module_roots(ctx: Context) -> List[Tuple[Path, str]]:
+def node_module_roots(ctx: Context) -> List[Tuple[Path, str]]:
+    """The global node_modules directories of the nodes of this Mac, each once, with a label for the report:
+    (path, "nvm v20.11.0"). dotkit tidy uses them too (tidy/clis.py)."""
     home = ctx.home
     roots: List[Tuple[Path, str]] = [
         (ctx.brew_prefix / "lib/node_modules", "Homebrew node"),
@@ -108,7 +110,7 @@ class NodeTools(Migrator):
                 return
             found[name] = Package(name, version, where, ok, note, commands or [])
 
-        for root, label in _node_module_roots(ctx):
+        for root, label in node_module_roots(ctx):
             entries = []
             for p in sorted(root.iterdir()):
                 if p.name.startswith("@") and p.is_dir() and not p.is_symlink():

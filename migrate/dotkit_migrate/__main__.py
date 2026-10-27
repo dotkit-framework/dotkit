@@ -120,6 +120,11 @@ def cmd_setup(a: argparse.Namespace, make_context: MakeContext) -> int:
         info("Dry run: nothing was written.")
         return 0
     try:
+        writer.write_secrets(result)
+    except OSError as e:
+        info(f"dotkit setup: could not add your secrets to ~/.secrets ({e.strerror or e}). Nothing else changed.")
+        return 1
+    try:
         writer.write_new(result, b.template)
     except writer.SecretInRepository as e:
         return secret_stop("setup", e, a, home)
@@ -186,6 +191,11 @@ def cmd_adopt(a: argparse.Namespace, make_context: MakeContext) -> int:
     return 0
 
 
+def cmd_tidy(a: argparse.Namespace, make_context: MakeContext) -> int:
+    from .tidy import cli  # only the tidy mode loads the module that changes the Mac
+    return cli.cmd_tidy(a, make_context)
+
+
 def main(argv: list[str] | None = None, make_context: MakeContext | None = None) -> int:
     # Names and files are UTF-8; a terminal with another locale gets ? for
     # what it cannot show, not an error.
@@ -218,6 +228,14 @@ def main(argv: list[str] | None = None, make_context: MakeContext | None = None)
     d.add_argument("--strict", action="store_true", help=argparse.SUPPRESS)
     d.add_argument("--base", help=argparse.SUPPRESS)
     d.set_defaults(func=cmd_adopt)
+    t = sub.add_parser("tidy", help="give the apps of this Mac a clean source: casks and the App Store")
+    t.add_argument("--repo", required=True)
+    t.add_argument("-y", "--yes", action="store_true", help="apply the default verbs, without the editor and the question")
+    t.add_argument("-n", "--dry-run", action="store_true", help="print the plan and the commands, change nothing")
+    t.add_argument("--plan", help="read the edited plan from this file instead of the editor")
+    t.add_argument("--declared", help="JSON with the taps and masApps of the configuration")
+    t.add_argument("--base", help=argparse.SUPPRESS)
+    t.set_defaults(func=cmd_tidy)
     a = ap.parse_args(argv)
     return a.func(a, make_context or context.this_mac)
 

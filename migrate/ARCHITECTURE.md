@@ -29,10 +29,15 @@ Hard constraints:
   at runtime), no `ExceptionGroup`. `tomllib` comes from `_compat` (vendored
   tomli on 3.9/3.10). `tests/test_start.py` checks the grammar.
 - **Writes:** the wizard reads the Mac and writes only the new repository
-  (setup) or files inside the existing repository (adopt). It never installs,
-  uninstalls, or deletes anything on the Mac. Removals are report text only.
+  (setup) or files inside the existing repository (adopt). The one exception
+  is `~/.secrets`: setup appends the variables of the secrets that it moves
+  there, and never changes a line that the file has (section 6). It never
+  installs, uninstalls, or deletes anything on the Mac. Removals are report
+  text only. The one mode that changes the Mac is `dotkit tidy`
+  (`TIDY.md`), and only through `tidy/actions.py`.
 - **Secrets:** a detected secret never goes into a file that Git tracks, and
-  the report never shows one.
+  the report never shows one. A secret that the wizard can move goes to
+  `~/.secrets` as a variable, and the repository file refers to the variable.
 - **Atomic writes:** setup creates the repository completely or not at all.
   Adopt changes all its files or none.
 - **Dry run:** `--dry-run` shows exactly the plan that a real run would write.
@@ -89,7 +94,7 @@ migrate/
     __main__.py                    CLI only: arguments, mode, exit codes, stderr lines
     context.py                     Context: home, env, runner, base, applications, brew_prefix;
                                    read-only file helpers; tilde/expand/repo_error
-    catalog.py                     DATA: version managers, frameworks, tool rules
+    catalog.py                     DATA: version managers, frameworks, tool rules, app config places
     model.py                       Item, Page, Choices, Facts, Identity, Failure, Plan
     docs.py                        Docs, Txn, and the document types
     declared.py                    Declared: what the base, the repository, and your mise config provide
@@ -103,11 +108,16 @@ migrate/
       homebrew.py  appstore.py  node_tools.py  python_tools.py  built_tools.py
       runtimes.py  shell.py  frameworks.py  config_files.py  other_config.py
       logins.py  leftovers.py
+    tidy/                          dotkit tidy (TIDY.md): apps.py and clis.py (the scans) and plan.py
+                                   follow the rules of migrators/; actions.py changes the Mac; cli.py
+                                   runs the mode
     ui/
       screens.py                   Screen specs from the Session's pages; no curses
       curses_ui.py                 widgets and the screen loop
       plain.py                     the same screens as line prompts
     rcparse.py  secrets.py  proc.py  base.py  _compat.py  _vendor/
+    secrets_file.py                ~/.secrets: read its variables, quote export lines
+    lift.py                        the secrets of ~/.npmrc and Git config files as variables
   tests/                           unit, migrator, document, golden, invariant, UI and PTY tests
 ```
 
@@ -116,7 +126,7 @@ Rules:
 - `migrators/` import only `context`, `catalog`, `model`, `docs` (the views
   of the `Txn` they get, and the pure helpers of `docs.py` such as
   `nix_string`, `toml_value`, and the entry checks; never `Docs` itself or
-  its core methods), `declared`, `rcparse`, `secrets`, `base`, `_compat`
+  its core methods), `declared`, `rcparse`, `secrets`, `secrets_file`, `lift`, `base`, `_compat`
   (for `tomllib`), `report` (only the text helper `plural`), and their own
   helpers. They never import `ui/`, `writer`, `proc`, `subprocess`, or
   `curses`, and never write a file (section 6). Constants that a scan
@@ -281,7 +291,10 @@ Items that cannot be carried (redundant Homebrew copies, `ok=False`
 packages, pnpm, and tools that dotkit has already, `Declared.tool`) are not
 items. They go to the report. A file with a secret gets a restricted option
 list (`keep`, `dotkit`; `.gitconfig` or your mise config with a secret:
-`keep` only).
+`keep` only), unless `lift.py` can move all its secrets to `~/.secrets`:
+`~/.npmrc` then has `tokens` first (the dotkit file, with your registries
+and a variable for each token), and a Git config file keeps its usual
+options without the settings that have a secret.
 
 ```python
 @dataclass
@@ -314,7 +327,7 @@ carry shell lines…", and the section "Homebrew packages that are not in the
 lists").
 
 A shell file that has only lines with secrets is an item too, on by
-default: its lines go to `local/` (section 6).
+default: its assignments go to `~/.secrets` (section 6).
 
 The variables that rcparse tracks pass from one shell file to the next
 (`.zshenv` → `.zprofile` → `.zshrc`, each with its `.local` file). A file
@@ -338,12 +351,14 @@ check an entry, and how to render.
 ```python
 class Docs:
     def __init__(self, mode: str, template: Path, repo: Path,
-                 home: str, host: str, strict: bool): ...   # mode: "setup" | "adopt"
+                 home: str, host: str, strict: bool,
+                 secrets: Dict[str, str]): ...   # mode: "setup" | "adopt"; secrets: what ~/.secrets assigns
     def begin(self, owner: str) -> "Txn": ...      # asserts that no other transaction is open
     # Core only, never on a Txn:
     def drop(self, rel: str) -> None: ...          # the copy guard: remove a copy, its file, and the links to it
-    def render(self) -> Tuple[Dict[str, str], Dict[str, str]]: ...   # (tracked files, local/ files) as text;
+    def render(self) -> Tuple[Dict[str, str], str]: ...   # (tracked files, lines for ~/.secrets) as text;
                                                    # writer.render wraps it
+    def secret_names(self) -> List[str]: ...       # the names that the lines for ~/.secrets add
     conflicts: List[Conflict]                      # reported under "Problems during the migration"
 
 class Txn:
@@ -354,6 +369,7 @@ class Txn:
     def shell_rc(self, main: str) -> ShellRcView: ...   # setup only; main in base.SHELL_LAYERS
     def file(self, path: str) -> FileView: ...     # setup only
     def shell_nix(self) -> ShellNixView: ...       # setup only; owner "core" only (the keymap)
+    def secrets(self) -> SecretsView: ...          # setup only; ~/.secrets, outside the repository
     copies: CopiesView                             # setup only
     report: ReportView
     def commit(self) -> None: ...
@@ -375,8 +391,7 @@ The rules for every view operation:
    migration".
    Repository paths follow a stricter rule. A path is taken by an earlier
    copy, by a fixed document path (the list files, `config/mise.toml`,
-   `nix/home.nix`, `nix/shell.nix`, `nix/user.nix`, the shell files), by
-   anything under `local/`, or by a whole file (`FileDoc`) that has text.
+   `nix/home.nix`, `nix/shell.nix`, `nix/user.nix`, the shell files), or by a whole file (`FileDoc`) that has text.
    `Copies.add` on a taken path makes no copy and returns `False`, with no
    conflict: the migrator handles it (for example `other_config` keeps the
    file in place and adds a to-do). A whole file set on a path that a copy
@@ -411,8 +426,9 @@ The document types:
 | `ListDoc` | `nix/brews.txt`, `nix/casks.txt`, `nix/taps.txt`, `nix/mas.txt` | `add(entry, comment="") -> bool`, `names()`, `added()`; the view also has `flagged(entry)` (section 4.5) | brews/casks: one word without `#`; taps: `owner/repo` and an optional URL without spaces; mas: digits, a space, then a non-empty name | yes: appends after the existing text, with one comment per run: `# From Homebrew on <host>, see MIGRATION.md.` (`# From the App Store on <host>, ...` for `nix/mas.txt`) in setup, `# Added by dotkit migrate on <host>.` in adopt, which writes no MIGRATION.md |
 | `MiseDoc` | `config/mise.toml` | `add_tool(key, value, comment="") -> bool`, `has_tool(key)`, `set_base(text)`, `set_setting(key, value) -> bool`, `replace_setting(key, value, expect) -> bool`, `added()`; the view also has `flagged(key, value)` | key: non-empty, no newline; value: str, list of str, or a flat table of str/int/bool | yes (`add_tool` only) |
 | `LinksDoc` | `nix/home.nix` `dotkit.links` (after the anchor `docs.LINKS_ANCHOR`, `    ".zshrc.local" = "config/zsh/zshrc";\n`) | `link(target, source_or_None) -> bool` | target relative to home, no `..`; source a repository path or None | no |
-| `ShellRcDoc` | `config/zsh/zshenv`, `config/zsh/zprofile`, `config/zsh/zshrc`, `config/bash/bash_profile`, and their `local/<name>.<shell>` | `add_part(header, text)`, `add_secret(text)`, `ensure()` (write the file even when empty) | main in `SHELL_LAYERS` | no |
+| `ShellRcDoc` | `config/zsh/zshenv`, `config/zsh/zprofile`, `config/zsh/zshrc`, `config/bash/bash_profile` | `add_part(header, text)`, `ensure()` (write the file even when empty) | main in `SHELL_LAYERS` | no |
 | `ShellNixDoc` | `nix/shell.nix` | `set_keymap(value)`, written by the Session | `emacs` or `vi` | no |
+| `SecretsDoc` | `~/.secrets`, outside the repository: the lines that the writer appends | `export(name, value, line, source) -> bool`, `free_name(base, value)`, `taken(name)` | `name` a shell variable name; `line` one line | no |
 | `FileDoc` | a whole file with one owner: `nix/user.nix`, a merged `config/gitconfig` | `set(text)` | the path is not owned by another document | no |
 | `Copies` | files and directories copied into the repository | `add(rel, src) -> bool`, `False` when `rel` is taken (rule 4); `taken(rel) -> Optional[Tuple[str, str]]`, `(relation, path)` (rule 4) | `src` absolute and inside the home directory; `rel` relative | no |
 | `ReportDoc` | `MIGRATION.md`, the summary | `carried(what, where)`, `todo(section, intro, items)`, `blocker(msg)` | `section` in `report.SECTIONS` | yes (adopt output) |
@@ -455,8 +471,8 @@ The document types:
 
 `ShellRcDoc` details: the header is the template `config/zsh/zshrc`, or the
 fixed headers of `docs._SHELL_HEADERS`. Parts follow with their
-`# From ~/<file>.` line. Secrets go to `local/<name>.<shell>` (mode 0600,
-directory 0700), with the `source` block in front (`ShellRcDoc.render`).
+`# From ~/<file>.` line. The shell migrator sends an assignment with a secret
+to `SecretsDoc`, never to a repository file (section 6).
 `ensure()` covers a layer file that exists but carries nothing: the
 repository file still has to exist, so that the link moves the old file
 aside. The syntax check (`facts.check_syntax`, `zsh -n`/`bash -n`) is done
@@ -613,7 +629,8 @@ class Plan:
     repo: Path; keymap: str; home: str
     files: Dict[str, str]           # repository path -> text, tracked
     copies: Dict[str, Path]         # repository path -> source
-    local: Dict[str, str]           # local/* -> text, untracked
+    secrets: str                    # the lines that write_secrets appends to ~/.secrets, "" for none
+    secret_names: List[str]         # their names, for the summary
     links: Dict[str, Optional[str]] # for the summary and checks
     move_links: List[str]           # for scripts/setup: .build/links-in-way
     blockers: List[str]
@@ -630,15 +647,20 @@ class Plan:
   1. the copy guard (section 6), which drops a copy with a secret through
      `Docs.drop`, so that its links never reach `nix/home.nix`;
   2. the documents render;
-  3. the file guard over the rendered tracked files;
-  4. if `local` is not empty, `.gitignore` gets the `/local/` block.
+  3. the file guard over the rendered tracked files.
 
   There is no separate public guard. After `render`, `checks.py` runs, and
   then `Session.build` renders the report and the summary and masks them
   (`mask_lines`).
+- `write_secrets(plan)` for setup, before `write_new`: append `plan.secrets`
+  to `~/.secrets`, which it creates with mode 0600. It writes no name that
+  the file has (`SecretsDoc`), so a second run adds nothing. When it fails,
+  setup stops before the repository exists. When `write_new` fails after it,
+  `~/.secrets` has the variables that the shell files and config files of
+  this Mac use already, so nothing changes for the shell.
 - `write_new(plan, template)` for setup:
   1. copy the template into a temp directory next to the repository;
-  2. add the copies, the files, and `local/`;
+  2. add the copies and the files;
   3. write `.build/links-in-way`;
   4. verify the staged tree (`writer.verify`, section 6);
   5. `git init`;
@@ -715,10 +737,27 @@ Secrets are handled at five points:
 1. **Detection during the scan.** Every config file the scan finds gets its
    `secrets`, including `~/.config/mise/config.toml`. Planning does not call
    `secrets.has_secret` (the old `plan.py:220` and `707` did).
-2. **Routing in the migrators.** `ShellRcDoc.add_secret` routes secret
-   statements (rcparse's `SecretLine`) to `local/`. A config file with a
-   secret gets only `keep`/`dotkit`. `other_config` does not offer an entry
-   with a secret.
+2. **Routing in the migrators.** Secrets go to `~/.secrets` as variables
+   (`SecretsDoc`), and the repository files refer to the variables. The base
+   `~/.zprofile` and `~/.bash_profile` source `~/.secrets`, and the
+   `gui-secrets` agent of `nix/darwin.nix` gives its exported variables to
+   GUI apps.
+   - The shell migrator sends an assignment with a secret (rcparse's
+     `SecretLine` that `rcparse._ASSIGN` matches) to `~/.secrets`, as it was
+     written. Another statement with a secret (an alias, a function) is not
+     carried; the report names it, never its text.
+   - `config_files` asks `lift.py`. `lift.npmrc` keeps the registries and
+     tokens of `~/.npmrc`; each token becomes `${NAME}`, which npm expands.
+     `lift.gitconfig` takes the settings with a secret out of a Git config
+     file; they become `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, and
+     `GIT_CONFIG_VALUE_<n>`. A file with a secret that `lift.py` cannot move gets only
+     `keep`/`dotkit`, as before.
+   - `other_config` does not offer an entry with a secret.
+   - `SecretsDoc` never writes a name that `~/.secrets` has: the same value
+     is done, another value is refused, and the caller reports the name.
+     `free_name` picks `NAME_2`, `NAME_3`, ... for a name that the migrator
+     chooses (the npm tokens). A refused value is not a `Conflict`, because
+     a conflict shows both values.
 3. **The plan-time guard (core, inside `writer.render`).** `_guard_copies`
    and `_guard_files` run over every tracked rendered file and every copy
    source. A shell file is split by statement, never in the middle of one.
@@ -727,8 +766,8 @@ Secrets are handled at five points:
    (`writer.mask_lines`). The guard changes the plan and reports what it
    did, so dry-run and the review screen show its result.
 4. **Write-time verification (core, in `writer`).** Before the rename or
-   `os.replace`, scan the staged tracked files (copies included; `local/`,
-   `.build/`, and `.git` excluded, because Git does not track them). It uses
+   `os.replace`, scan the staged tracked files (copies included; `.build/`
+   and `.git` excluded, because Git does not track them). It uses
    exactly the checks of the plan-time guard (`secrets.scan_text` for files,
    `secrets.has_secret` for copied files and template files, the same
    strictness, links inside a copied directory and `.DS_Store` skipped), so
@@ -760,7 +799,7 @@ Rules that keep this enforceable:
 - **A property test:** a home directory with a `fake.TOKENS` value in every
   file that any migrator reads must give no token in `Plan.files`, the copied
   sources, the report, the summary, or adopt's output. Tokens in
-  `Plan.local` are allowed: that is where secrets go. How the test finds the
+  `Plan.secrets` are allowed: that is where secrets go. How the test finds the
   files:
   1. Scan and plan the kitchen-sink Mac (and adopt it) once, and record every
      file opened under the home directory (patch `io.open`, `builtins.open`,
@@ -1037,7 +1076,11 @@ diff /tmp/dk-before.txt /tmp/dk-after.txt
    version manager is only a catalog entry: `frameworks`, `runtimes`, and
    `node_tools` loop over the catalog, so skip step 2. The catalog tests
    check every entry generically; the pinned literals of the old rcparse
-   cover only the old entries.
+   cover only the old entries. An app that keeps its config in a directory
+   of its own, such as pi in `~/.pi/agent`, is an `AppConfigSpec` of
+   `APP_CONFIGS`: its config entries, its repository directory, and its old
+   places, which `other_config` reports and never offers. Its login files
+   go to `secrets.SECRET_FILES` and `logins.STEPS`.
 2. **Module:** add `migrators/<key>.py` with a `Migrator` subclass (`key`,
    `title`, `sections`, `needs` if it cannot work without another), a facts
    dataclass and its `facts_of` accessor, `scan`, `pages` (stable, prefixed
@@ -1053,8 +1096,9 @@ diff /tmp/dk-before.txt /tmp/dk-after.txt
 5. **Registry:** add the migrator to `MIGRATORS` in its place. That is its
    page order and its row order in "Carried over".
 6. **Secrets:** content that can hold a secret is routed by the migrator
-   (`add_secret`, restricted options). Never copy a file the scan did not
-   check.
+   (`Txn.secrets()`, restricted options). A config format that can read a
+   variable gets a function in `lift.py` that moves its secrets out. Never
+   copy a file the scan did not check.
 7. **Tests:** `tests/migrators/test_<key>.py`; extend the kitchen-sink
    fixture (`kitchen_sink` in `tests/test_golden.py`) and regenerate the
    goldens (review the diff); the invariant and isolation tests cover it

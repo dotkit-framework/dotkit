@@ -1,9 +1,10 @@
 """The config_files migrator: your files where dotkit links its own, ~/.gitconfig, and your mise config."""
 
 import os
+import subprocess
 import unittest
 
-from dotkit_migrate import registry
+from dotkit_migrate import registry, writer
 from dotkit_migrate._compat import tomllib
 from dotkit_migrate.declared import Declared
 from dotkit_migrate.migrators import config_files
@@ -98,7 +99,7 @@ class ConfigFilesTests(unittest.TestCase):
         self.assertIn(config_files.KEPT_INTRO + "\n\n- `typescript` (nvm v20.11.0): `mise use -g npm:typescript`\n",
                       result.report)
         token = fake.TOKENS["@GH@"]
-        for text in [result.report, *result.summary, *result.files.values(), *result.local.values()]:
+        for text in [result.report, *result.summary, *result.files.values()]:
             self.assertNotIn(token, text)
 
     def test_an_unreadable_mise_config(self):
@@ -153,12 +154,117 @@ class ConfigFilesTests(unittest.TestCase):
     def test_a_file_with_a_secret_cannot_go_into_the_repository(self):
         files = next(page for page in self.p.pages() if page.key == "files")
         npmrc = next(i for i in files.items if i.id == "file:.npmrc")
-        self.assertEqual(npmrc.options, ("keep", "dotkit"))
-        self.assertEqual(npmrc.default_option, "keep")
+        self.assertEqual(npmrc.options, ("tokens", "dotkit", "keep"))
+        self.assertEqual(npmrc.default_option, "tokens")
         # Also when a choice says so: the build keeps the file in place.
         p = self.build(options={"file:.npmrc": "replace"})
         self.assertIsNone(p.links[".npmrc"])
         self.assertNotIn("config/npmrc", p.copies)
+        self.assertNotIn("config/npmrc", p.files)
+
+    def session(self, **files):
+        h = fake.Home()
+        self.addCleanup(h.cleanup)
+        for rel, text in files.items():
+            h.write(rel, text)
+        return h, fake.session(h, fake.brew_runner())
+
+    def test_npmrc_tokens(self):
+        """The dotkit settings, with the registries; each token is a variable of ~/.secrets, also for GUI apps."""
+        gh, npm = fake.TOKENS["@GH@"], fake.TOKENS["@NPM@"]
+        h, p = self.session(**{".npmrc": "; mine\nregistry=https://npm.acme.dev/\n"
+                                          f"//npm.acme.dev/:_authToken={npm}\n@acme:registry=https://npm.pkg.github.com\n"
+                                          f"//npm.pkg.github.com/:_authToken=\"{gh}\"\n"
+                                          "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\nsave-exact=true\n"
+                                          "init-author-name=Jane\n",
+                               ".secrets": "export GITHUB_NPM_TOKEN=other\n"})
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertEqual(result.links[".npmrc"], "config/npmrc")
+        self.assertEqual(result.files["config/npmrc"],
+                         "# Your registries and tokens, from ~/.npmrc. npm reads the tokens from ~/.secrets.\n"
+                         "registry=https://npm.acme.dev/\n//npm.acme.dev/:_authToken=${NPM_ACME_DEV_NPM_TOKEN}\n"
+                         "@acme:registry=https://npm.pkg.github.com\n"
+                         "//npm.pkg.github.com/:_authToken=${GITHUB_NPM_TOKEN_2}\n"
+                         "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n\n"
+                         "# Delay newly published packages for 7 days.\nmin-release-age=7\n\n"
+                         "# Global packages stay outside the read-only Nix store. ~/.local/bin is on PATH.\n"
+                         "prefix=${HOME}/.local\n")
+        self.assertEqual(result.secrets, "# Added by the dotkit migration. See MIGRATION.md.\n# From ~/.npmrc.\n"
+                                         f"export NPM_ACME_DEV_NPM_TOKEN='{npm}'\n"
+                                         f"export GITHUB_NPM_TOKEN_2='{gh}'\n")
+        self.assertIn("- ~/.npmrc: these settings are not carried: `save-exact`, `init-author-name`. The first apply "
+                      "renames it to ~/.npmrc.before-dotkit. Copy the ones you need to config/npmrc.\n", result.report)
+        for text in [result.report, *result.summary, *result.files.values()]:
+            self.assertNotIn(gh, text)
+            self.assertNotIn(npm, text)
+
+    def test_npmrc_without_tokens(self):
+        """Registries without a token: "tokens" is the default too, and nothing goes to ~/.secrets."""
+        h, p = self.session(**{".npmrc": "@acme:registry=https://npm.pkg.github.com\n"})
+        files = next(page for page in p.pages() if page.key == "files")
+        self.assertEqual(next(i for i in files.items if i.id == "file:.npmrc").options,
+                         ("tokens", "replace", "dotkit", "keep"))
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertIn("\n@acme:registry=https://npm.pkg.github.com\n\n# Delay", result.files["config/npmrc"])
+        self.assertEqual(result.secrets, "")
+
+    def test_npmrc_with_a_secret_elsewhere(self):
+        """A secret outside the registry settings: the file stays in place, as before."""
+        h, p = self.session(**{".npmrc": fake.fill("//registry.npmjs.org/:_authToken=@NPM@\nproxy=http://u:pw1234567@proxy:8080\n")})
+        files = next(page for page in p.pages() if page.key == "files")
+        self.assertEqual(next(i for i in files.items if i.id == "file:.npmrc").options, ("keep", "dotkit"))
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertIsNone(result.links[".npmrc"])
+        self.assertEqual(result.secrets, "")
+
+    GITCONFIG = ("[user]\n\tname = Jane\n[url \"https://x-access-token:@GH@@github.com/\"]\n"
+                 "\tinsteadOf = https://github.com/\n[github]\n\tuser = jane\n\ttoken = \"@GH@\" ; old\n"
+                 "# @GH@\n[core]\n\teditor = vim\n")
+
+    def test_gitconfig_secrets_go_to_git_config_variables(self):
+        gh = fake.TOKENS["@GH@"]
+        h, p = self.session(**{".gitconfig": fake.fill(self.GITCONFIG)})
+        files = next(page for page in p.pages() if page.key == "files")
+        item = next(i for i in files.items if i.id == "file:.gitconfig")
+        self.assertEqual((item.options, item.default_option), (("adopt", "keep"), "adopt"))
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertEqual(result.links[".gitconfig"], "config/gitconfig")
+        self.assertEqual(result.files["config/gitconfig"],
+                         "[user]\n\tname = Jane\n[github]\n\tuser = jane\n[core]\n\teditor = vim\n")
+        self.assertEqual(result.secret_names, ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0",
+                                               "GIT_CONFIG_KEY_1", "GIT_CONFIG_VALUE_1"])
+        self.assertIn("- ~/.gitconfig: 2 settings\n", result.report)
+        for text in [result.report, *result.summary, *result.files.values()]:
+            self.assertNotIn(gh, text)
+        # Git reads them.
+        repo = h.mkdir("repo")
+        writer.write_secrets(result)
+        env = {"HOME": str(h.home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
+        script = '. "$HOME/.secrets"; git -C "$1" config --get github.token; git -C "$1" config --get-urlmatch ' \
+                 'url.insteadof x; git -C "$1" ls-remote --get-url https://github.com/a/b'
+        subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env)
+        out = subprocess.run(["/bin/sh", "-c", script, "sh", str(repo)], capture_output=True, text=True,
+                             env=env).stdout
+        self.assertEqual(out.splitlines()[0], gh)
+        self.assertEqual(out.splitlines()[-1], f"https://x-access-token:{gh}@github.com/a/b")
+
+    def test_gitconfig_with_git_config_variables_already(self):
+        """~/.secrets has GIT_CONFIG_COUNT: the file stays in place, as before."""
+        h, p = self.session(**{".gitconfig": fake.fill(self.GITCONFIG), ".secrets": "export GIT_CONFIG_COUNT=1\n"})
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertNotIn(".gitconfig", result.links)
+        self.assertEqual(result.secrets, "")
+        self.assertIn("~/.gitconfig stays in place, because it has secrets.", result.report)
+
+    def test_git_config_layer_and_gitconfig_share_the_count(self):
+        h, p = self.session(**{".gitconfig": fake.fill("[github]\n\ttoken = @GH@\n"),
+                               ".config/git/config": fake.fill("[credential]\n\thelper = store\n[hub]\n"
+                                                               "\toauthtoken = @GH@\n")})
+        result = p.build(p.defaults(str(h.home / ".dotfiles")))
+        self.assertIn("# From ~/.config/git/config.\n[credential]\n\thelper = store\n[hub]\n\n"
+                      "# From ~/.gitconfig.\n[github]\n", result.files["config/gitconfig"])
+        self.assertIn("export GIT_CONFIG_COUNT='2'\nexport GIT_CONFIG_KEY_0='hub.oauthtoken'\n", result.secrets)
+        self.assertIn("export GIT_CONFIG_KEY_1='github.token'\n", result.secrets)
 
 
     ENABLE = "idiomatic_version_file_enable_tools"

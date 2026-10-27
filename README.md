@@ -76,16 +76,27 @@ dotkit also has, other config to copy into the repository, and the plan.
 | Global npm, pnpm, bun, pipx, and `uv tool` tools | `config/mise.toml`, as `npm:` and `pipx:` tools. cargo and Go tools are off: mise builds them from source |
 | `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
 | Ghostty, Git, and mise config | Yours, read after the dotkit file |
-| Starship, npm, uv, and the other tools that read one file | Yours, instead of the dotkit file |
-| Detected secrets: tokens in shell files, `~/.npmrc` with a token | Shell statements that would otherwise be carried over go to ignored `local/` if a secret is detected. The wizard omits other statements and masks their detected secrets in the report. A config file with a detected secret stays in place and is not linked |
-| Other `~/.config` entries, version managers | Stay in place. The report lists them, with the mise commands for the versions |
+| Starship, uv, and the other tools that read one file | Yours, instead of the dotkit file |
+| `~/.npmrc` with registries | The dotkit file, with your registries and their tokens. Your other npm settings go to the report |
+| Detected secrets: tokens in shell files, `~/.npmrc`, and Git config | Variables in `~/.secrets`, outside the repository (see below) |
+| Other `~/.config` entries, pi (`~/.pi/agent`), version managers | Stay in place, or go to `config/` if you select them. The report lists them, with the mise commands for the versions. An old place of an app's config, such as `~/.config/pi`, is not offered |
+
+The wizard moves the secrets that it detects to `~/.secrets`, and the
+repository files refer to them by name:
+
+| Secret | In `~/.secrets` | In the repository |
+|---|---|---|
+| An assignment in a shell file, such as `export GITHUB_TOKEN=...` | The same line | Nothing |
+| A registry token in `~/.npmrc` | `export NPM_TOKEN='...'`, named after the registry | `${NPM_TOKEN}` in `config/npmrc` |
+| A Git setting with a token, such as a `url` section with the token in it | `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, and `GIT_CONFIG_VALUE_<n>`, which Git reads | `config/gitconfig` without the setting |
+
+The wizard adds only the names that `~/.secrets` does not have, and it never
+changes a line there. A secret in another place, such as an alias, a function, or
+another config file, is not carried; the report names it, never its value.
 
 Secret detection is heuristic. It can miss secrets and flag text that is not
-secret. Shell statements that would otherwise be carried over go to the
-repository's ignored `local/` directory if a secret is detected. The wizard
-omits other statements and masks their detected secrets in the report.
-This does not guarantee that the generated files contain no secrets. Review
-the generated files before you commit or publish the repository.
+secret. This does not guarantee that the generated files contain no secrets.
+Review the generated files before you commit or publish the repository.
 
 Newly mapped global tools use mise's `"latest"`, not their installed versions.
 `MIGRATION.md` records the previous installed versions that the scan finds.
@@ -107,6 +118,48 @@ global tools that were installed by hand and that the lists do not have, and
 adds them. It skips the Homebrew copy of a tool that the lists have from Nix
 or mise. cargo and Go tools only with `--all`, because mise builds them from
 source.
+
+`dotkit tidy` does the same for apps from other places: a DMG, a `.pkg`
+installer, or the App Store. It scans `/Applications` and `~/Applications`,
+finds the cask of each app by its name and bundle ID, and writes a plan
+with one line per app:
+
+```
+adopt    cask:brave-browser  /Applications/Brave Browser.app  # by hand; the cask auto-updates
+replace  cask:joplin         /Applications/Joplin.app         # by hand; 3.6.14, the cask has 3.7.21
+add      mas:409201541       /Applications/Pages.app          # from the App Store, not in nix/mas.txt
+keep                         /Applications/Home VPN.app       # by hand; no cask
+```
+
+`adopt` gives the app to the cask in place (`brew install --cask --adopt`),
+and `replace` installs the cask over it. `add` adds an app that is from a
+cask or the App Store already to the lists. `trash` moves an app to the
+Trash, and `keep` changes nothing. Tidy opens the plan in your editor,
+checks it, shows the commands, and asks once. Then it adds the casks and
+App Store apps to `nix/casks.txt` and `nix/mas.txt`. The app data in
+`~/Library` stays: tidy never touches it. Apps from Setapp, JetBrains
+Toolbox, and Apple, and apps that you cannot change without sudo, stay as
+they are.
+
+The plan also has old copies of command-line tools that dotkit has: a
+Homebrew formula of a tool that dotkit has from Nix, or an npm, pipx, uv, or
+cargo package of a tool that `config/mise.toml` has (after `dotkit migrate`
+moved it there). `uninstall` removes such a copy with its package manager,
+for example `npm uninstall -g typescript` with the npm of that nvm node. A
+file in `~/.local/bin`, `~/bin`, or `/usr/local/bin` that dotkit has, for
+example `mise` from its installer, gets `trash`. Other files, version
+managers such as `~/.nvm`, and zsh frameworks are `keep` lines, so that you
+see them; change one to `trash` to move it to the Trash.
+
+The last part of the plan has the packages of `.pkg` installers that are not
+Apple's. `uninstall pkg:<id>` moves their files to a directory in the Trash
+and makes macOS forget the package (`pkgutil --forget`); it asks for your
+password. A package whose files are all gone gets `uninstall` by default;
+the others are `keep`. Tidy never uninstalls a package with launch daemons,
+kernel or system extensions, or privileged helpers: only the vendor's
+uninstaller removes those. The packages of the App Store and of Homebrew
+casks are not in the plan. `dotkit tidy -n` prints the plan and changes
+nothing. `migrate/TIDY.md` has the details.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
@@ -146,9 +199,22 @@ Most base files read a file of yours after them, so your settings win:
 the same PATH and mise as zsh. An interactive bash then reads `~/.bashrc`.
 
 Keep tokens and other secrets out of every repository: put their `export`
-lines in `~/.secrets`, readable only by you (`chmod 600 ~/.secrets`). The base
-`~/.zprofile` sources it before `~/.zprofile.local`, so login shells have
-them. `zsh -c` without `-l` does not read it.
+lines in `~/.secrets`, readable only by you (`chmod 600 ~/.secrets`). Config
+files refer to the variables, for example `${NPM_TOKEN}` in `config/npmrc`.
+Write plain `export NAME='value'` lines, because zsh, bash, and `/bin/sh`
+read the file:
+
+- The base `~/.zprofile` sources it before `~/.zprofile.local`, and
+  `~/.bash_profile` before `~/.bash_profile.local`, so login shells and the
+  programs that they start have the variables. `zsh -c` without `-l` does not
+  read it.
+- GUI apps get them too. A launchd agent reads the exported variables of
+  `~/.secrets` at login and when the file changes. An app that is open keeps
+  the old values until you restart it, and a variable that you remove stays
+  until the next login. To turn it off, set
+  `dotkit.guiSecrets.enable = false;` in `nix/darwin.nix`.
+- Keep only secrets in the file. Every GUI app gets its variables, so a
+  setting such as `NODE_OPTIONS` belongs in `~/.zshenv.local`.
 
 Link your file in `nix/home.nix`:
 
@@ -244,7 +310,12 @@ used Mac: it has many Homebrew packages, and the job adds old dotfiles. It
 applies again, then `tests/e2e/verify.sh` checks the result: the login shell, the
 `dotkit` command, zsh, `bash -l`, the links, mise, and `dotkit add` and `remove`.
 `tests/e2e/migrated.sh` checks the new lists, the carried shell lines, and
-`MIGRATION.md`.
+`MIGRATION.md`. `tests/e2e/tidy.sh` makes two apps that look installed by hand, then
+checks that `dotkit tidy` adopts one and that `dotkit add` adopts the
+other, with the same bundle and the same app data. Then tidy uninstalls the
+pipx copy of pycowsay, which mise has after setup, moves a copy of `jq` in
+`~/.local/bin` to the Trash, and uninstalls two packages that it builds with
+`pkgbuild`.
 The `e2e-etc` job, on macOS 26 only, installs Nix first and keeps the changed
 `/etc/shells` of the runner, so the first activation fails. It checks that
 setup moved `/etc/zshrc` and `/etc/bashrc` back, then moves `/etc/shells`

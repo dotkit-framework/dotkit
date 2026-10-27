@@ -44,7 +44,7 @@ jobs:
             scripts/herdr/git-status.sh scripts/herdr/process-name.sh \
             scripts/herdr/process-name.bash config/bash/bash_profile \
             templates/default/dotkit tests/e2e/verify.sh \
-            tests/e2e/etc-restored.sh tests/e2e/migrated.sh tests/setup.sh
+            tests/e2e/etc-restored.sh tests/e2e/migrated.sh tests/e2e/tidy.sh tests/setup.sh
 
       # shellcheck does not read zsh. zsh -n parses a file without running it.
       # scripts/herdr/process-name.sh is sourced by zsh too.
@@ -138,8 +138,8 @@ jobs:
 
       # A used Mac often has its own ~/.zprofile and ~/.zshrc, for example with
       # the lines from the Homebrew installer. Home Manager must rename them.
-      # The wizard carries the export, the alias, and the secret (to an ignored
-      # file), and reports the other lines; tests/e2e/migrated.sh checks it.
+      # The wizard carries the export and the alias, moves the secret to
+      # ~/.secrets, and reports the other lines; tests/e2e/migrated.sh checks it.
       - name: Add the dotfiles of a used Mac
         run: |
           # shellcheck disable=SC2016 # The line for the file, not to expand.
@@ -165,6 +165,11 @@ jobs:
           pipx install pycowsay
           # dotkit does not link ~/.bashrc. An interactive bash -l reads it.
           echo 'export OLD_BASHRC=1' >>~/.bashrc
+          # A registry with a token, after the global installs. The wizard
+          # moves the token to ~/.secrets and npm reads it from there. The
+          # token is made here, so that no file of dotkit has one.
+          printf '%s\n' '@dotkit-test:registry=https://npm.pkg.github.com' \
+            "//npm.pkg.github.com/:_authToken=npm_$(printf 'x%.0s' $(seq 36))" >>~/.npmrc
 
       # The way a teammate sets up a new Mac, without a repository URL, so it
       # creates ~/.dotfiles from the template. --yes: there is no terminal.
@@ -183,6 +188,12 @@ jobs:
 
       - name: Verify the migration
         run: tests/e2e/migrated.sh "$RUNNER_TEMP"
+
+      # Apps from a "DMG": dotkit tidy adopts one, and brew bundle adopts one
+      # that the list has. After the checks of the migration, which compare
+      # the lists with the runner before setup.
+      - name: Verify dotkit tidy
+        run: tests/e2e/tidy.sh
 
       - name: Show the migration report
         if: always()

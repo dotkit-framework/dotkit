@@ -105,6 +105,39 @@ class OtherConfigTests(unittest.TestCase):
             self.assertFalse((result.repo / "config" / name).exists())
         self.assertIn(fake.TOKENS["@HEX40@"], (result.repo / "config/clean/lazy-lock.json").read_text())
 
+    def test_pi(self):
+        """~/.pi/agent: its config entries, each offered on its own; logins and state stay; the old place is not offered."""
+        self.h.write(".pi/agent/settings.json", '{"theme": "dark"}\n')
+        self.h.write(".pi/agent/AGENTS.md", "Be brief.\n")
+        self.h.write(".pi/agent/extensions/hello.ts", "export default () => {};\n")
+        self.h.write(".pi/agent/models.json", fake.fill('{"providers": {"x": {"apiKey": "@NPM@"}}}\n'))
+        self.h.write(".pi/agent/auth.json", fake.fill('{"anthropic": {"key": "@GH@"}}\n'))
+        self.h.write(".pi/agent/sessions/one.jsonl", "{}\n")
+        self.h.write(".config/pi/settings.json", '{"theme": "light"}\n')
+        s = self.scan()
+        found = {o.rel: (o.adoptable, o.reason, o.dest) for o in s.found}
+        self.assertEqual({k: v for k, v in found.items() if k.startswith(".pi/")}, {
+            ".pi/agent/settings.json": (True, "", "config/pi/settings.json"),
+            ".pi/agent/AGENTS.md": (True, "", "config/pi/AGENTS.md"),
+            ".pi/agent/models.json": (False, "has a secret", "config/pi/models.json"),
+            ".pi/agent/extensions": (True, "", "config/pi/extensions"),
+        })
+        self.assertNotIn(".config/pi", found)
+        self.assertEqual([(o.rel, o.app, o.root) for o in s.old], [(".config/pi", "pi", ".pi/agent")])
+        p = fake.session(self.h, fake.brew_runner())
+        self.assertEqual([i for i in other_items(p) if "pi" in i],
+                         [".pi/agent/settings.json", ".pi/agent/AGENTS.md", ".pi/agent/extensions"])
+        c = p.defaults(self.repo)
+        pick(c, "other:.pi/agent/settings.json", "other:.pi/agent/extensions")
+        result = p.build(c)
+        self.assertEqual(result.copies["config/pi/settings.json"], self.h.home / ".pi/agent/settings.json")
+        self.assertEqual(result.links[".pi/agent/extensions"], "config/pi/extensions")
+        self.assertNotIn(".config/pi", result.links)
+        self.assertIn("- ~/.config/pi: an old place of the pi config. pi reads ~/.pi/agent now, so ~/.config/pi has "
+                      "no effect, and it is not offered. Delete it when you no longer need it.\n", result.report)
+        self.assertIn("- ~/.pi/agent/auth.json: on a new Mac, `/login` in pi\n", result.report)
+        self.assertIn("- ~/.pi/agent/AGENTS.md\n", result.report)
+
     def test_other_config_whose_place_is_taken(self):
         """A copy goes only to a free repository path; the other file stays in place, with a to-do."""
         cases = {

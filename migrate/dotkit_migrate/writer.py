@@ -1,13 +1,13 @@
-"""The plan of the documents, the secret guards, and the only code that writes to a repository.
+"""The plan of the documents, the secret guards, and the only code that writes to a repository and ~/.secrets.
 
 render() turns the committed documents into a Plan and runs the plan-time
-guard over it: a copy with a secret is dropped, and a line with a secret in a
-generated file is moved to local/ or masked. mask_lines() masks the report,
-the summary, and adopt's output. write_new() creates the repository, and
-before the rename it checks the staged tracked files once more: a secret
-there aborts the write, and nothing is left behind. apply_edits() changes
-the files of an existing repository for `dotkit migrate`: all of them or
-none.
+guard over it: a copy with a secret is dropped, and a statement or line with
+a secret in a generated file is dropped or masked. mask_lines() masks the
+report, the summary, and adopt's output. write_secrets() appends the new
+variables to ~/.secrets. write_new() creates the repository, and before the
+rename it checks the staged tracked files once more: a secret there aborts
+the write, and nothing is left behind. apply_edits() changes the files of an
+existing repository for `dotkit migrate`: all of them or none.
 """
 
 from __future__ import annotations
@@ -34,18 +34,15 @@ def render(docs: Docs) -> Plan:
 
     In this order: the copy guard, which drops a copy with a secret through
     Docs.drop, so that its links never reach nix/home.nix; the documents
-    render; the file guard over the rendered tracked files; the /local/ block
-    in .gitignore.
+    render; the file guard over the rendered tracked files.
     """
     _guard_copies(docs)
     plan = Plan(docs.repo, docs.keymap(), home=docs.home)
-    plan.files, plan.local = docs.render()
+    plan.files, plan.secrets = docs.render()
+    plan.secret_names = docs.secret_names()
     plan.copies = docs.copies.items()
     plan.links = docs.links()
     _guard_files(docs, plan)
-    if plan.local:
-        plan.files[".gitignore"] = (docs.template / ".gitignore").read_text(encoding="utf-8").rstrip("\n") + \
-            "\n# Files with secrets, from the migration. See MIGRATION.md.\n/local/\n"
     return plan
 
 
@@ -75,28 +72,20 @@ def _guard_copies(docs: Docs) -> None:
         docs.drop(rel)
 
 
+_SHELL_FILES = frozenset({"config/bash/bash_profile", "config/zsh/zshrc", "config/zsh/zprofile",
+                          "config/zsh/zshenv"})
+
+
 def _guard_files(docs: Docs, plan: Plan) -> None:
     t = docs.begin("guard")
     for rel, text in list(plan.files.items()):
         if not secrets.scan_text(text):
             continue
-        shell = "bash" if rel == "config/bash/bash_profile" else "zsh" if rel in {
-            "config/zsh/zshrc", "config/zsh/zprofile", "config/zsh/zshenv"} else None
-        if shell:
+        if rel in _SHELL_FILES:
             # Never cut a shell statement in half. This guard is a fallback;
-            # the parser normally routes the original statement to local/.
-            kept, local = [], []
-            for st in rcparse._statements(text):
-                if not secrets.scan_text(st.text):
-                    kept.append(st.text)
-                elif not st.text.lstrip().startswith("#"):
-                    local.append(st.text)
-            if local:
-                name = f"local/{Path(rel).name}.{shell}"
-                plan.local[name] = plan.local.get(name, "") + "\n".join(local) + "\n"
-                source = tilde(plan.repo / name, docs.home).replace("~", "$HOME", 1)
-                if not any(f'source "{source}"' in st for st in kept):
-                    kept.append(f'if [[ -r "{source}" ]]; then\n  source "{source}"\nfi')
+            # the shell migrator normally routes the statement to ~/.secrets
+            # or the report.
+            kept = [st.text for st in rcparse._statements(text) if not secrets.scan_text(st.text)]
             plan.files[rel] = "\n".join(kept) + "\n"
         else:
             rows = text.splitlines()
@@ -147,9 +136,9 @@ def verify(tree: Path, plan: Plan) -> list[str]:
     The checks are those of the plan-time guard: secrets.scan_text for the
     files of the plan, secrets.has_secret for the other files (the copies and
     the template), with links inside a copied directory and .DS_Store
-    skipped. So only what changed after the guard ran is found. local/,
-    .build/, and .git are left out, as Git does not track them. A directory
-    that cannot be read is a find. It changes nothing.
+    skipped. So only what changed after the guard ran is found. .build/ and
+    .git are left out, as Git does not track them. A directory that cannot be
+    read is a find. It changes nothing.
     """
     found: list[str] = []
 
@@ -159,7 +148,7 @@ def verify(tree: Path, plan: Plan) -> list[str]:
     for root, dirs, files in os.walk(tree, onerror=unreadable, followlinks=False):
         here = Path(root)
         if here == tree:
-            dirs[:] = [d for d in dirs if d not in ("local", ".build", ".git")]
+            dirs[:] = [d for d in dirs if d not in (".build", ".git")]
         dirs[:] = [d for d in dirs if d != ".DS_Store"]
         for name in sorted(files):
             path = here / name
@@ -213,6 +202,26 @@ def _remove(tmp: Path) -> None:
               flush=True)
 
 
+def write_secrets(plan: Plan) -> None:
+    """Append plan.secrets to ~/.secrets, which is created with mode 0600. Raises OSError.
+
+    Setup calls it before write_new(). It is safe to run again: the plan adds
+    only the names that ~/.secrets does not have, and the values are the ones
+    that the shell files and config files of this Mac use now.
+    """
+    if not plan.secrets:
+        return
+    path = Path(plan.home) / ".secrets"
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
+        if os.fstat(f.fileno()).st_size > 0:
+            with open(path, "rb") as r:
+                r.seek(-1, os.SEEK_END)
+                last = r.read(1)
+            f.write("\n" if last == b"\n" else "\n\n")
+        f.write(plan.secrets)
+
+
 def write_new(plan: Plan, template: Path) -> None:
     """Create the repository of the plan. It must not exist yet.
 
@@ -240,13 +249,6 @@ def write_new(plan: Plan, template: Path) -> None:
             dest = tmp / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(text, encoding="utf-8")
-        for rel, text in plan.local.items():
-            dest = tmp / rel
-            dest.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            os.chmod(dest.parent, 0o700)
-            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(text)
         if plan.move_links:
             # For scripts/setup, also when it runs again: .build/ is ignored by Git.
             (tmp / ".build").mkdir(exist_ok=True)

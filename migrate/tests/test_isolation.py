@@ -57,7 +57,7 @@ def without_problems(plan) -> dict:
     summary = [f"MIGRATION.md: {int(COUNT.match(s).group(1)) - n} items to check by hand."
                if COUNT.match(s) else s for s in summary]
     files = {k: v for k, v in plan.files.items() if k != "MIGRATION.md"}
-    return {"files": files, "copies": plan.copies, "local": plan.local, "links": plan.links,
+    return {"files": files, "copies": plan.copies, "secrets": plan.secrets, "links": plan.links,
             "move_links": plan.move_links, "blockers": plan.blockers, "report": report, "summary": summary}
 
 

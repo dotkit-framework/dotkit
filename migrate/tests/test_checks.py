@@ -71,8 +71,9 @@ class SummaryTests(unittest.TestCase):
         h, result = self.build()
         summary = "\n".join(result.summary)
         self.assertIn("Renamed to <name>.before-dotkit by the first apply: ~/.bash_profile, ~/.config/ghostty/config,", summary)
-        self.assertNotIn("~/.npmrc,", summary.split("Renamed")[1])
-        self.assertIn("Stay in place, not linked: ~/.npmrc", summary)
+        self.assertIn("~/.npmrc,", summary.split("Renamed")[1])
+        self.assertNotIn("Stay in place, not linked", summary)
+        self.assertIn("Secrets -> ~/.secrets, outside the repository: GITHUB_TOKEN, NPM_TOKEN", summary)
         self.assertEqual(checks.moved_aside(result)[:2], ["~/.bash_profile", "~/.config/ghostty/config"])
 
     def test_a_summary_line_with_a_token_is_masked(self):

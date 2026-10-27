@@ -214,3 +214,32 @@ MISE_COMMANDS = {
     "ruby": ("ruby", "gem"),
     "uv": ("uv",),
 }
+
+
+@dataclass(frozen=True)
+class AppConfigSpec:
+    """An app that keeps its config in a directory of its own, not in ~/.config.
+
+    The wizard offers each config entry of the directory as other config,
+    copied to the repository directory and linked back. The entries that are
+    not in the list (sessions, caches, logins) stay in place. The old places
+    of the config are never offered: the report says that the app no longer
+    reads them.
+    """
+
+    name: str
+    root: str  # relative to the home directory
+    entries: tuple[str, ...]  # files and directories in root that hold config
+    dest: str  # the directory in the repository
+    old: tuple[str, ...] = ()  # old places, relative to the home directory
+
+
+APP_CONFIGS = (
+    # The pi coding agent, docs/configuration.md. auth.json and mcp-auth.json
+    # hold logins (secrets.SECRET_FILES).
+    AppConfigSpec("pi", ".pi/agent",
+                  ("settings.json", "keybindings.json", "mcp.json", "models.json", "AGENTS.md",
+                   "AGENTS.override.md", "CLAUDE.md", "SYSTEM.md", "APPEND_SYSTEM.md",
+                   "extensions", "skills", "prompts", "themes"),
+                  "config/pi", old=(".config/pi",)),
+)

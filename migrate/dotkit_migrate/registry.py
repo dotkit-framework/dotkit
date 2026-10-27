@@ -17,12 +17,13 @@ import getpass
 import os
 import re
 import socket
+import stat
 import traceback
 from collections.abc import Callable
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-from . import checks, secrets, writer
+from . import checks, secrets, secrets_file, writer
 from . import docs as docs_mod
 from . import report as report_mod
 from .context import Context, expand, tilde
@@ -73,6 +74,13 @@ class IdentityScan:
         out = runner.run(["/usr/bin/dscl", ".", "-read", f"/Users/{identity.user}", "UserShell"], timeout=30) or ""
         m = re.search(r"UserShell:\s*(\S+)", out)
         identity.login_shell = m.group(1) if m else ctx.env.get("SHELL", "")
+        p = ctx.home / ".secrets"
+        if os.path.lexists(p):
+            try:
+                identity.secrets_mode = stat.S_IMODE(p.stat().st_mode)
+                identity.secrets = secrets_file.read(p.read_text(encoding="utf-8", errors="replace"))
+            except OSError as e:
+                identity.secrets_error = e.strerror or str(e)
         return identity
 
     def manual_steps(self, ctx: Context) -> str:
@@ -293,7 +301,7 @@ class Session:
             view = facts.without(out)
             view.check_syntax = check
             docs = docs_mod.Docs("setup", facts.base.template, repo, home=ident.home, host=ident.hostname,
-                                 strict=self.strict)
+                                 strict=self.strict, secrets=ident.secrets)
             if self._plans(view, choices, docs, out, failures):
                 break
             self._skip(out, failures)
@@ -310,6 +318,12 @@ class Session:
             core.report.blocker("dotkit could not find the name of your macOS account. Set USER to it and run "
                                 "setup again.")
         core.shell_nix().set_keymap(choices.keymap)
+        if docs.secret_names() and ident.secrets_error:
+            core.report.blocker(f"~/.secrets cannot be read ({ident.secrets_error}), so dotkit cannot add the "
+                                "variables of your secrets to it. Fix it and run setup again.")
+        if ident.secrets_mode is not None and ident.secrets_mode & 0o077:
+            core.report.todo("Secrets", "", [f"~/.secrets can be read by other users (mode "
+                                             f"{ident.secrets_mode:o}). Run `chmod 600 ~/.secrets`."])
         for w in view.warnings:
             core.report.todo("Scan warnings", "Part of the scan could not read everything. Check these by hand.",
                              [w])
@@ -378,8 +392,8 @@ class Session:
                 txn.rollback()
                 self._fail(m, "adopt", e, failures)
         failures += self._conflicts(docs)
-        files, local = docs.render()
-        assert not local, "adopt writes nothing to local/"
+        files, secret_lines = docs.render()
+        assert not secret_lines, "adopt writes nothing to ~/.secrets"
         added = []
         for rel, header in ADOPT_LISTS:
             d = docs.get(rel)

@@ -53,6 +53,15 @@ usage() {
     '                              and that the lists do not have. Asks, then adds them.' \
     '                              --all: also cargo and Go tools, which mise builds from' \
     '                              source.' \
+    '  tidy [-n] [-y] [--plan FILE]' \
+    '                              Give the apps of this Mac a clean source: find the apps' \
+    '                              from a DMG or an installer that have a cask, and the App' \
+    '                              Store apps that the lists do not have. Also finds old' \
+    '                              copies of tools that dotkit has (npm, pipx, uv, cargo,' \
+    '                              Homebrew, files) and .pkg installer packages. Opens the' \
+    '                              plan in your editor, asks once, then installs the casks,' \
+    '                              adds them to the lists, and uninstalls what you chose.' \
+    '                              App data stays.' \
     '' \
     'Recovery:' \
     '  history                     The package changes of the last apply.' \
@@ -315,6 +324,20 @@ cmd_migrate() {
   "$dotkit/migrate/dotkit-migrate" adopt --repo "$repo" --declared "$declared" ${args[@]+"${args[@]}"}
 }
 
+# dotkit tidy (migrate/TIDY.md) gives the apps of this Mac a clean source.
+# It reads the App Store apps of the configuration from here, as migrate does.
+cmd_tidy() {
+  (($# == 0)) || usage_error "tidy takes no arguments."
+  local declared args=()
+  # shellcheck disable=SC2016 # A Nix expression.
+  declared=$(nix_flake eval --json "$flake#darwinConfigurations.mac.config.homebrew" \
+    --apply 'h: { taps = map (t: t.name) h.taps; masApps = h.masApps; }')
+  [[ -z $dry_run ]] || args+=(--dry-run)
+  [[ -z $yes ]] || args+=(--yes)
+  [[ -z $plan ]] || args+=(--plan "$plan")
+  "$dotkit/migrate/dotkit-migrate" tidy --repo "$repo" --declared "$declared" ${args[@]+"${args[@]}"}
+}
+
 # --- recovery
 
 # Compare the active generation with the one before it.
@@ -368,7 +391,7 @@ __complete)
   exit 0
   ;;
 -h | --help | help | '') usage; exit 0 ;;
-apply | upgrade | history | rollback | clean | migrate) ;;
+apply | upgrade | history | rollback | clean | migrate | tidy) ;;
 switch) usage_error "'switch' is now 'apply'." ;;
 build | diff) usage_error "'$cmd' is now 'apply -n'." ;;
 update) usage_error "'update' is now 'upgrade nix' (or 'upgrade <input>')." ;;
@@ -380,11 +403,16 @@ gc) usage_error "'gc' is now 'clean'." ;;
 *) usage_error "unknown command: $cmd." ;;
 esac
 
-dry_run='' yes='' all=''
+dry_run='' yes='' all='' plan=''
 args=()
 while [[ $# -gt 0 ]]; do
   case $1 in
   -n | --dry-run) dry_run=1 ;;
+  --plan)
+    [[ $# -ge 2 ]] || usage_error "--plan needs a file."
+    plan=$(cd -- "$(dirname -- "$2")" && pwd -P)/$(basename -- "$2") || usage_error "'$2' is not in a directory that exists."
+    shift
+    ;;
   -y | --yes) yes=1 ;;
   -a | --all) all=1 ;;
   -h | --help) usage; exit 0 ;;
@@ -399,5 +427,6 @@ history | rollback) [[ -z $dry_run$yes ]] || usage_error "$cmd takes no options.
 apply) [[ -z $yes ]] || usage_error "apply does not ask, so it takes no -y." ;;
 esac
 [[ -z $all || $cmd == migrate ]] || usage_error "--all is for migrate only."
+[[ -z $plan || $cmd == tidy ]] || usage_error "--plan is for tidy only."
 
 "cmd_$cmd" ${args[@]+"${args[@]}"}

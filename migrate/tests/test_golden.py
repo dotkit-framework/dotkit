@@ -185,7 +185,8 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     h.mkdir(".sdkman/candidates/java/17.0.10-zulu")
     os.symlink("21.0.2-tem", h.home / ".sdkman/candidates/java/current")
     # npm in an npm prefix, and bun.
-    h.write(".npmrc", "prefix=${HOME}/.npm-global\n")
+    h.write(".npmrc", fake.fill("prefix=${HOME}/.npm-global\n@acme:registry=https://npm.pkg.github.com\n"
+                                "//npm.pkg.github.com/:_authToken=@GH@\n"))
     h.json(".npm-global/lib/node_modules/eslint/package.json",
            {"name": "eslint", "version": "9.0.0", "bin": {"eslint": "bin/eslint.js"}})
     h.json(".bun/install/global/package.json", {"dependencies": {"prettier": "^3.2.0"}})
@@ -229,7 +230,10 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     os.symlink("../dotfiles/ghostty", h.home / ".config/ghostty")  # Stow makes relative links.
     h.write("Library/Application Support/com.mitchellh.ghostty/config", "theme = mine\n")
     h.write(".config/git/config", "[pull]\n\trebase = true\n")
-    h.write(".gitconfig", "[core]\n\teditor = nvim\n")
+    h.write(".gitconfig", fake.fill("[core]\n\teditor = nvim\n[url \"https://x-access-token:@GH@@github.com/\"]\n"
+                                    "\tinsteadOf = https://github.com/\n"))
+    # ~/.secrets that has a variable already.
+    h.write(".secrets", "export OLD_TOKEN=1\n", mode=0o600)
     # A link made by hand, with an absolute path.
     starship = h.write("dotfiles/starship.toml", 'format = "$all"\n')
     os.symlink(starship, h.home / ".config/starship.toml")
@@ -244,6 +248,12 @@ def kitchen_sink(h: fake.Home) -> tuple[fake.FakeRunner, dict[str, str]]:
     h.write(".config/gh/hosts.yml", fake.fill("github.com:\n  oauth_token: @GHO@\n"))
     h.write(".vimrc", "set number\n")
     h.write(".netrc", "machine example.com login me password hunter2hunter2\n")
+    # pi: config, a login, state, and its old place.
+    h.write(".pi/agent/settings.json", '{"theme": "dark"}\n')
+    h.write(".pi/agent/extensions/hello.ts", "export default () => {};\n")
+    h.write(".pi/agent/auth.json", fake.fill('{"anthropic": {"key": "@GH@"}}\n'))
+    h.write(".pi/agent/sessions/one.jsonl", "{}\n")
+    h.write(".config/pi/settings.json", '{"theme": "light"}\n')
     runner = fake.brew_runner(
         formulae=["wget", "ripgrep", "node", "zsh", "hashicorp/tap/terraform", "acme/tools/thing"],
         casks=["ghostty", "raycast", "zed", "font-jetbrains-mono"],
@@ -390,10 +400,10 @@ class GoldenTests(unittest.TestCase):
         text = dump(data)
         for leak in ("dotkit-migrate-test-", tempfile.gettempdir()):
             self.assertNotIn(leak, text, "the normalization missed it")
-        # The tokens: only in the files that Git ignores.
-        tracked = dump({k: v for k, v in data.items() if k != "local"})
+        # The tokens: only in the lines for ~/.secrets, outside the repository.
+        tracked = dump({k: v for k, v in data.items() if k != "secrets"})
         for placeholder in fake.TOKENS:
-            self.assertNotIn(placeholder, tracked, "a secret outside local/")
+            self.assertNotIn(placeholder, tracked, "a secret outside ~/.secrets")
         path = GOLDEN / f"{name}.json"
         if REGOLD:
             path.parent.mkdir(exist_ok=True)

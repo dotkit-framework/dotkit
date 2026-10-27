@@ -3,7 +3,10 @@
 Also ~/.gitconfig (adopted into config/gitconfig, merged with
 ~/.config/git/config when both are carried) and your mise config, which
 becomes the base of config/mise.toml when it is carried as "layer". A file
-with a secret never goes into the repository.
+with a secret never goes into the repository. When lift.py can move all its
+secrets to variables of ~/.secrets, the rest of it can: ~/.npmrc as
+"tokens" (the dotkit file with your registries and tokens), a Git config file
+without its settings with a secret, which go to GIT_CONFIG_* variables.
 """
 
 from __future__ import annotations
@@ -13,11 +16,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .. import base as base_mod
-from .. import secrets
+from .. import lift, secrets, secrets_file
 from .._compat import tomllib
 from ..context import Context, is_managed, read_text, tilde
 from ..docs import Txn, toml_value
 from ..model import Choices, Facts, Item, Page
+from ..report import plural
 from . import Migrator, and_list
 
 OPTION_TEXT = {
@@ -26,6 +30,7 @@ OPTION_TEXT = {
     "dotkit": "the dotkit file; yours is renamed to <name>.before-dotkit",
     "keep": "leave yours in place, outside the repository",
     "adopt": "yours, in the repository",
+    "tokens": "the dotkit file, with your registries and tokens; the tokens go to ~/.secrets",
 }
 
 MISE_CONFIG = ".config/mise/config.toml"
@@ -39,6 +44,11 @@ class ConfigFile:
     same_as_base: bool = False
     # Your layer file of the base link (~/.config/ghostty/config.local) exists already.
     layer_exists: bool = False
+    # ~/.npmrc: its registries and tokens (lift.npmrc), None without any or when a secret cannot be moved.
+    npm: Optional[lift.NpmTokens] = None
+    # A Git config file with secrets that can all move to ~/.secrets: its text without them, and the settings
+    # (lift.gitconfig). None otherwise.
+    lifted: Optional[Tuple[str, List[Tuple[str, str]]]] = None
 
 
 @dataclass
@@ -61,6 +71,29 @@ def _secrets_of(p: Path) -> List[secrets.Secret]:
         return secrets.scan_file(p)
     except secrets.Unscannable as e:
         return [secrets.Secret(0, f"a file that cannot be checked ({e})")]
+
+
+def _allowed(x: ConfigFile) -> Tuple[str, ...]:
+    """The choices of a file with secrets: none of them copies a secret into the repository."""
+    return ("keep", "dotkit") + (("tokens",) if x.npm else ()) + \
+        (("layer", "replace", "adopt") if x.lifted else ())
+
+
+def _secret_note(x: ConfigFile) -> str:
+    return "has secrets: " + ", ".join(sorted({s.what for s in x.secrets}))
+
+
+def _git_lift(ctx: Context, p: Path, found: List[secrets.Secret]) -> Optional[Tuple[str, List[Tuple[str, str]]]]:
+    """lift.gitconfig of a Git config file with secrets, when they can all go to ~/.secrets."""
+    if not found or any(s.line == 0 for s in found):
+        return None
+    # GIT_CONFIG_COUNT counts the settings of every variable: the migration does not add to one that exists.
+    if "GIT_CONFIG_COUNT" in secrets_file.read(read_text(ctx.home / ".secrets")):
+        return None
+    lifted = lift.gitconfig(read_text(p))
+    if lifted is None or not lifted[1] or secrets.scan_text(lifted[0]):
+        return None
+    return lifted
 
 
 def _mise_layered(cf: Optional[ConfigFacts], c: Choices) -> bool:
@@ -161,18 +194,20 @@ def _idiomatic(f: Facts, txn: Txn, settings: Dict[str, object], layered: bool) -
 
 def _choice(x: ConfigFile, c: Choices) -> str:
     choice = c.option(f"file:{x.target}") or "dotkit"
-    if x.secrets and choice not in ("keep", "dotkit"):
+    if choice == "tokens" and not x.npm:
+        choice = "dotkit"
+    if x.secrets and choice not in _allowed(x):
         choice = "keep"
     return choice
 
 
 def _git_choice(cf: ConfigFacts, c: Choices) -> str:
-    if cf.gitconfig and cf.gitconfig.secrets:
+    if cf.gitconfig and cf.gitconfig.secrets and not cf.gitconfig.lifted:
         return "keep"
     return c.option("file:.gitconfig") or ("adopt" if cf.gitconfig else "")
 
 
-def _git_parts(f: Facts, cf: ConfigFacts, c: Choices) -> List[Tuple[str, Path]]:
+def _git_parts(f: Facts, cf: ConfigFacts, c: Choices) -> List[Tuple[str, ConfigFile]]:
     """The files that go to config/gitconfig, in order: ~/.config/git/config as "layer", and ~/.gitconfig."""
     home = f.identity.home
     git_choice = _git_choice(cf, c)
@@ -180,10 +215,15 @@ def _git_parts(f: Facts, cf: ConfigFacts, c: Choices) -> List[Tuple[str, Path]]:
     for x in cf.files:
         if x.target == ".config/git/config" and _choice(x, c) == "layer" and not (cf.gitconfig and
                                                                                   git_choice != "adopt"):
-            parts.append((tilde(x.path, home), x.path))
+            parts.append((tilde(x.path, home), x))
     if cf.gitconfig and git_choice == "adopt":
-        parts.append((tilde(cf.gitconfig.path, home), cf.gitconfig.path))
+        parts.append((tilde(cf.gitconfig.path, home), cf.gitconfig))
     return parts
+
+
+def _git_text(x: ConfigFile) -> str:
+    """The text of a Git config file that goes into the repository: without its secrets, when it had any."""
+    return x.lifted[0] if x.lifted else _text(x.path)
 
 
 def merged_sources(f: Facts, c: Choices) -> Dict[str, str]:
@@ -193,6 +233,13 @@ def merged_sources(f: Facts, c: Choices) -> Dict[str, str]:
         return {}
     parts = _git_parts(f, cf, c)
     return {"config/gitconfig": " and ".join(w for w, _ in parts)} if len(parts) > 1 else {}
+
+
+def _npm_base(f: Facts, link: base_mod.Link) -> str:
+    """config/npmrc of dotkit without its first comment, which is about the dotkit file."""
+    text = _text(f.base.file(link.source))
+    head, sep, rest = text.partition("\n\n")
+    return rest if sep and all(row.startswith("#") for row in head.splitlines()) else text
 
 
 def _text(p: Path) -> str:
@@ -207,7 +254,7 @@ def _file_item(target: str, options: List[str], default: str, note: str) -> Item
 class ConfigFiles(Migrator):
     key = "config_files"
     title = "Config files"
-    sections = ("Config files", "mise")
+    sections = ("Config files", "mise", "Secrets")
 
     def manual_steps(self, ctx: Context) -> str:
         """Section 7.5: what the template does without this migrator, from base.LINKS."""
@@ -230,10 +277,17 @@ class ConfigFiles(Migrator):
             base_file = ctx.base.file(link.source)
             same = read_text(p) == read_text(base_file) if base_file.is_file() else False
             layer_exists = bool(link.layer) and (ctx.home / link.layer).exists()
-            cf.files.append(ConfigFile(link.target, p, _secrets_of(p), same, layer_exists))
+            x = ConfigFile(link.target, p, _secrets_of(p), same, layer_exists)
+            if link.target == ".npmrc" and not any(s.line == 0 for s in x.secrets):
+                npm = lift.npmrc(read_text(p))
+                x.npm = npm if npm and npm.settings else None
+            if link.target == ".config/git/config":
+                x.lifted = _git_lift(ctx, p, x.secrets)
+            cf.files.append(x)
         p = ctx.home / ".gitconfig"
         if p.is_file() and not is_managed(p):
-            cf.gitconfig = ConfigFile(".gitconfig", p, _secrets_of(p))
+            found = _secrets_of(p)
+            cf.gitconfig = ConfigFile(".gitconfig", p, found, lifted=_git_lift(ctx, p, found))
         p = ctx.home / MISE_CONFIG
         if p.is_file() and not is_managed(p):
             cf.mise_config = ConfigFile(MISE_CONFIG, p, _secrets_of(p))
@@ -249,6 +303,8 @@ class ConfigFiles(Migrator):
         for x in cf.files:
             link = next(link for link in base_mod.LINKS if link.target == x.target)
             options = []
+            if x.npm:
+                options.append("tokens")
             if link.layer and not (x.layer_exists and link.layer != ".gitconfig"):
                 options.append("layer")
             if x.target != ".config/git/config":
@@ -256,10 +312,17 @@ class ConfigFiles(Migrator):
             options += ["dotkit", "keep"]
             note = ""
             if x.secrets:
-                # A file with a secret never goes into the repository.
-                options, default = ["keep", "dotkit"], "keep"
-                note = "has secrets: " + ", ".join(sorted({s.what for s in x.secrets})) + \
-                    ". It stays out of the repository"
+                # A file with a secret never goes into the repository; the choices that do not copy it remain.
+                options = [o for o in options if o in _allowed(x)] if x.npm or x.lifted else ["keep", "dotkit"]
+                default = options[0]
+                if x.npm:
+                    note = _secret_note(x) + ". Its tokens go to ~/.secrets"
+                elif x.lifted:
+                    note = _secret_note(x) + ". Its settings with a secret go to ~/.secrets"
+                else:
+                    note = _secret_note(x) + ". It stays out of the repository"
+            elif x.npm:
+                default, note = "tokens", "your registries go to config/npmrc, with the dotkit settings"
             elif x.same_as_base:
                 default, note = "dotkit", "the same as the dotkit file"
             else:
@@ -267,10 +330,12 @@ class ConfigFiles(Migrator):
             items.append(_file_item(x.target, options, default, note))
         if cf.gitconfig:
             g = cf.gitconfig
-            if g.secrets:
+            if g.secrets and g.lifted:
+                items.append(_file_item(".gitconfig", ["adopt", "keep"], "adopt",
+                                        _secret_note(g) + ". Its settings with a secret go to ~/.secrets"))
+            elif g.secrets:
                 items.append(_file_item(".gitconfig", ["keep"], "keep",
-                                        "has secrets: " + ", ".join(sorted({s.what for s in g.secrets})) +
-                                        ". It stays out of the repository"))
+                                        _secret_note(g) + ". It stays out of the repository"))
             else:
                 items.append(_file_item(".gitconfig", ["adopt", "keep"], "adopt",
                                         "Git reads it after the dotkit file"))
@@ -324,10 +389,12 @@ class ConfigFiles(Migrator):
                                             f"config/{Path(link.source).name}. Compare the two; the dotkit file "
                                             f"has settings that yours does not, for example "
                                             f"{_base_example(x.target)}."])
+            elif choice == "tokens":
+                _npm_tokens(f, txn, x, link, where)
             elif choice == "keep":
                 txn.links().link(x.target, None)
-                why = "it has secrets (" + ", ".join(sorted({s.what for s in x.secrets})) + ")" if x.secrets else \
-                    "you chose to keep it"
+                why = "it has secrets (" + ", ".join(sorted({s.what for s in x.secrets})) + ")" if x.secrets \
+                    and not x.lifted else "you chose to keep it"
                 r.todo("Config files", "", [f"{where} stays in place and outside the repository, because {why}. "
                                             f"dotkit does not link its own file there. To get the dotkit "
                                             f"settings, copy them from config/{Path(link.source).name} of dotkit."])
@@ -337,15 +404,18 @@ class ConfigFiles(Migrator):
                                                 f"{where}.before-dotkit. Copy the settings you miss to "
                                                 + (f"~/{link.layer}" if link.layer else "your own copy") + "."])
         if cf.gitconfig and git_choice != "adopt":
-            why = "it has secrets" if cf.gitconfig.secrets else "you chose to keep it"
+            why = "it has secrets" if cf.gitconfig.secrets and not cf.gitconfig.lifted else "you chose to keep it"
             r.todo("Config files", "", [f"{tilde(cf.gitconfig.path, home)} stays in place, because {why}. Git "
                                         "reads it after the dotkit file, as before."])
         if git_parts:
-            if len(git_parts) == 1:
-                txn.copies.add("config/gitconfig", git_parts[0][1])
+            if len(git_parts) == 1 and not git_parts[0][1].lifted:
+                txn.copies.add("config/gitconfig", git_parts[0][1].path)
+            elif len(git_parts) == 1:
+                txn.file("config/gitconfig").set(_git_text(git_parts[0][1]))
             else:
                 txn.file("config/gitconfig").set("".join(
-                    f"# From {w}.\n" + _text(p).rstrip("\n") + "\n\n" for w, p in git_parts))
+                    f"# From {w}.\n" + _git_text(x).rstrip("\n") + "\n\n" for w, x in git_parts))
+            _git_secrets(txn, [(w, x.lifted[1]) for w, x in git_parts if x.lifted])
             txn.links().link(".gitconfig", "config/gitconfig")
             r.carried(" and ".join(w for w, _ in git_parts), "config/gitconfig (~/.gitconfig, read after the "
                                                               "dotkit file)")
@@ -363,6 +433,63 @@ class ConfigFiles(Migrator):
             r.todo("mise", "", ["~/.config/mise/config.toml stays in place, outside the repository, and dotkit "
                                 "does not link config/mise.toml. `dotkit add` writes mise tools to it."])
             _idiomatic(f, txn, cf.mise_settings, layered=False)
+
+
+NPM_INTRO = ("npm reads these tokens from ~/.secrets now: config/npmrc has `${NAME}` instead of each token. GUI "
+             "apps get them too.")
+GIT_INTRO = ("Git cannot read a variable in its config files, so these settings with a secret are in ~/.secrets now, "
+             "as GIT_CONFIG_COUNT, GIT_CONFIG_KEY_<n>, and GIT_CONFIG_VALUE_<n>. Git reads them in every "
+             "repository, and they win over the settings of a repository; `git config --list --show-scope` "
+             "shows them as `command`. GUI apps get them too.")
+
+
+def _npm_tokens(f: Facts, txn: Txn, x: ConfigFile, link: base_mod.Link, where: str) -> None:
+    """~/.npmrc as "tokens": the dotkit settings, with your registries; each token is a variable of ~/.secrets."""
+    r, s = txn.report, txn.secrets()
+    lines, moved = [], []
+    for st in x.npm.settings:
+        if not st.var:
+            lines.append(f"{st.key}={st.value}")
+            continue
+        name = s.free_name(st.var, st.value)
+        s.export(name, st.value, secrets_file.export_line(name, st.value), where)
+        lines.append(f"{st.key}=${{{name}}}")
+        moved.append(f"{where}: `{name}`, for `{st.key}`")
+    txn.file(link.repo_file).set(f"# Your registries and tokens, from {where}. npm reads the tokens from "
+                                 "~/.secrets.\n" + "\n".join(lines) + "\n\n" + _npm_base(f, link))
+    txn.links().link(x.target, link.repo_file)
+    r.carried(where, f"{link.repo_file} (the dotkit settings, with your registries and tokens)")
+    r.todo("Config files", "", [f"{link.repo_file} has the dotkit settings and the registries and tokens of {where}. "
+                                f"It replaces {link.source} of dotkit, so compare the two after `dotkit upgrade`."])
+    if x.npm.other:
+        keys = ", ".join(f"`{k}`" for k in x.npm.other)
+        r.todo("Config files", "", [f"{where}: these settings are not carried: {keys}. The first apply renames it to "
+                                    f"{where}.before-dotkit. Copy the ones you need to {link.repo_file}."])
+    if moved:
+        r.todo("Secrets", NPM_INTRO, moved)
+
+
+def _git_secrets(txn: Txn, parts: List[Tuple[str, List[Tuple[str, str]]]]) -> None:
+    """The settings with a secret of the Git config files in config/gitconfig, as GIT_CONFIG_* variables."""
+    settings = [kv for _, kvs in parts for kv in kvs]
+    if not settings:
+        return
+    r, s = txn.report, txn.secrets()
+    names = ["GIT_CONFIG_COUNT"] + [f"GIT_CONFIG_{w}_{i}" for i in range(len(settings)) for w in ("KEY", "VALUE")]
+    counts = [f"{w}: {plural(len(kvs), 'setting')}" for w, kvs in parts]
+    if any(s.taken(n) for n in names):
+        r.todo("Secrets", "", [f"{w}: its settings with a secret are not in config/gitconfig, and ~/.secrets has "
+                               "GIT_CONFIG_* variables already, so they are not there either. Copy them from the "
+                               ".before-dotkit file by hand." for w, _ in parts])
+        return
+    source = " and ".join(w for w, _ in parts)
+    values = [("GIT_CONFIG_COUNT", str(len(settings)))]
+    for i, (key, value) in enumerate(settings):
+        values += [(f"GIT_CONFIG_KEY_{i}", key), (f"GIT_CONFIG_VALUE_{i}", value)]
+    for name, value in values:
+        s.export(name, value, secrets_file.export_line(name, value), source)
+    r.carried(plural(len(settings), "Git setting") + f" with a secret of {source}", "~/.secrets")
+    r.todo("Secrets", GIT_INTRO, counts)
 
 
 def _base_example(target: str) -> str:

@@ -30,7 +30,7 @@ from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional, Tuple
 
 from . import base as base_mod
-from . import rcparse, secrets
+from . import rcparse, secrets, secrets_file
 from ._compat import tomllib
 from .context import tilde
 from .report import SECTIONS
@@ -339,7 +339,7 @@ class ListDoc(_Doc):
         host = self.docs.host or "this Mac"
         if self.docs.mode == "adopt":
             text = self.base_text + ("\n" if self.base_text and not self.base_text.endswith("\n") else "")
-            return text + f"# Added by dotkit migrate on {host}.\n" + "".join(r + "\n" for r in rows)
+            return text + f"# Added by {self.docs.by} on {host}.\n" + "".join(r + "\n" for r in rows)
         source = "the App Store" if self.kind == "mas" else "Homebrew"
         return (self.base_text.rstrip("\n") + "\n\n" + f"# From {source} on {host}, see MIGRATION.md.\n" +
                 "".join(r + "\n" for r in rows))
@@ -631,12 +631,11 @@ _SHELL_HEADERS = {
 @dataclass
 class _ShellState:
     parts: List[Tuple[str, str]] = field(default_factory=list)  # (header, text)
-    secrets: List[str] = field(default_factory=list)
     ensured: bool = False
 
 
 class ShellRcDoc(_Doc):
-    """A shell file of the repository (config/zsh/zshrc, ...) and its file of secrets in local/."""
+    """A shell file of the repository (config/zsh/zshrc, ...). Its lines with secrets go to SecretsDoc."""
 
     def __init__(self, docs: Docs, main: str):
         if main not in base_mod.SHELL_LAYERS:
@@ -645,7 +644,6 @@ class ShellRcDoc(_Doc):
         self.shell = "bash" if main == ".bash_profile" else "zsh"
         path = base_mod.SHELL_LAYERS[main][1]
         super().__init__(docs, path)
-        self.local = f"local/{Path(path).name}.{self.shell}"
         if path == "config/zsh/zshrc":
             self.header = docs.base_text(path)
         else:
@@ -665,31 +663,85 @@ class ShellRcDoc(_Doc):
         w.parts.append((header, text))
         return True
 
-    def add_secret(self, txn: Txn, text: str) -> bool:
-        """Lines with secrets: they go to local/, which Git ignores, and the repository file sources it."""
-        w = self._w(txn)
-        if text in w.secrets:
-            return False
-        w.secrets.append(text)
-        return True
-
     def ensure(self, txn: Txn) -> None:
         """Write the file also when it carries nothing."""
         self._w(txn).ensured = True
 
-    def render(self) -> Tuple[Optional[str], Optional[str]]:
-        """The text of the repository file and of the local file, None for a file that is not written."""
+    def render(self) -> Optional[str]:
+        """The text of the repository file, None for a file that is not written."""
         st = self.state
         parts = [f"{h}\n{t}" for h, t in st.parts]
-        local = None
-        if st.secrets:
-            local = "\n".join(st.secrets) + "\n"
-            rel = tilde(self.docs.repo / self.local, self.docs.home).replace("~", "$HOME", 1)
-            parts.insert(0, "# Lines with secrets, not in Git. See MIGRATION.md.\n"
-                            f'if [[ -r "{rel}" ]]; then\n  source "{rel}"\nfi\n')
         if not (parts or st.ensured):
-            return None, local
-        return self.header + ("\n" + "\n".join(parts) if parts else ""), local
+            return None
+        return self.header + ("\n" + "\n".join(parts) if parts else "")
+
+
+class SecretsDoc(_Doc):
+    """~/.secrets: the variables that the migration adds there. It is outside the repository.
+
+    The writer appends the lines to ~/.secrets of the home directory. A name
+    that ~/.secrets has already is never written again: with the same value
+    it is done, with another one it is refused. Unlike the other documents,
+    a refused value is not a Conflict, which would show both values: export()
+    returns False, and the caller reports the name.
+    """
+
+    def __init__(self, docs: Docs):
+        super().__init__(docs, "~/.secrets")
+        self.existing = dict(docs.secrets)
+
+    def _empty(self):
+        return {}  # name -> (owner, line, value, source)
+
+    def _has(self, txn: Txn, name: str) -> Optional[str]:
+        if name in self.existing:
+            return self.existing[name]
+        entry = self._view_state(txn).get(name)
+        return entry[2] if entry else None
+
+    def export(self, txn: Txn, name: str, value: str, line: str, source: str) -> bool:
+        """Add `line`, which assigns `value` to `name`; source is the file it is from, for its comment.
+
+        True when ~/.secrets will have this value: added, or there already.
+        False when ~/.secrets or an earlier owner has another value.
+        """
+        if not secrets_file.NAME.fullmatch(name):
+            raise ValueError(f"not a variable name: {name!r}")
+        if "\n" in line or not line.strip():
+            raise ValueError("an entry of ~/.secrets is one line")
+        _check_comment(f"# From {source}.")
+        has = self._has(txn, name)
+        if has is not None:
+            return has == value
+        self._w(txn)[name] = (txn.owner, line, value, source)
+        return True
+
+    def free_name(self, txn: Txn, base: str, value: str) -> str:
+        """base, or base_2, base_3, ...: the first name that is free, or that has this value already."""
+        name, n = base, 1
+        while self._has(txn, name) not in (None, value):
+            n += 1
+            name = f"{base}_{n}"
+        return name
+
+    def taken(self, txn: Txn, name: str) -> bool:
+        return self._has(txn, name) is not None
+
+    def added(self) -> List[str]:
+        """The names that the writer adds, in order."""
+        return list(self.state)
+
+    def render(self) -> Optional[str]:
+        """The lines to append, after a `# From <file>.` line for each file, or None for none."""
+        if not self.state:
+            return None
+        out, last = ["# Added by the dotkit migration. See MIGRATION.md."], None
+        for _owner, line, _value, source in self.state.values():
+            if source != last:
+                out.append(f"# From {source}.")
+                last = source
+            out.append(line)
+        return "\n".join(out) + "\n"
 
 
 class ShellNixDoc(_Doc):
@@ -770,7 +822,7 @@ class Copies(_Doc):
         ("is", rel): an earlier copy or a document has the path;
         ("inside", outer): the path is inside the copied directory outer;
         ("contains", inner): a copy there would contain inner, a document
-        path, an earlier copy, or local/ (the first of them by path).
+        path or an earlier copy (the first of them by path).
         Paths are compared by their parts, so config/bash2 is not inside
         config/bash.
         """
@@ -780,7 +832,7 @@ class Copies(_Doc):
         outer = next((c for c in copies if _inside(rel, c)), None)
         if outer is not None:
             return ("inside", outer)
-        inner = sorted((p for p in (*copies, *self.docs._claimed(txn), "local") if _inside(p, rel)), key=_parts)
+        inner = sorted((p for p in (*copies, *self.docs._claimed(txn)) if _inside(p, rel)), key=_parts)
         if inner:
             return ("contains", inner[0])
         return None
@@ -941,18 +993,25 @@ class ShellRcView:
     def path(self) -> str:
         return self._doc.path
 
-    @property
-    def local(self) -> str:
-        return self._doc.local
-
     def add_part(self, header: str, text: str) -> bool:
         return self._doc.add_part(self._txn, header, text)
 
-    def add_secret(self, text: str) -> bool:
-        return self._doc.add_secret(self._txn, text)
-
     def ensure(self) -> None:
         self._doc.ensure(self._txn)
+
+
+class SecretsView:
+    def __init__(self, txn: Txn, doc: SecretsDoc):
+        self._txn, self._doc = txn, doc
+
+    def export(self, name: str, value: str, line: str, source: str) -> bool:
+        return self._doc.export(self._txn, name, value, line, source)
+
+    def free_name(self, base: str, value: str) -> str:
+        return self._doc.free_name(self._txn, base, value)
+
+    def taken(self, name: str) -> bool:
+        return self._doc.taken(self._txn, name)
 
 
 class ShellNixView:
@@ -977,7 +1036,7 @@ class CopiesView:
 
     def add(self, rel: str, src: Path) -> bool:
         """False when the repository path is taken: by an earlier copy or a file that a document writes,
-        inside a copied directory, or when a copy there would contain one of them or local/."""
+        inside a copied directory, or when a copy there would contain one of them."""
         return self._doc.add(self._txn, rel, src)
 
     def taken(self, rel: str) -> Optional[Tuple[str, str]]:
@@ -1008,6 +1067,7 @@ class ReportView:
 _MISE = "config/mise.toml"
 _HOME_NIX = "nix/home.nix"
 _SHELL_NIX = "nix/shell.nix"
+_SECRETS = "~/.secrets"
 
 
 def _document_paths() -> set:
@@ -1020,11 +1080,14 @@ class Docs:
     """The documents of one run. mode: "setup" (base text from the template) or "adopt" (from the repository)."""
 
     def __init__(self, mode: str, template: Path, repo: Optional[Path], home: str = "", host: str = "",
-                 strict: bool = False):
+                 strict: bool = False, secrets: Optional[Dict[str, str]] = None, by: str = "dotkit migrate"):
         assert mode in ("setup", "adopt")
         assert repo is not None, "the documents need the repository path"
         self.mode, self.template, self.repo = mode, template, repo
+        self.by = by  # the command that adds to the lists in adopt mode: "dotkit migrate" or "dotkit tidy"
         self.home, self.host, self.strict = home, host, strict
+        # The variables that ~/.secrets assigns already: SecretsDoc never writes them again.
+        self.secrets: Dict[str, str] = dict(secrets or {})
         self.conflicts: List[Conflict] = []
         self.read: Dict[str, Optional[str]] = {}  # the base texts, by path, as base_text() read them
         self._docs: Dict[str, _Doc] = {}
@@ -1073,10 +1136,8 @@ class Docs:
             raise ValueError(f"{what} is for setup only")
 
     def _renders(self, txn: Txn, rel: str) -> bool:
-        """The path is taken by a document, a template file, or local/ (the directory or a path in it)."""
+        """The path is taken by a document or a template file."""
         key = _parts(rel)
-        if key[:1] == (_key("local"),):
-            return True
         return any(_parts(p) == key for p in self._claimed(txn))
 
     def _claimed(self, txn: Txn) -> List[str]:
@@ -1109,8 +1170,8 @@ class Docs:
         doc = self._docs.get(_HOME_NIX)
         return doc.links() if isinstance(doc, LinksDoc) else {}
 
-    def render(self) -> Tuple[Dict[str, str], Dict[str, str]]:
-        """The tracked files and the local/ files of the committed documents.
+    def render(self) -> Tuple[Dict[str, str], str]:
+        """The tracked files of the committed documents, and the lines to append to ~/.secrets ("" for none).
 
         Order: the shell files, the whole files, the lists, nix/shell.nix,
         config/mise.toml, nix/home.nix. A mise config that would not parse
@@ -1118,14 +1179,11 @@ class Docs:
         """
         assert self._open is None, "a transaction is open"
         files: Dict[str, str] = {}
-        local: Dict[str, str] = {}
         docs = list(self._docs.values())
         for main in base_mod.SHELL_LAYERS:
             for d in docs:
                 if isinstance(d, ShellRcDoc) and d.main == main:
-                    text, secret = d.render()
-                    if secret is not None:
-                        local[d.local] = secret
+                    text = d.render()
                     if text is not None:
                         files[d.path] = text
         for d in docs:
@@ -1153,7 +1211,13 @@ class Docs:
         d = self._docs.get(_HOME_NIX)
         if d is not None and d.render() is not None:
             files[_HOME_NIX] = d.render()
-        return files, local
+        d = self._docs.get(_SECRETS)
+        return files, (d.render() or "") if isinstance(d, SecretsDoc) else ""
+
+    def secret_names(self) -> List[str]:
+        """The names that the writer adds to ~/.secrets."""
+        d = self._docs.get(_SECRETS)
+        return d.added() if isinstance(d, SecretsDoc) else []
 
 
 class Txn:
@@ -1194,11 +1258,17 @@ class Txn:
         return ShellNixView(self, d._get(_SHELL_NIX, ShellNixDoc,
                                          lambda: ShellNixDoc(d, _SHELL_NIX, d.base_text(_SHELL_NIX))))
 
+    def secrets(self) -> SecretsView:
+        """~/.secrets of the home directory: setup only."""
+        d = self.docs
+        d._setup_only("secrets")
+        return SecretsView(self, d._get(_SECRETS, SecretsDoc, lambda: SecretsDoc(d)))
+
     def file(self, path: str) -> FileView:
         d = self.docs
         d._setup_only("file")
         _check_rel(path, "a file")
-        if path in _document_paths() or path.startswith("local/"):
+        if path in _document_paths():
             raise ValueError(f"{path} belongs to another document")
         return FileView(self, d._get(path, FileDoc, lambda: FileDoc(d, path)))
 

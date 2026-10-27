@@ -4,7 +4,7 @@ import unittest
 
 from dotkit_migrate import migrators, registry, secrets
 from dotkit_migrate._compat import tomllib
-from dotkit_migrate.migrators import Migrator
+from dotkit_migrate.migrators import Migrator, config_files, shell
 from tests import fake
 
 TOKEN = fake.TOKENS["@GH@"]
@@ -166,7 +166,7 @@ class PlanTests(unittest.TestCase):
         self.assertEqual({k[len("file:"):]: v for k, v in files.items()}, {
             ".config/ghostty/config": "layer",
             ".config/starship.toml": "replace",
-            ".npmrc": "keep",
+            ".npmrc": "tokens",
             ".editorconfig": "dotkit",
             ".gitconfig": "adopt",
             ".config/mise/config.toml": "layer",
@@ -192,16 +192,22 @@ class PlanTests(unittest.TestCase):
             ".bash_profile.local": "config/bash/bash_profile",
             ".config/ghostty/config.local": "config/ghostty.conf",
             ".config/starship.toml": "config/starship.toml",
-            ".npmrc": None,
+            ".npmrc": "config/npmrc",
             ".gitconfig": "config/gitconfig",
         })
-        self.assertIn('    ".npmrc" = null;\n', f["nix/home.nix"])
+        self.assertIn('    ".npmrc" = "config/npmrc";\n', f["nix/home.nix"])
+        self.assertEqual(f["config/npmrc"], "# Your registries and tokens, from ~/.npmrc. npm reads the tokens from "
+                         "~/.secrets.\n//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n\n" +
+                         (fake.ROOT / "config/npmrc").read_text().split("\n\n", 1)[1])
         self.assertIn("export EDITOR=vim\nalias gs='git status'\n", f["config/zsh/zshrc"])
         self.assertIn('path=("$HOME/bin" $path)', f["config/zsh/zprofile"])
         self.assertIn("export BASH_THING=1", f["config/bash/bash_profile"])
-        self.assertEqual(p.local, {"local/zshrc.zsh": f"# From ~/.zshrc.\nexport GITHUB_TOKEN={TOKEN}\n"})
-        self.assertIn('source "$HOME/.dotfiles/local/zshrc.zsh"', f["config/zsh/zshrc"])
-        self.assertIn("/local/", f[".gitignore"])
+        self.assertEqual(p.secrets, "# Added by the dotkit migration. See MIGRATION.md.\n# From ~/.zshrc.\n"
+                                    f"export GITHUB_TOKEN={TOKEN}\n# From ~/.npmrc.\n"
+                                    f"export NPM_TOKEN='{fake.TOKENS['@NPM@']}'\n")
+        self.assertEqual(p.secret_names, ["GITHUB_TOKEN", "NPM_TOKEN"])
+        self.assertNotIn("local/", f["config/zsh/zshrc"])
+        self.assertNotIn(".gitignore", f)
         self.assertEqual(p.copies["config/ghostty.conf"], self.h.home / ".config/ghostty/config")
         self.assertNotIn("nix/shell.nix", f)
         self.assertIn('name = "', f["nix/user.nix"])
@@ -213,7 +219,8 @@ class PlanTests(unittest.TestCase):
                      "`ripgrep`: dotkit has ripgrep (dotkit, from Nix). `brew uninstall ripgrep`",
                      "`node`: dotkit has node (dotkit, from mise). `brew uninstall node`",
                      "`ghostty`: dotkit has ghostty (dotkit cask). `brew uninstall --cask ghostty`",
-                     "`GITHUB_TOKEN` -> local/zshrc.zsh", "~/.npmrc stays in place",
+                     "- ~/.zshrc:4: `GITHUB_TOKEN`\n",
+                     "- ~/.npmrc: `NPM_TOKEN`, for `//registry.npmjs.org/:_authToken`\n",
                      "`npm:typescript`, was 5.4.0 in nvm v20.11.0. Old copy: `npm uninstall -g typescript`",
                      "`pnpm` (nvm v20.11.0): dotkit has no global pnpm",
                      "`bat` (cargo install): dotkit has bat (from Nix). Old copy: `cargo uninstall bat`",
@@ -223,9 +230,8 @@ class PlanTests(unittest.TestCase):
 
     def test_secrets_intro_is_not_masked(self):
         r = self.build().report
-        self.assertIn("These lines have a secret, so they are not in Git. They are in a file in local/ of this "
-                      "repository, which Git ignores, and the repository file reads it. On a new Mac, copy the "
-                      "file by hand, or keep its lines in a manager for passwords.\n", r)
+        self.assertIn(shell.SECRETS_INTRO + "\n", r)
+        self.assertIn(config_files.NPM_INTRO + "\n", r)
 
     def test_no_secret_in_the_repository(self):
         p = self.build()
@@ -233,7 +239,8 @@ class PlanTests(unittest.TestCase):
             self.assertEqual(secrets.scan_text(text), [], rel)
         for rel, src in p.copies.items():
             self.assertEqual(secrets.scan_file(src), [], rel)
-        self.assertTrue(all(rel.startswith("local/") for rel in p.local))
+        self.assertNotIn(TOKEN, "".join(p.files.values()))
+        self.assertIn(TOKEN, p.secrets)
 
     def test_review_secrets_end_to_end(self):
         alias = "alias k='kubectl --token=abcdef0123456789abcdef'"
@@ -251,16 +258,18 @@ class PlanTests(unittest.TestCase):
         c = p.defaults(self.repo)
         pick(c, "other:.config/msmtp")
         result = p.build(c)
-        local = result.local["local/zshrc.zsh"]
-        for statement in (alias, pwd, function, continued_alias):
-            self.assertIn(statement, local)
+        self.assertTrue(result.secrets.startswith("# Added by the dotkit migration. See MIGRATION.md.\n"
+                                                  f"# From ~/.zshrc.\n{pwd}\n# From ~/.npmrc.\n"))
+        for what in ("1: the alias on this line, with token\n", "3: the function on this line, with",
+                     "7: the alias on this line, with a key header"):
+            self.assertIn(f"- ~/.zshrc:{what}", result.report)
         for text in result.files.values():
             self.assertNotIn("hunter2", text)
             self.assertNotIn("abcdef0123456789abcdef", text)
         self.assertIn("MyCompanyProd2024Admin", result.files["config/zsh/zshrc"])
         self.assertNotIn("config/msmtp", result.copies)
         self.assertIn("not shown: it has a secret", result.report)
-        self.assertEqual(subprocess.run(["/bin/zsh", "-n", "-c", local], capture_output=True).returncode, 0)
+        self.assertNotIn("hunter2", result.report)
 
     def test_pages_off(self):
         """Every item of the pages that are on by default deselected: each one is "Not carried, by your choice"."""
@@ -272,7 +281,7 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("nix/mas.txt", p.files)
         self.assertEqual(tomllib.loads(p.files["config/mise.toml"])["tools"], {"jq": "latest"})
         self.assertNotIn("export EDITOR", p.files["config/zsh/zshrc"])
-        self.assertEqual(p.local, {})
+        self.assertNotIn("GITHUB_TOKEN", p.secrets)
         section = p.report[p.report.index("### Not carried, by your choice\n"):]
         section = section[:section.index("\n### ", 1)]
         # The cleanup warning is for formulae and casks only.
@@ -340,7 +349,7 @@ class PlanTests(unittest.TestCase):
     def test_repo_path_with_a_space(self):
         p = self.build(repo=str(self.h.home / "my dots"))
         self.assertIn('  dotfiles = "${home}/my dots";\n', p.files["nix/user.nix"])
-        self.assertIn('source "$HOME/my dots/local/zshrc.zsh"', p.files["config/zsh/zshrc"])
+        self.assertNotIn("local/", p.files["config/zsh/zshrc"])
 
 
 class SkipTests(unittest.TestCase):
@@ -376,13 +385,14 @@ class NixFileTests(unittest.TestCase):
         self.addCleanup(h.cleanup)
         p = fake.session(h, used_mac(h))
         result = p.build(p.defaults(str(h.home / "my dots")))
-        for rel in ("nix/home.nix", "nix/user.nix"):
+        files = ("nix/home.nix", "nix/user.nix")
+        for rel in files:
             out = subprocess.run(["nix-instantiate", "--parse", "-E", result.files[rel]], capture_output=True,
                                  text=True)
             self.assertEqual(out.returncode, 0, f"{rel}: {out.stderr}")
         nixfmt = shutil.which("nixfmt")
         if nixfmt:
-            for rel in ("nix/home.nix", "nix/user.nix"):
+            for rel in files:
                 out = subprocess.run([nixfmt, "--check"], input=result.files[rel], capture_output=True, text=True)
                 self.assertEqual(out.returncode, 0, f"{rel} is not nixfmt style: {out.stderr}")
 
