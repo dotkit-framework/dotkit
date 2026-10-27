@@ -328,7 +328,8 @@ no, 2 for a plan with errors, and 130 after `Ctrl-C`.
 
 In the migrate package, as a new mode next to `setup` and `adopt`:
 `dotkit-migrate tidy --repo <repo> --declared <json>`. `dotkit tidy` in the
-`dotkit` script calls it like `cmd_migrate`. `__main__.py` imports
+Python command (`lib/dotkit/commands/wizard.py`) calls it as it calls `adopt` for
+`dotkit migrate`. `__main__.py` imports
 `tidy/cli.py` only in this mode. The reasons: the same Python
 3.9 runtime, `Context`, `FakeRunner`, `fake.Home`, `Declared`, `ListDoc`,
 `writer.apply_edits`, and the secret guard of the list lines.
