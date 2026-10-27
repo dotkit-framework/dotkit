@@ -1,11 +1,12 @@
 """The parity tests of the dotkit command (CLI-PLAN.md, section 4.3).
 
 Each scenario of scenarios.py runs in a sandbox (harness.py), and its result
-must equal golden/<scenario>.json. The goldens come from the Bash scripts.
-DOTKIT_CLI_IMPL selects the implementation: python (the default) or bash.
-To write the goldens again after a change on purpose, with the Bash scripts:
+must equal golden/<scenario>.json. The goldens come from the Bash scripts
+(scripts/dotkit-pkg until step 4 of CLI-PLAN.md), so a change of a golden is a
+change of behavior: it needs a deviation in PARITY.md. To write the goldens
+again after such a change on purpose:
 
-    cd lib && DOTKIT_CLI_IMPL=bash DOTKIT_CLI_REGOLD=1 /usr/bin/python3 -B -m unittest tests.cli.test_parity
+    cd lib && DOTKIT_CLI_REGOLD=1 /usr/bin/python3 -B -m unittest tests.cli.test_parity
 
 then review the diff of tests/cli/golden/ and commit it with the change.
 The sandbox of `nix flake check` has no Bash 3.2 and no scripts/, so these
@@ -26,10 +27,8 @@ from tests.cli.scenarios import SCENARIOS
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 PARITY = Path(__file__).resolve().parents[1] / "PARITY.md"
-IMPLS = {"bash": harness.BASH, "python": harness.PYTHON}
-IMPL = IMPLS[os.environ.get("DOTKIT_CLI_IMPL", "python")]
-# Only the Bash scripts write goldens: they are the reference.
-REGOLD = os.environ.get("DOTKIT_CLI_REGOLD") == "1" and IMPL is harness.BASH
+IMPL = harness.PYTHON
+REGOLD = os.environ.get("DOTKIT_CLI_REGOLD") == "1"
 
 
 def _no_text(r: dict) -> dict:
@@ -49,8 +48,8 @@ class ParityTests(unittest.TestCase):
     maxDiff = None
 
     def test_scenarios(self):
-        todo = [s for s in SCENARIOS if not s.skip()
-                and (IMPL is harness.BASH or not (s.deviation or "").startswith("B"))]
+        # A Bash bug (B...) shows only with the Bash scripts, which the goldens keep.
+        todo = [s for s in SCENARIOS if not s.skip() and not (s.deviation or "").startswith("B")]
         with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
             results = dict(zip([s.name for s in todo], pool.map(lambda s: harness.run(IMPL, s), todo)))
         if REGOLD:
@@ -64,7 +63,7 @@ class ParityTests(unittest.TestCase):
                 self.assertTrue(path.exists(), f"no golden for {s.name}; see the docstring")
                 want = json.loads(path.read_text(encoding="utf-8"))
                 got = results[s.name]
-                if s.deviation in COMPARE and IMPL is not harness.BASH:
+                if s.deviation in COMPARE:
                     want, got = COMPARE[s.deviation](want), COMPARE[s.deviation](got)
                 self.assertEqual(got, want)
 

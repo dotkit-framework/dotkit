@@ -1,7 +1,7 @@
 """core/lists.py, core/mise_toml.py, and core/versions.py against the awk programs and the sort that they replace.
 
-The awk programs are copies of the ones in scripts/dotkit-pkg, so that these
-tests keep their reference after the Bash scripts are gone. /usr/bin/awk and
+The awk programs are copies of the ones in scripts/dotkit-pkg (deleted in step 4
+of CLI-PLAN.md), so that these tests keep their reference. /usr/bin/awk and
 /usr/bin/sort are the tools of macOS; without them the comparisons skip.
 """
 

@@ -376,16 +376,25 @@ cmd_clean() {
 
 # --- main
 
+# The commands that are in Python (lib/dotkit, CLI-PLAN.md). They run with the
+# macOS Python of the Xcode Command Line Tools, as the migration wizard does.
+# Without the tools, /usr/bin/python3 only opens the Apple installer.
+python() {
+  /usr/bin/xcode-select -p >/dev/null 2>&1 ||
+    die 'the Xcode Command Line Tools are missing. Install them: xcode-select --install'
+  exec /usr/bin/python3 -I -B "$dotkit/lib/run.py" dotkit "$@"
+}
+
 cmd=${1:-}
 [[ -n $cmd ]] && shift
 
 case $cmd in
-add | remove | info | list) exec "$dotkit/scripts/dotkit-pkg" "$cmd" "$@" ;;
+add | remove | info | list) python "$cmd" "$@" ;;
 # For the zsh completion (nix/completions/_dotkit). Reads files, runs no nix.
 __complete)
   case ${1:-} in
   inputs) flake_inputs | cut -f 2 ;;
-  tools-user | tools-all) exec "$dotkit/scripts/dotkit-pkg" __names "${1#tools-}" ;;
+  tools-user | tools-all) python __names "${1#tools-}" ;;
   *) usage_error "__complete takes inputs, tools-user, or tools-all." ;;
   esac
   exit 0

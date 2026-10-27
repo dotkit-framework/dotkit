@@ -40,7 +40,7 @@ jobs:
       - name: shellcheck
         run: |
           nix shell --inputs-from . nixpkgs#shellcheck -c shellcheck -x \
-            dotkit scripts/setup scripts/dotkit-pkg scripts/nix.sh migrate/dotkit-migrate \
+            dotkit scripts/setup scripts/nix.sh migrate/dotkit-migrate \
             scripts/herdr/git-status.sh scripts/herdr/process-name.sh \
             scripts/herdr/process-name.bash config/bash/bash_profile \
             templates/default/dotkit tests/e2e/verify.sh \

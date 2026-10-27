@@ -1,7 +1,7 @@
 # shellcheck shell=bash
-# Nix commands for the flake of the dotfiles repository. dotkit and
-# scripts/dotkit-pkg source this file after they set `repo`. It must work with
-# the macOS Bash 3.2.
+# Nix commands for the flake of the dotfiles repository. dotkit sources this
+# file after it sets `repo`. It must work with the macOS Bash 3.2.
+# lib/dotkit/core/nix.py has the same commands in Python.
 #
 # DOTKIT_DIR selects a dotkit checkout instead of the release in nix/flake.lock
 # (--override-input). Nix reads the files that Git tracks, with their

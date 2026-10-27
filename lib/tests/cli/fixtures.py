@@ -206,7 +206,8 @@ def pypi(name: str, version: str = "1.0", summary: str = "") -> List[dict]:
 MAS_LIST = (" 361285480  Keynote         (15.4)\n"
             " 409203825  Numbers         (14.5)\n"
             "1289583905  Pixelmator Pro  (3.8)\n"
-            "      1234  Keynote         (1.0)\n")
+            "      1234  Keynote         (1.0)\n"
+            "        55  Back\\slash      (1.0)\n")
 
 
 def mas(info: Optional[dict] = None) -> List[dict]:

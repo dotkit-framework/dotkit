@@ -1482,7 +1482,7 @@ The nix module reads both files through two options, `dotkit.lists.taps` and
 `homebrew.taps` and `homebrew.masApps` from them. The template has the two
 files and lists them in its `nix/darwin.nix`, which no longer has the
 `homebrew.taps = [ ];` and `homebrew.masApps = { };` lines.
-`dotkit add mas:ID` and `dotkit remove mas:ID` (`scripts/dotkit-pkg`) edit
+`dotkit add mas:ID` and `dotkit remove mas:ID` (`lib/dotkit/pkg`) edit
 `nix/mas.txt`. The name comes from `mas`: from `mas list` when the app is
 installed, else `.name` of the first object of `mas info --json <id>` (JSON
 Lines). Without `mas`, the command says to run `dotkit add brew:mas` first.

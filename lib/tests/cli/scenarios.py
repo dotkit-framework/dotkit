@@ -346,6 +346,8 @@ def add_mas() -> List[S]:
           files={"repo/nix/mas.txt": ""}, rules=fx.mas()),
         S("add-mas-both-taken", ["add", "-n", "mas:1234"], rows=["Ad5"],
           files={"repo/nix/mas.txt": "409183694 Keynote\n5 Keynote (1234)\n"}, rules=fx.mas()),
+        S("add-mas-three", ["add", "-y", "mas:361285480", "mas:1234", "mas:55"], rows=["Ad5", "Ad15", "F3"],
+          files={"repo/nix/mas.txt": ""}, rules=fx.mas() + fx.build_once() + fx.apply_ok()),
         S("add-mas-two-words", ["add", "-n", "mas:1289583905"], rules=fx.mas(), rows=["R5"]),
         S("add-mas-not-installed", ["add", "-n", "mas:497799835"], rules=fx.mas({497799835: mas_info("Xcode")}),
           rows=["R5"]),
