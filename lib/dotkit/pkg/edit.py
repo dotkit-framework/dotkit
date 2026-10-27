@@ -7,7 +7,6 @@ Then it runs `dotkit apply`; the lists keep the change when that fails.
 
 from __future__ import annotations
 
-import signal
 from typing import Callable
 
 from ..core import backup, nix, proc, ui
@@ -32,10 +31,7 @@ def apply_nix(env: Env, edit: Callable[[], None]) -> None:
                 copies.restore()
                 raise ui.die("the build failed. The Nix files are restored.")
     except (KeyboardInterrupt, backup.Stopped):
-        # Ignore a second signal while the files go back.
-        old = signal.signal(signal.SIGINT, signal.SIG_IGN)
         copies.restore()
-        signal.signal(signal.SIGINT, old)
         raise ui.Exit(130, "\ndotkit: stopped. The Nix files are restored.")
     copies.discard()
     if proc.run([str(env.dotkit / "dotkit"), "apply"]).code != 0:

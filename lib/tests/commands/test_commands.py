@@ -11,7 +11,10 @@ from __future__ import annotations
 import io
 import json
 import os
+import signal
+import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -189,3 +192,100 @@ class PlanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+LIB = Path(__file__).resolve().parents[2]
+
+
+class ProcessTests(unittest.TestCase):
+    """The defects of the first review: they need a real dotkit process, a real child, and real signals."""
+
+    def setUp(self):
+        self.dir = fake.tempdir().resolve()
+        self.addCleanup(fake.remove, self.dir)
+        for rel, text in {**harness.BASE, **harness.REPO}.items():
+            p = self.dir / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+        (self.dir / "home").mkdir()
+        (self.dir / "bin").mkdir()
+        self.lock = self.dir / "repo/nix/flake.lock"
+        self.before = self.lock.read_text()
+
+    def tool(self, name, script):
+        p = self.dir / "bin" / name
+        p.write_text("#!/bin/sh\n" + script)
+        p.chmod(0o755)
+
+    def start(self, *args, **kw):
+        env = {"HOME": str(self.dir / "home"), "DOTFILES": str(self.dir / "repo"), "LC_ALL": "en_US.UTF-8",
+               "PATH": f"{self.dir / 'bin'}:/usr/bin:/bin"}
+        argv = [sys.executable, "-I", "-B", str(LIB / "run.py"), "dotkit", *args]
+        return subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, **kw)
+
+    def new_lock(self):
+        return json.dumps(harness_lock(1761000000, "d" * 14))
+
+    def test_sigterm_waits_for_the_child_before_the_restore(self):
+        """A child that writes the lock file late must not change it after the restore."""
+        self.tool("nix", f"echo started > {self.dir}/started\nsleep 1\necho '{self.new_lock()}' > {self.lock}\n")
+        p = self.start("upgrade", "-n", "nix", stdout=subprocess.DEVNULL)
+        _wait_for(self.dir / "started")
+        p.send_signal(signal.SIGTERM)
+        p.communicate(timeout=30)
+        time.sleep(1.5)
+        self.assertEqual(p.returncode, 128 + signal.SIGTERM)
+        self.assertEqual(self.lock.read_text(), self.before)
+
+    def test_closed_pipe_restores_the_lock(self):
+        """dotkit upgrade -n | head: the reader goes away before the plan is written."""
+        self.tool("nix", f"echo '{self.new_lock()}' > {self.lock}\n")
+        r, w = os.pipe()
+        os.close(r)
+        p = self.start("upgrade", "-n", "nix", stdout=w)
+        os.close(w)
+        _, err = p.communicate(timeout=30)
+        self.assertEqual(p.returncode, 128 + signal.SIGPIPE, err)
+        self.assertNotIn(b"Traceback", err)
+        self.assertEqual(self.lock.read_text(), self.before)
+
+    def test_messages_instead_of_tracebacks(self):
+        cases = [
+            ("repo/nix/flake.lock", "<<<<<<< HEAD\n", ["__complete", "inputs"], "flake.lock is not valid JSON"),
+            ("repo/nix/flake.lock", "[]\n", ["upgrade", "frob"], "flake.lock is not a JSON object."),
+        ]
+        for rel, text, args, want in cases:
+            with self.subTest(args=args):
+                (self.dir / rel).write_text(text)
+                p = self.start(*args, stdout=subprocess.DEVNULL)
+                _, err = p.communicate(timeout=30)
+                self.assertEqual(p.returncode, 1)
+                self.assertIn(want, err.decode())
+                self.assertNotIn("Traceback", err.decode())
+        packages = self.dir / "repo/nix/packages.txt"
+        packages.chmod(0)
+        self.addCleanup(packages.chmod, 0o644)
+        p = self.start("list", "nix", stdout=subprocess.DEVNULL)
+        _, err = p.communicate(timeout=30)
+        self.assertEqual((p.returncode, err.decode()),
+                         (1, f"dotkit: [Errno 13] Permission denied: '{packages}'\n"))
+
+    def test_brew_outdated_without_a_json_object(self):
+        self.tool("brew", 'case "$1" in outdated) echo "[]";; esac\n')
+        p = self.start("upgrade", "-n", "brew", stdout=subprocess.DEVNULL)
+        _, err = p.communicate(timeout=30)
+        self.assertEqual((p.returncode, err.decode()), (1, "Checking Homebrew...\n"
+                                                           "dotkit: brew outdated --json=v2 did not print a JSON object.\n"))
+
+
+def harness_lock(modified, rev):
+    return {"nodes": {"root": {"inputs": {"dotkit": "dotkit"}},
+                      "dotkit": {"locked": {"lastModified": modified, "rev": rev}}}, "root": "root", "version": 7}
+
+
+def _wait_for(path, timeout=30):
+    end = time.time() + timeout
+    while not path.exists():
+        if time.time() > end:
+            raise TimeoutError(path)
+        time.sleep(0.05)

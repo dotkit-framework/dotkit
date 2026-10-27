@@ -24,18 +24,34 @@ class Stopped(BaseException):
         self.signum = signum
 
 
+# The signals that stop dotkit while it changes files. SIGINT raises KeyboardInterrupt already. SIGPIPE: the
+# reader of the output went away (dotkit upgrade -n | head).
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE)
+
+
 @contextlib.contextmanager
 def on_signals() -> Iterator[None]:
-    """While the block runs, SIGTERM and SIGHUP raise Stopped (SIGINT raises KeyboardInterrupt already)."""
+    """While the block runs, the signals of STOP_SIGNALS raise Stopped, so that a `finally` can restore files."""
     def handler(signum, _frame):
         raise Stopped(signum)
 
-    old = {s: signal.signal(s, handler) for s in (signal.SIGTERM, signal.SIGHUP)}
+    old = {s: signal.signal(s, handler) for s in STOP_SIGNALS}
     try:
         yield
     finally:
         for s, h in old.items():
             signal.signal(s, h)
+
+
+@contextlib.contextmanager
+def shielded() -> Iterator[None]:
+    """While the block runs, SIGINT and the signals of STOP_SIGNALS wait: for the restore of files."""
+    signals = (signal.SIGINT, *STOP_SIGNALS)
+    old = signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+    try:
+        yield
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, old)
 
 
 class Backup:
@@ -50,9 +66,10 @@ class Backup:
                 self.copies[path] = copy
 
     def restore(self) -> None:
-        for path, copy in self.copies.items():
-            shutil.copyfile(copy, path)
-        self.discard()
+        with shielded():
+            for path, copy in self.copies.items():
+                shutil.copyfile(copy, path)
+            self.discard()
 
     def discard(self) -> None:
         if self.dir is not None:

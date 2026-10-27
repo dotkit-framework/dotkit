@@ -372,10 +372,7 @@ class Pkg:
                                      "homebrew.masApps"], stdout=proc.CAPTURE)
         if not r.ok:
             raise ui.Exit(r.code)
-        try:
-            apps = json.loads(r.out)
-        except ValueError:
-            raise ui.Exit(5, "jq: error: the App Store apps of the configuration are not JSON")
+        apps = r.json_object("nix eval of homebrew.masApps")
         for name in sorted(apps):
             # The names in nix/mas.txt are escaped for the Brewfile: \\, \", and \#.
             name = re.sub(r'\\([\\"#])', r"\1", name)

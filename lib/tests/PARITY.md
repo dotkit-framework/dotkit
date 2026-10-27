@@ -279,6 +279,7 @@ New in the Python code. The goldens of these rows come from the Python code.
 | DV3 | Bash prints its own errors with a line number: `cd` when `DOTFILES` or `DOTKIT_DIR` is not a directory, and "command not found". Python prints only the dotkit message ("DOTFILES is not a directory: X", "NAME: command not found"). The exit codes stay (1, 2, and 127). | Bash internals are not part of the interface. |
 | DV4 | `__complete tools-*` prints the names sorted by code point, not with `sort` in the locale of the user. | zsh sorts the completions itself. |
 | DV5 | A list file or config/mise.toml that does not exist reads as empty. In Bash, awk printed an error, and most commands stopped with exit code 2. | The template has all the files; an empty list is the safe reading. |
+| DV6 | Output that dotkit cannot use is a message, exit code 1: a lock file that is not a JSON object ("FILE is not valid JSON: ...", "FILE is not a JSON object."), output of brew, mise, or nix that is not a JSON object ("COMMAND did not print a JSON object."), and a file that dotkit cannot read or write ("dotkit: [Errno N] ..."). Bash printed the error of jq (exit code 5) or went on with no data, and "Everything is up to date." could be false. | Tracebacks and false reports are defects. |
 
 ## Bash bugs
 
@@ -286,7 +287,7 @@ The Python code does what the Bash code means to do. The scenarios of these
 rows ran with the Bash scripts only; their goldens keep the Bash behavior.
 The scenarios of the correct behavior are option-plan-missing-dir-fixed
 (B1) and upgrade-nix-switch-stops (B2); unit tests cover B3
-(tests/core/test_runtime.py) and B4 (tests/commands/test_commands.py).
+(tests/core/test_runtime.py), and B4 to B6 and DV6 (tests/commands/test_commands.py).
 
 | Row | Bug | Python |
 |---|---|---|
@@ -294,3 +295,5 @@ The scenarios of the correct behavior are option-plan-missing-dir-fixed
 | B2 | `upgrade` runs the switch in `switch \|\| ...`, where Bash does not stop at an error. When `nix-env --set` fails, `darwin-rebuild activate` runs anyway, and only the last exit code counts. | The switch stops at the first failure, as in `apply`. |
 | B3 | With `DOTKIT_DIR`, add and remove run the build in `if ! build_system`, where Bash does not stop at an error: when the evaluation of `drvPath` fails, `nix build` runs with the path `^*`. | The build stops with the exit code of the evaluation. |
 | B4 | `upgrade` pipes the evaluation of the Brewfile into `brew bundle install --file=-`. When the evaluation fails, `brew bundle` still runs, with no Brewfile. | upgrade stops with the exit code of the evaluation, before `brew bundle`. |
+| B5 | `dotkit upgrade -n \| head`: when the reader of the output goes away, SIGPIPE ends the script before its EXIT trap restores the lock files. | SIGPIPE is one of the signals of `backup.on_signals()`: the lock files are restored, exit code 141. |
+| B6 | (A defect of the first Python port, not of Bash.) SIGTERM during `nix flake update` restored the lock files while nix still ran, so nix could write them after the restore. Bash ran its trap after the command. | `proc.run` passes SIGTERM and SIGHUP on to the command and waits for it; the restore blocks the signals (`backup.shielded()`). |

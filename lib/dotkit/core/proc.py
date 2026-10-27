@@ -11,7 +11,9 @@ caller can restore files before dotkit exits.
 
 from __future__ import annotations
 
+import json
 import os
+import signal
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -19,6 +21,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Union
 
 from . import ui
+from .backup import Stopped, shielded
 
 INHERIT = "inherit"
 CAPTURE = "capture"
@@ -37,6 +40,16 @@ class Result:
     @property
     def ok(self) -> bool:
         return self.code == 0
+
+    def json_object(self, what: str) -> dict:
+        """stdout as a JSON object; die with a message that names `what` (the command) when it is not one."""
+        try:
+            data = json.loads(self.out)
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            raise ui.die(f"{what} did not print a JSON object.")
+        return data
 
     @property
     def value(self) -> str:
@@ -98,6 +111,14 @@ def run(argv: Sequence[str], *, cwd: Union[str, Path, None] = None, env: Optiona
     try:
         out, err = p.communicate(data)
     except KeyboardInterrupt:
+        # Ctrl-C reached the whole process group, so the command has it too.
+        _wait_after_interrupt(p)
+        raise
+    except Stopped as x:
+        # SIGTERM or SIGHUP reached only dotkit: pass it on, and let the command end before the caller
+        # restores files that the command can still write.
+        if x.signum != signal.SIGPIPE:
+            p.send_signal(x.signum)
         _wait_after_interrupt(p)
         raise
     if pump is not None:
@@ -106,13 +127,9 @@ def run(argv: Sequence[str], *, cwd: Union[str, Path, None] = None, env: Optiona
 
 
 def _wait_after_interrupt(p: subprocess.Popen) -> None:
-    """The command got Ctrl-C too: wait until it ends, also through more Ctrl-C."""
-    while True:
-        try:
-            p.wait()
-            return
-        except KeyboardInterrupt:
-            continue
+    """Wait until the command ends, also through more signals."""
+    with shielded():
+        p.wait()
 
 
 def mise(home: Path, args: List[str], **kw) -> Result:

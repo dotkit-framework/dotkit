@@ -33,11 +33,17 @@ def locks(env: Env) -> List[Lock]:
     return out
 
 
-def _read_json(path: Path) -> Any:
+def _read_json(path: Path) -> dict:
+    """A lock file as a JSON object; {} when it does not exist."""
     try:
-        return json.loads(path.read_bytes())
+        data = json.loads(path.read_bytes())
     except FileNotFoundError:
         return {}
+    except ValueError as e:
+        raise ui.die(f"{path} is not valid JSON: {e}.")
+    if not isinstance(data, dict):
+        raise ui.die(f"{path} is not a JSON object.")
+    return data
 
 
 def _root_inputs(lock: Any) -> List[Tuple[str, str]]:
@@ -226,7 +232,7 @@ class Upgrade:
         r = proc.run(["brew", "outdated", "--json=v2"], env={"HOMEBREW_NO_AUTO_UPDATE": "1"}, stdout=proc.CAPTURE)
         if not r.ok:
             raise ui.Exit(r.code)
-        data = _json_or_exit(r.out)
+        data = r.json_object("brew outdated --json=v2")
         rows = []
         for item in (data.get("formulae") or []) + (data.get("casks") or []):
             if item.get("name") in declared:
@@ -238,16 +244,8 @@ class Upgrade:
         r = proc.mise(self.env.home, ["outdated", "--json"], stdout=proc.CAPTURE)
         if not r.ok:
             raise ui.Exit(r.code)
-        data = _json_or_exit(r.out)
+        data = r.json_object("mise outdated --json")
         return [(k, _tsv((v or {}).get("current")), _tsv((v or {}).get("latest"))) for k, v in data.items()]
-
-
-def _json_or_exit(text: str) -> Any:
-    try:
-        data = json.loads(text)
-    except ValueError:
-        raise ui.Exit(5, "jq: error: the output is not JSON")
-    return data if isinstance(data, dict) else {}
 
 
 def upgrade(env: Env, words: List[str], dry_run: bool, yes: bool) -> Optional[int]:
