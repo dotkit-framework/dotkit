@@ -24,7 +24,7 @@ is Python 3.9 in the current tools (see migrate/dotkit-migrate and lib/run.py). 
 `from __future__ import annotations` for `X | None` annotations, and
 Optional or Union where a type is evaluated at run time; no `match`, no
 ExceptionGroup, no dataclass(slots=..., kw_only=...), and no
-zip(strict=...). tomllib comes from _compat, which falls back to _vendor/tomli
+zip(strict=...). tomllib comes from _compat, which falls back to tomli of dotkit/_vendor
 on Python 3.9 and 3.10. tests/test_start.py checks the grammar, and CI runs the
 tests with /usr/bin/python3.
 """
