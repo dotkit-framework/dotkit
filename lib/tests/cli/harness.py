@@ -86,10 +86,12 @@ class Scenario:
 
 @dataclass
 class Impl:
-    """An implementation of the dotkit command: the files to copy into the sandbox's dotkit."""
+    """An implementation of the dotkit command: the files to copy into the sandbox's dotkit, and files to
+    write there (path -> text, @PY is the Python of the tests)."""
     name: str
     files: List[str]
     needs_jq: bool
+    write: Dict[str, str] = field(default_factory=dict)
 
     def missing(self) -> Optional[str]:
         if not os.access("/bin/bash", os.X_OK):
@@ -101,6 +103,9 @@ class Impl:
 
 
 BASH = Impl("bash", ["dotkit", "scripts/dotkit-pkg", "scripts/nix.sh"], needs_jq=True)
+# Steps 3 to 6 of CLI-PLAN.md: the Bash dotkit, and the Python code for the pkg commands.
+PYTHON = Impl("python", ["dotkit", "scripts/nix.sh", "lib/run.py", "lib/dotkit"], needs_jq=False, write={
+    "scripts/dotkit-pkg": '#!/bin/sh\nexec "@PY" -I -B "$(dirname -- "$0")/../lib/run.py" dotkit "$@"\n'})
 
 
 def _tool_script(tool: str) -> str:
@@ -135,6 +140,8 @@ def setup(sb: Path, impl: Impl, s: Scenario) -> None:
             shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "tests"))
         else:
             shutil.copy2(src, dst)
+    for rel, text in impl.write.items():
+        _write(sb / "dotkit" / rel, text.replace("@PY", sys.executable), 0o755)
     for rel, text in {**BASE, **REPO}.items():
         _write(sb / rel, text)
     _write(sb / "dotkit/migrate/dotkit-migrate", _tool_script("dotkit-migrate"), 0o755)

@@ -2,10 +2,10 @@
 
 Each scenario of scenarios.py runs in a sandbox (harness.py), and its result
 must equal golden/<scenario>.json. The goldens come from the Bash scripts.
-DOTKIT_CLI_IMPL selects the implementation (default: bash). To write the
-goldens again after a change on purpose, with the Bash scripts:
+DOTKIT_CLI_IMPL selects the implementation: python (the default) or bash.
+To write the goldens again after a change on purpose, with the Bash scripts:
 
-    cd lib && DOTKIT_CLI_REGOLD=1 /usr/bin/python3 -B -m unittest tests.cli.test_parity
+    cd lib && DOTKIT_CLI_IMPL=bash DOTKIT_CLI_REGOLD=1 /usr/bin/python3 -B -m unittest tests.cli.test_parity
 
 then review the diff of tests/cli/golden/ and commit it with the change.
 The sandbox of `nix flake check` has no Bash 3.2 and no scripts/, so these
@@ -26,9 +26,10 @@ from tests.cli.scenarios import SCENARIOS
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 PARITY = Path(__file__).resolve().parents[1] / "PARITY.md"
-IMPLS = {"bash": harness.BASH}
-IMPL = IMPLS[os.environ.get("DOTKIT_CLI_IMPL", "bash")]
-REGOLD = os.environ.get("DOTKIT_CLI_REGOLD") == "1"
+IMPLS = {"bash": harness.BASH, "python": harness.PYTHON}
+IMPL = IMPLS[os.environ.get("DOTKIT_CLI_IMPL", "python")]
+# Only the Bash scripts write goldens: they are the reference.
+REGOLD = os.environ.get("DOTKIT_CLI_REGOLD") == "1" and IMPL is harness.BASH
 
 
 def _no_text(r: dict) -> dict:

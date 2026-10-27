@@ -1,0 +1,377 @@
+"""The commands add, remove, info, list, and __names (PARITY.md, rows P, L, N, I, Ad, and Rm)."""
+
+from __future__ import annotations
+
+import json
+import re
+from typing import List, Optional, Sequence
+
+from ..core import args, lists, mise_toml, nix, proc, ui
+from ..core.env import Env
+from . import declared, edit
+from .lookups import Lookups
+from .resolve import KEYS, Candidates, Resolver, Selection
+
+USAGE = """\
+Usage: dotkit add [-n] [-y] [-f] <tool>...
+       dotkit remove [-n] [-y] <tool>...
+       dotkit info <tool>...
+       dotkit list [nix|brew|mise]
+
+add looks up each tool in all sources, selects one, shows the plan, asks to
+confirm, writes the config, and applies it (dotkit apply or mise install).
+
+Examples:
+  dotkit add lazygit           Nix, when Nixpkgs has the current release
+  dotkit add hk                mise, when Nixpkgs is older or does not have it
+  dotkit add zed               Homebrew, because it is a macOS app
+  dotkit add @biomejs/biome    npm, because the name is a scoped npm package
+  dotkit add -n ripgrep fd     show the plan only
+
+A prefix selects the source. Use the one that matches the install line in the
+tool's README:
+  nix:ATTR    Nixpkgs                                  -> nix/packages.txt
+  brew:NAME   brew install NAME (formula, else cask)   -> nix/brews.txt, casks.txt
+  cask:NAME   brew install --cask NAME                 -> nix/casks.txt
+  mise:NAME   the mise registry                        -> config/mise.toml
+  npm:PKG     npm install -g PKG                       -> config/mise.toml
+  pipx:PKG    pipx install PKG, uv tool install PKG    -> config/mise.toml
+  mas:ID      mas install ID, an App Store app         -> nix/mas.txt
+  Other mise backends: cargo:CRATE, go:MODULE, github:OWNER/REPO, aqua:OWNER/REPO, ...
+
+Options:
+  -n, --dry-run  Show the plan. Change nothing.
+  -y, --yes      Do not ask for confirmation. Required without a terminal.
+  -f, --force    Add a tool even when a global tool already supplies its command.
+  -h, --help     Show this help.
+
+Tools in the dotkit base are not added again, and remove does not remove them.
+Homebrew taps: edit nix/taps.txt."""
+
+COMMANDS = ("add", "remove", "info", "list")
+FAILED = "nothing changed. Fix the errors above, then run the command again."
+# The list file of each kind of entry.
+FILES = {"nix": "nix/packages.txt", "cask": "nix/casks.txt", "formula": "nix/brews.txt", "mas": "nix/mas.txt"}
+
+
+def print_candidates(c: Candidates, selected: Optional[Selection]) -> None:
+    """One line per candidate; the selected one has a check mark (PARITY.md, Pc1)."""
+    columns = ui.terminal_columns()
+    width = None if columns is None else max(columns - 50, 20)
+    for key in KEYS:
+        found = c.found.get(key)
+        if found is None:
+            continue
+        mark = "✓" if selected is not None and key == selected.key else " "
+        desc = found.description
+        if width is not None and len(desc) > width:
+            desc = desc[:width - 1] + "…"
+        ui.out(f"  {mark} {ui.pad(c.spec_of(key), 30)} {ui.pad(found.version or '?', 14)} {desc}")
+
+
+class Pkg:
+    def __init__(self, env: Env, dry_run: bool = False, yes: bool = False, force: bool = False):
+        self.env = env
+        self.dry_run, self.yes, self.force = dry_run, yes, force
+        self.look = Lookups(env)
+        self.resolver = Resolver(self.look)
+
+    @property
+    def mas_txt(self):
+        return self.env.repo / "nix/mas.txt"
+
+    # --- add
+
+    def add(self, tools: Sequence[str]) -> int:
+        seen: List[str] = []
+        commands: List[str] = []
+        nix_edits: List[str] = []
+        mise_specs: List[str] = []
+        failed = False
+        for tool in tools:
+            if tool in seen:
+                continue
+            seen.append(tool)
+            found = declared.find(self.env, tool)
+            if found:
+                ui.out(f"{tool}: already in {found[0][0]}")
+                continue
+            outcome = self.resolver.resolve(tool)
+            if not outcome.ok:
+                ui.warn(f"{tool}: {outcome.reason}")
+                print_candidates(outcome.candidates, None)
+                failed = True
+                continue
+            s = outcome.selection
+            entry = f"{s.kind}:{s.entry}"
+            if entry in nix_edits + mise_specs:
+                ui.out(f"{tool}: same entry as an earlier argument ({s.spec})")
+                continue
+            # An App Store app has no command to check.
+            if s.kind == "mas":
+                planned = self._plan_mas(tool, s, nix_edits)
+                if planned is None:
+                    failed = True
+                else:
+                    nix_edits.append(planned)
+                continue
+            # A tool can have another name in the config: rg is ripgrep, and tealdeer supplies tldr.
+            if not self.force:
+                path = declared.existing_command(self.env, s.command)
+                if path is not None:
+                    ui.warn(f"{tool}: '{s.command}' is already installed ({declared.origin(path, self.env.home)})."
+                            f" See dotkit info {s.command}, or use --force to add it anyway.")
+                    failed = True
+                    continue
+            if s.command in commands:
+                ui.warn(f"{tool}: an earlier argument also supplies the command '{s.command}'. "
+                        "Add only one of them.")
+                failed = True
+                continue
+            commands.append(s.command)
+            if tool == s.spec:
+                ui.out(f"{s.spec} -> {s.target}")
+            else:
+                ui.out(f"{tool}: {s.spec} -> {s.target} ({s.reason})")
+            print_candidates(outcome.candidates, s)
+            (mise_specs if s.kind == "mise" else nix_edits).append(entry)
+        if failed:
+            raise ui.die(FAILED)
+        planned = len(nix_edits) + len(mise_specs)
+        if planned == 0:
+            return 0
+        if self.dry_run:
+            ui.note("No change. Run the command without -n to add.")
+            return 0
+        what = "tool" if planned == 1 else f"{planned} tools"
+        if not ui.confirm(f"Add the {what}?", self.yes):
+            raise ui.die("nothing changed.")
+        # Nix first: a failed build restores the Nix files, and mise is not changed yet.
+        if nix_edits:
+            def change() -> None:
+                for e in nix_edits:
+                    kind, text = e.split(":", 1)
+                    lists.append(self.env.repo / FILES[kind], text)
+            edit.apply_nix(self.env, change)
+        # `mise use` writes "latest" when the spec has no version.
+        for e in mise_specs:
+            spec = e[len("mise:"):]
+            if not proc.mise(self.env.home, ["use", "-g", spec]).ok:
+                raise ui.die(f"mise could not add {spec}. The tools before it in the list are added.")
+        return 0
+
+    def _plan_mas(self, tool: str, s: Selection, nix_edits: List[str]) -> Optional[str]:
+        """The entry of an App Store app, or None after the warning (PARITY.md, Ad5)."""
+        if not self.mas_txt.is_file():
+            ui.warn(f"{tool}: nix/mas.txt does not exist. Create it, and list it in dotkit.lists.masApps in "
+                    "nix/darwin.nix.")
+            return None
+        # homebrew.masApps lists apps by name, and the name is only a label. A name that another app has
+        # gets the label "Name (ID)".
+        app_id, label = s.entry.split(" ", 1)[0], s.reason
+        entry = f"mas:{s.entry}"
+        if lists.mas_id_of(label, self.mas_txt, nix_edits) is not None:
+            label = f"{s.reason} ({app_id})"
+            if lists.mas_id_of(label, self.mas_txt, nix_edits) is not None:
+                ui.warn(f"{tool}: other apps have the names '{s.reason}' and '{label}'. Add it to nix/mas.txt "
+                        f"under another name: {app_id} <name>")
+                return None
+            entry = f"mas:{app_id} {label}"
+        ui.out(f"{s.spec} -> nix/mas.txt ({label})")
+        if label != s.reason:
+            ui.out(f"nix/mas.txt has another app named {s.reason}; added as '{label}'.")
+        return entry
+
+    # --- remove
+
+    def remove(self, tools: Sequence[str]) -> int:
+        nix_edits: List[str] = []
+        mise_keys: List[str] = []
+        failed = False
+        for tool in tools:
+            found = declared.find(self.env, tool)
+            # A prefix selects the file.
+            files, pattern = "nix/packages.txt, nix/brews.txt, nix/casks.txt, or config/mise.toml", None
+            if tool.startswith("nix:"):
+                files, pattern = "nix/packages.txt", r"(dotkit:)?nix/packages"
+            elif tool.startswith("brew:"):
+                files, pattern = "nix/brews.txt or nix/casks.txt", r"(dotkit:)?nix/(brews|casks)"
+            elif tool.startswith("cask:"):
+                files, pattern = "nix/casks.txt", r"(dotkit:)?nix/casks"
+            elif tool.startswith("mas:"):
+                files, pattern = "nix/mas.txt", r"nix/mas"
+            elif ":" in tool:
+                files, pattern = "config/mise.toml", r"(dotkit:)?config/mise"
+            if pattern is not None:
+                found = [d for d in found if re.match(pattern, d[0])]
+            base = [d for d in found if d[0].startswith("dotkit:")]
+            if base:
+                ui.warn(f"{tool}: in the dotkit base ({base[0][0]}). Only dotkit can remove it.")
+                failed = True
+                continue
+            if not found:
+                ui.warn(f"{tool}: not in {files}. See dotkit info {tool}.")
+                failed = True
+                continue
+            if len(found) > 1:
+                ui.warn(f"{tool}: in more than one place: {','.join(d[0] for d in found)}. Use a prefix (nix:, "
+                        "brew:, cask:, mise:), or remove it by hand.")
+                failed = True
+                continue
+            file, name = found[0]
+            kind = {"config/mise.toml": "mise", "nix/packages.txt": "nix", "nix/brews.txt": "formula",
+                    "nix/casks.txt": "cask", "nix/mas.txt": "mas"}[file]
+            entry = f"{kind}:{name}"
+            if entry in nix_edits + mise_keys:
+                continue
+            ui.out(f"{tool}: remove {name} from {file}")
+            (mise_keys if kind == "mise" else nix_edits).append(entry)
+        if failed:
+            raise ui.die(FAILED)
+        if self.dry_run:
+            ui.note("No change. Run the command without -n to remove.")
+            return 0
+        if not ui.confirm("Remove?", self.yes):
+            raise ui.die("nothing changed.")
+        if nix_edits:
+            def change() -> None:
+                for e in nix_edits:
+                    kind, text = e.split(":", 1)
+                    lists.delete(self.env.repo / FILES[kind], text)
+            edit.apply_nix(self.env, change)
+            # Activation does not uninstall Homebrew packages (homebrew.onActivation.cleanup in
+            # nix/darwin.nix), so uninstall the removed ones here. With cleanup = "uninstall", activation did
+            # it already.
+            for e in nix_edits:
+                kind, text = e.split(":", 1)
+                if kind in ("formula", "cask"):
+                    self._brew_uninstall(kind, text)
+                elif kind == "mas":
+                    ui.warn(f"the App Store app {text} stays installed. dotkit does not uninstall App Store apps.")
+        for e in mise_keys:
+            key = e[len("mise:"):]
+            if not proc.mise(self.env.home, ["unuse", "-g", key]).ok:
+                raise ui.die(f"mise could not remove {key}. The tools before it in the list are removed.")
+        return 0
+
+    def _brew_uninstall(self, kind: str, name: str) -> None:
+        """Uninstalls a Homebrew formula or cask when it is installed."""
+        if proc.which("brew") is None:
+            return
+        quiet = {"HOMEBREW_NO_AUTO_UPDATE": "1"}
+        if not proc.run(["brew", "list", f"--{kind}", name], env=quiet, stdout=proc.DEVNULL,
+                        stderr=proc.DEVNULL).ok:
+            return
+        if not proc.run(["brew", "uninstall", f"--{kind}", name], env=quiet).ok:
+            ui.warn(f"could not uninstall the {kind} {name}. Run: brew uninstall --{kind} {name}")
+
+    # --- info
+
+    def info(self, tools: Sequence[str]) -> int:
+        status = 0
+        for tool in tools:
+            found_any = False
+            ui.out(tool)
+            found = declared.find(self.env, tool)
+            if found:
+                found_any = True
+                for file, entry in found:
+                    ui.out(f"  {ui.pad('declared', 9)} {file} ({entry})")
+            else:
+                ui.out(f"  {ui.pad('declared', 9)} no")
+            outcome = self.resolver.resolve(tool)
+            if outcome.ok:
+                ui.out(f"  add picks {outcome.selection.spec} ({outcome.selection.reason})")
+            else:
+                ui.out(f"  add picks none: {outcome.reason}")
+            command = (outcome.selection.command if outcome.ok else "") or re.sub(r".*[:/]", "", tool)
+            path = declared.existing_command(self.env, command)
+            if path is not None:
+                found_any = True
+                ui.out(f"  {ui.pad('command', 9)} {path} ({declared.origin(path, self.env.home)})")
+            if outcome.candidates.found:
+                found_any = True
+                ui.out("  sources")
+                print_candidates(outcome.candidates, outcome.selection)
+            if not found_any:
+                status = 1
+        return status
+
+    # --- list
+
+    def list(self, sources: Sequence[str]) -> int:
+        for src in sources:
+            if src not in ("nix", "brew", "mise"):
+                raise ui.die(f"'{src}' is not a source. Use nix, brew, or mise.")
+        for src in sources or ("nix", "brew", "mise"):
+            # The dotkit base first, marked "(dotkit)".
+            for root, base in ((self.env.dotkit, " (dotkit)"), (self.env.repo, "")):
+                if src == "nix":
+                    for n in lists.names(root / "nix/packages.txt"):
+                        ui.out(f"nix   {n}{base}")
+                elif src == "brew":
+                    for n in lists.names(root / "nix/brews.txt"):
+                        ui.out(f"brew  {ui.pad(n, 36)} formula{base}")
+                    for n in lists.names(root / "nix/casks.txt"):
+                        ui.out(f"brew  {ui.pad(n, 36)} cask{base}")
+                else:
+                    for key, value in mise_toml.tool_lines(root / "config/mise.toml"):
+                        ui.out(f"mise  {ui.pad(key, 36)} {value}{base}")
+            if src == "brew":
+                self._list_app_store()
+        return 0
+
+    def _list_app_store(self) -> None:
+        r = nix.Nix(self.env).flake(["eval", "--json", f"{self.env.flake}#darwinConfigurations.mac.config."
+                                     "homebrew.masApps"], stdout=proc.CAPTURE)
+        if not r.ok:
+            raise ui.Exit(r.code)
+        try:
+            apps = json.loads(r.out)
+        except ValueError:
+            raise ui.Exit(5, "jq: error: the App Store apps of the configuration are not JSON")
+        for name in sorted(apps):
+            # The names in nix/mas.txt are escaped for the Brewfile: \\, \", and \#.
+            name = re.sub(r'\\([\\"#])', r"\1", name)
+            # jq pads by code points, not by bytes.
+            ui.out(f"brew  {name}{' ' * max(36 - len(name), 0)} app store")
+
+    # --- __names
+
+    def names(self, which: str) -> int:
+        """The declared names for the zsh completion: user for the lists of the dotfiles repository, all for
+        the base lists too. Sorted by code point (PARITY.md, DV4)."""
+        roots = [self.env.repo] + ([self.env.dotkit] if which == "all" else [])
+        out = set()
+        for root in roots:
+            for rel in ("nix/packages.txt", "nix/brews.txt", "nix/casks.txt"):
+                out.update(lists.names(root / rel))
+            if (root / "nix/mas.txt").is_file():
+                out.update("mas:" + n for n in lists.names(root / "nix/mas.txt"))
+            out.update(mise_toml.keys(root / "config/mise.toml"))
+        for n in sorted(out):
+            ui.out(n)
+        return 0
+
+
+def main(env: Env, argv: Sequence[str]) -> int:
+    """dotkit CMD ARGS for the pkg commands: argv starts with the command."""
+    cmd, rest = (argv[0], list(argv[1:])) if argv else ("", [])
+    if cmd == "__names":
+        return Pkg(env).names(rest[0] if rest else "user")
+    spec = args.Spec(flags={"-n": "dry_run", "--dry-run": "dry_run", "-y": "yes", "--yes": "yes",
+                            "-f": "force", "--force": "force"}, hint=f"Use dotkit {cmd} --help.")
+    try:
+        opts, tools = args.parse(rest, spec)
+    except args.Help:
+        ui.out(USAGE)
+        return 0
+    if cmd not in COMMANDS:
+        if cmd in ("", "-h", "--help"):
+            ui.out(USAGE)
+            return 0
+        raise ui.Exit(2, f"dotkit: unknown command: {cmd}. Use --help.")
+    if cmd != "list" and not tools:
+        raise ui.Exit(2, f"Usage: dotkit {cmd} <tool>... Use dotkit {cmd} --help for examples.")
+    pkg = Pkg(env, bool(opts["dry_run"]), bool(opts["yes"]), bool(opts["force"]))
+    return {"add": pkg.add, "remove": pkg.remove, "info": pkg.info, "list": pkg.list}[cmd](tools)

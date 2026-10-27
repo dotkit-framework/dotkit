@@ -62,6 +62,11 @@ def flush() -> None:
     sys.stderr.flush()
 
 
+def pad(text: str, width: int) -> str:
+    """Text padded with spaces to width bytes, as printf %-Ns of Bash and awk pads it."""
+    return text + " " * max(0, width - len(text.encode("utf-8", "surrogateescape")))
+
+
 def confirm(question: str, yes: bool) -> bool:
     """True with yes. Else ask "QUESTION [y/N] " on stderr: only y and Y are yes (PARITY.md, Q1).
 
