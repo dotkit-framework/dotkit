@@ -27,7 +27,7 @@ from tests.cli.scenarios import SCENARIOS
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 PARITY = Path(__file__).resolve().parents[1] / "PARITY.md"
-IMPL = harness.PYTHON
+IMPL = {"python": harness.PYTHON, "full": harness.FULL}[os.environ.get("DOTKIT_CLI_IMPL", "full")]
 REGOLD = os.environ.get("DOTKIT_CLI_REGOLD") == "1"
 
 

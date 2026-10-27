@@ -10,7 +10,7 @@ dotkit does not use it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Sequence, Tuple, Union
 
 from . import ui
 
@@ -25,6 +25,8 @@ class Spec:
     flags: Dict[str, str]
     # Option that takes a value -> (name, the message when the value is missing).
     values: Dict[str, Tuple[str, str]] = field(default_factory=dict)
+    # Name of a value -> a function that checks it and gives the value to keep, when the option is read.
+    convert: Dict[str, Callable[[str], str]] = field(default_factory=dict)
     # The text after "unknown option: OPT."
     hint: str = "Use dotkit --help."
 
@@ -52,7 +54,7 @@ def parse(argv: Sequence[str], spec: Spec) -> Tuple[Options, List[str]]:
             if i + 1 >= len(argv):
                 raise ui.usage_error(missing, spec.hint)
             i += 1
-            opts[name] = argv[i]
+            opts[name] = spec.convert[name](argv[i]) if name in spec.convert else argv[i]
         elif a.startswith("-"):
             raise ui.usage_error(f"unknown option: {a}.", spec.hint)
         else:

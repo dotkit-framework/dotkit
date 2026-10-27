@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "tidy",
+  "-n",
+  "--plan",
+  "nope/plan.txt",
+  "-h"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'nope/plan.txt' is not in a directory that exists. Use dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

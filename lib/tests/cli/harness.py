@@ -106,6 +106,15 @@ class Impl:
 
 # Until step 7 of CLI-PLAN.md, the Bash dotkit runs the commands that are not in Python yet, with jq.
 PYTHON = Impl("python", ["dotkit", "scripts/nix.sh", "lib/run.py", "lib/dotkit"], needs_jq=True)
+# Step 6: all commands in Python, with the launcher of step 7.
+LAUNCHER = """#!/bin/sh
+if ! /usr/bin/xcode-select -p >/dev/null 2>&1; then
+  echo 'dotkit: the Xcode Command Line Tools are missing. Install them: xcode-select --install' >&2
+  exit 1
+fi
+exec /usr/bin/python3 -I -B "$(dirname -- "$0")/lib/run.py" dotkit "$@"
+"""
+FULL = Impl("full", ["lib/run.py", "lib/dotkit"], needs_jq=False)
 
 
 def _tool_script(tool: str) -> str:
@@ -141,6 +150,8 @@ def setup(sb: Path, impl: Impl, s: Scenario) -> None:
         else:
             shutil.copy2(src, dst)
     launcher = sb / "dotkit/dotkit"
+    if not launcher.exists():
+        _write(launcher, LAUNCHER, 0o755)
     launcher.write_text(launcher.read_text(encoding="utf-8").replace("/usr/bin/python3", sys.executable),
                         encoding="utf-8")
     for rel, text in {**BASE, **REPO}.items():

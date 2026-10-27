@@ -282,11 +282,14 @@ New in the Python code. The goldens of these rows come from the Python code.
 ## Bash bugs
 
 The Python code does what the Bash code means to do. The scenarios of these
-rows run with the Bash scripts only; the step that ports the row adds a
-scenario for the correct behavior.
+rows ran with the Bash scripts only; their goldens keep the Bash behavior.
+The scenarios of the correct behavior are option-plan-missing-dir-fixed
+(B1) and upgrade-nix-switch-stops (B2); unit tests cover B3
+(tests/core/test_runtime.py) and B4 (tests/commands/test_commands.py).
 
 | Row | Bug | Python |
 |---|---|---|
 | B1 | `--plan DIR/FILE` with a directory that does not exist: the `cd` error goes to stderr, and the wizard gets `--plan /FILE`. The usage error "'X' is not in a directory that exists." never shows. | The usage error, exit code 2. |
 | B2 | `upgrade` runs the switch in `switch \|\| ...`, where Bash does not stop at an error. When `nix-env --set` fails, `darwin-rebuild activate` runs anyway, and only the last exit code counts. | The switch stops at the first failure, as in `apply`. |
 | B3 | With `DOTKIT_DIR`, add and remove run the build in `if ! build_system`, where Bash does not stop at an error: when the evaluation of `drvPath` fails, `nix build` runs with the path `^*`. | The build stops with the exit code of the evaluation. |
+| B4 | `upgrade` pipes the evaluation of the Brewfile into `brew bundle install --file=-`. When the evaluation fails, `brew bundle` still runs, with no Brewfile. | upgrade stops with the exit code of the evaluation, before `brew bundle`. |

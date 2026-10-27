@@ -93,6 +93,7 @@ def options() -> List[S]:
         S("option-plan-needs-file", ["tidy", "--plan"], rows=["O5"]),
         S("option-plan-missing-dir", ["tidy", "-n", "--plan", "nope/plan.txt"],
           rules=fx.declared_homebrew() + [{"tool": "dotkit-migrate", "re": ""}], rows=["O5"], deviation="B1"),
+        S("option-plan-missing-dir-fixed", ["tidy", "-n", "--plan", "nope/plan.txt", "-h"], rows=["O5"]),
         S("option-plan-not-tidy", ["migrate", "--plan", "p.txt"], rows=["O8"]),
         S("option-all-not-migrate", ["tidy", "-a"], rows=["O8"]),
         S("option-all-long-not-migrate", ["apply", "--all"], rows=["O8"]),
@@ -150,6 +151,8 @@ def upgrade() -> List[S]:
           rows=["U4"]),
         S("upgrade-nix-switch-fails", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_fails(),
           rows=["U13"], deviation="B2"),
+        S("upgrade-nix-switch-stops", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_fails() + fx.switch_ok(),
+          rows=["U13"]),
         S("upgrade-nix-activate-fails", ["upgrade", "-y", "nix"], rows=["U13"],
           rules=nix_rules + [{"tool": "sudo", "re": "darwin-rebuild", "exit": 1, "stderr": "error: activation\n"}]
           + fx.switch_ok()),
