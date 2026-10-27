@@ -17,7 +17,7 @@ def history(env: Env) -> int:
     try:
         current = os.readlink(f"{PROFILES}/system")
     except OSError:
-        return 1
+        raise ui.die(f"{PROFILES}/system is not a link to a generation. Run dotkit apply first.")
     digits = re.sub(r"[^0-9]", "", current)
     prev = f"{PROFILES}/system-{(int(digits) if digits else 0) - 1}-link"
     if not os.path.exists(prev):

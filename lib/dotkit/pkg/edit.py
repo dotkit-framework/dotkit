@@ -1,8 +1,9 @@
 """Change the Nix lists, build, and apply (PARITY.md, Ad13 and Rm9).
 
 apply_nix() backs up the lists, runs the edit, and builds. When the edit or
-the build fails, or on SIGINT, SIGTERM, or SIGHUP, it restores the lists.
-Then it runs `dotkit apply`; the lists keep the change when that fails.
+the build fails, or on a signal, it restores the lists. Then it activates the
+system that it built and runs `mise install`, as `dotkit apply` does; the
+lists keep the change when that fails.
 """
 
 from __future__ import annotations
@@ -11,15 +12,14 @@ from typing import Callable
 
 from ..core import backup, nix, proc, ui
 from ..core.env import Env
+from .entries import NIX_FILES
 
-LISTS = ("packages.txt", "brews.txt", "casks.txt")
+APPLY_FAILED = "dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply."
 
 
 def apply_nix(env: Env, edit: Callable[[], None]) -> None:
-    names = list(LISTS)
-    if (env.repo / "nix/mas.txt").is_file():
-        names.append("mas.txt")
-    copies = backup.Backup([env.repo / "nix" / n for n in names])
+    n = nix.Nix(env)
+    copies = backup.Backup([env.repo / f for f in NIX_FILES])
     try:
         with backup.on_signals():
             try:
@@ -27,12 +27,12 @@ def apply_nix(env: Env, edit: Callable[[], None]) -> None:
             except OSError:
                 copies.restore()
                 raise ui.die("could not change the Nix files. They are restored.")
-            if nix.Nix(env).build_system() != 0:
+            if n.build_system() != 0:
                 copies.restore()
                 raise ui.die("the build failed. The Nix files are restored.")
     except (KeyboardInterrupt, backup.Stopped):
         copies.restore()
         raise ui.Exit(130, "\ndotkit: stopped. The Nix files are restored.")
     copies.discard()
-    if proc.run([str(env.dotkit / "dotkit"), "apply"]).code != 0:
-        raise ui.die("dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply.")
+    if n.activate() != 0 or not proc.mise(env.home, ["install"]).ok:
+        raise ui.die(APPLY_FAILED)

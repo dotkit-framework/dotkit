@@ -142,7 +142,9 @@ class HistoryTests(Sandbox):
     def test_no_system_link(self):
         d = self.profiles()
         with mock.patch.object(recovery, "PROFILES", str(d)):
-            self.assertEqual(recovery.history(self.env), 1)
+            with self.assertRaises(ui.Exit) as c:
+                recovery.history(self.env)
+        self.assertIn("is not a link to a generation", c.exception.text)
 
 
 class UpgradeSignalTests(Sandbox):
@@ -289,3 +291,29 @@ def _wait_for(path, timeout=30):
         if time.time() > end:
             raise TimeoutError(path)
         time.sleep(0.05)
+
+
+class CompletionImportTests(unittest.TestCase):
+    """The completion runs on each Tab: it must not load the modules of the other commands (CLI-PLAN.md, 5.4)."""
+
+    HEAVY = ("questionary", "prompt_toolkit", "wcwidth", "concurrent.futures", "dotkit.pkg.lookups",
+             "dotkit.pkg.resolve", "dotkit.pkg.picker", "dotkit.migrate", "argparse")
+
+    def test_complete_loads_only_the_readers(self):
+        d = fake.tempdir().resolve()
+        self.addCleanup(fake.remove, d)
+        for rel, text in {**harness.BASE, **harness.REPO}.items():
+            p = d / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+        script = ("import os, sys\nsys.path.insert(0, sys.argv[1])\nwhat = sys.argv[2]\n"
+                  "from dotkit.__main__ import main\n"
+                  "code = main(['__complete', what])\n"
+                  f"heavy = {self.HEAVY!r}\n"
+                  "print(code, sorted(m for m in sys.modules if m.startswith(heavy)))\n")
+        for what in ("tools-all", "inputs"):
+            with self.subTest(what=what):
+                r = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(LIB), what],
+                                   env={"DOTFILES": str(d / "repo"), "HOME": str(d)}, capture_output=True, text=True,
+                                   timeout=60)
+                self.assertEqual(r.stdout.splitlines()[-1], "0 []", r.stderr)

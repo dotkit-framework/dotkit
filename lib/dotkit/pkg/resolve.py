@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, Optional, Tuple
 
 from . import lookups as lk
+from .entries import Entry, split_prefix
 from .lookups import Found, Lookups
 
 # The order of the candidates in the plan.
@@ -42,19 +43,10 @@ class Candidates:
 @dataclass
 class Selection:
     key: str  # a key of KEYS; "" for an App Store app
-    kind: str  # nix, cask, formula, mise, or mas
-    entry: str  # the text for the config file
+    entry: Entry  # what goes into the config
     spec: str
     reason: str
     command: str = ""
-
-    @property
-    def target(self) -> str:
-        return TARGETS[self.kind]
-
-
-TARGETS = {"nix": "nix/packages.txt", "cask": "nix/casks.txt", "formula": "nix/brews.txt",
-           "mise": "config/mise.toml", "mas": "nix/mas.txt"}
 
 
 @dataclass
@@ -126,7 +118,7 @@ class Resolver:
                 command = nix_found.command
         if not command:
             command = re.sub(r".*[:/]", "", entry)
-        return Selection(key, kind, entry, c.spec_of(key), reason, command)
+        return Selection(key, Entry(kind, entry), c.spec_of(key), reason, command)
 
     def gather(self, name: str) -> Candidates:
         """Looks up a bare name in all sources at the same time."""
@@ -148,8 +140,9 @@ class Resolver:
 
     def resolve(self, arg: str) -> Outcome:
         look = self.look
-        if arg.startswith("nix:"):
-            c = Candidates(name=arg[4:])
+        prefix, name = split_prefix(arg)
+        if prefix == "nix":
+            c = Candidates(name=name)
             if not lk.nix_attr_ok(c.name):
                 return Outcome(c, reason=f"'{c.name}' is not a valid Nix attribute path.")
             got = look.nix(c.name)
@@ -159,9 +152,8 @@ class Resolver:
                 return Outcome(c, reason=f"Nixpkgs has no package '{c.name}' for this Mac.")
             c.found["nix"] = got
             return Outcome(c, self.select(c, "nix", "selected with nix:"))
-        if arg.startswith(("brew:", "cask:")):
-            prefix = arg.split(":", 1)[0]
-            c = Candidates(name=arg.split(":", 1)[1])
+        if prefix in ("brew", "cask"):
+            c = Candidates(name=name)
             if not lk.brew_name_ok(c.name):
                 return Outcome(c, reason=f"'{c.name}' is not a valid Homebrew name.")
             # brew: is the same as `brew install NAME`: the formula, else the cask.
@@ -176,22 +168,22 @@ class Resolver:
                 return Outcome(c, reason=f"Homebrew has no {what} '{c.name}'.")
             c.set_cask(got)
             return Outcome(c, self.select(c, "app" if got.app else "cask", f"selected with {prefix}:"))
-        if arg.startswith("mise:"):
-            c = Candidates(name=arg[5:])
+        if prefix == "mise":
+            c = Candidates(name=name)
             got = look.mise_registry(c.name)
             if got is None:
                 return Outcome(c, reason=f"the mise registry has no tool '{c.name}' (without asdf or vfox).")
             c.found["mise"] = got
             return Outcome(c, self.select(c, "mise", "selected with mise:"))
-        if arg.startswith("mas:"):
+        if prefix == "mas":
             return self._mas(arg)
-        if ":" in arg:
-            c = Candidates(name=arg.split(":", 1)[1], spec=arg)
+        if prefix:
+            c = Candidates(name=name, spec=arg)
             got = look.mise_spec(arg)
             if got is None:
                 return Outcome(c, reason=f"mise cannot find '{arg}'.")
             c.found["spec"] = got
-            return Outcome(c, self.select(c, "spec", f"selected with {arg.split(':', 1)[0]}:"))
+            return Outcome(c, self.select(c, "spec", f"selected with {prefix}:"))
         if re.fullmatch(r"@.*/.*", arg, re.S):
             c = Candidates(name=arg)
             got = look.npm(arg)
@@ -221,4 +213,4 @@ class Resolver:
         if not isinstance(name, str):
             return Outcome(c, reason=f"mas finds no App Store app with the ID {c.name}.")
         # The reason is the name of the app, for the plan.
-        return Outcome(c, Selection("", "mas", f"{c.name} {name}", arg, name))
+        return Outcome(c, Selection("", Entry("mas", f"{c.name} {name}"), arg, name))

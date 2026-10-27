@@ -70,6 +70,10 @@ class Nix:
         code = self.build_system()
         if code:
             return code
+        return self.activate()
+
+    def activate(self) -> int:
+        """Activates the system that build_system linked: nix-env --set, then darwin-rebuild activate."""
         system = os.readlink(self.env.result)
         code = proc.run(["sudo", "-H", "/usr/bin/env", "NIX_REMOTE=daemon", f"{system}/sw/bin/nix-env",
                          "-p", "/nix/var/nix/profiles/system", "--set", system]).code

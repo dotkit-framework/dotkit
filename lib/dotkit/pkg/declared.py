@@ -1,39 +1,31 @@
-"""Where a tool is declared (PARITY.md, D), and which global tool supplies a command (X).
-
-A file name of a declaration starts with dotkit: for the base lists.
-"""
+"""Where a tool is declared (PARITY.md, D), and which global tool supplies a command (X)."""
 
 from __future__ import annotations
 
 import os
 import pwd
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from ..core import lists, mise_toml, proc
 from ..core.env import Env
+from .entries import KINDS, Declaration, Entry, split_prefix
 
-LISTS = ("nix/packages.txt", "nix/brews.txt", "nix/casks.txt")
-MISE = "config/mise.toml"
-MAS = "nix/mas.txt"
-
-
-def find(env: Env, name: str) -> List[Tuple[str, str]]:
-    """(file, entry) for each declaration of name. For mise keys, a bare name also matches the last part of
+def find(env: Env, name: str) -> List[Declaration]:
+    """Each declaration of name, the base first. For mise keys, a bare name also matches the last part of
     the key: hunk matches github:modem-dev/hunk, and @scope/pkg matches npm:@scope/pkg."""
-    bare = name.split(":", 1)[1] if ":" in name else name
+    prefix, bare = split_prefix(name)
     out = []
     # App Store apps: by ID, in the list of the dotfiles repository only.
-    if name.startswith("mas:"):
-        mas = env.repo / MAS
-        out += [(MAS, bare) for app_id, _ in lists.mas_apps(mas) if app_id == bare]
-        return out
-    for root, label in ((env.dotkit, "dotkit:"), (env.repo, "")):
-        for rel in LISTS:
-            out += [(label + rel, bare) for n in lists.names(root / rel) if n == bare]
-        for key in mise_toml.tools(root / MISE):
+    if prefix == "mas":
+        return [Declaration(Entry("mas", app_id), False)
+                for app_id, _ in lists.mas_apps(env.repo / KINDS["mas"].file) if app_id == bare]
+    for root, base in ((env.dotkit, True), (env.repo, False)):
+        for kind in ("nix", "formula", "cask"):
+            out += [Declaration(Entry(kind, n), base) for n in lists.names(root / KINDS[kind].file) if n == bare]
+        for key in mise_toml.tools(root / KINDS["mise"].file):
             if key in (name, bare, "npm:" + name) or mise_toml.short(key) == bare:
-                out.append((label + MISE, key))
+                out.append(Declaration(Entry("mise", key), base))
     return out
 
 

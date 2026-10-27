@@ -6,7 +6,7 @@
  ],
  "exit": 1,
  "stdout": "nix:dkt-a -> nix/packages.txt\n  ✓ nix:dkt-a                      1.0            A\n",
- "stderr": "error: builder for '/nix/store/x.drv' failed\ndotkit: dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply.\n",
+ "stderr": "sudo: a password is required\ndotkit: dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/packages.txt": "jq\ndkt-a\n"
@@ -51,12 +51,16 @@
    }
   },
   {
-   "tool": "nix",
+   "tool": "sudo",
    "argv": [
-    "build",
-    "path:@SB/repo/nix#darwinConfigurations.mac.system",
-    "--out-link",
-    "@SB/repo/.build/system"
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
    ],
    "cwd": "@SB/home",
    "env": {

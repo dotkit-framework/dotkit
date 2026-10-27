@@ -82,13 +82,6 @@ def plan_row(src: str, name: str, before: str, after: str) -> str:
     return f"  {ui.pad(src, 5)} {ui.pad(name, 36)} {ui.pad(before, 22)} -> {after}"
 
 
-def _tsv(value: Any) -> str:
-    """A JSON value in a row: @tsv of jq, then `read -r`; null is empty."""
-    if value is None:
-        return ""
-    return value if isinstance(value, str) else json.dumps(value)
-
-
 class Upgrade:
     def __init__(self, env: Env, dry_run: bool, yes: bool):
         self.env, self.dry_run, self.yes = env, dry_run, yes
@@ -237,8 +230,8 @@ class Upgrade:
         rows = []
         for item in (data.get("formulae") or []) + (data.get("casks") or []):
             if item.get("name") in declared:
-                versions = " ".join(_tsv(v) for v in item.get("installed_versions") or [])
-                rows.append((_tsv(item.get("name")), versions, _tsv(item.get("current_version"))))
+                versions = " ".join(ui.one_line(v) for v in item.get("installed_versions") or [])
+                rows.append((ui.one_line(item.get("name")), versions, ui.one_line(item.get("current_version"))))
         return rows
 
     def _check_mise(self) -> List[Tuple[str, str, str]]:
@@ -246,7 +239,7 @@ class Upgrade:
         if not r.ok:
             raise ui.Exit(r.code)
         data = r.json_object("mise outdated --json")
-        return [(k, _tsv((v or {}).get("current")), _tsv((v or {}).get("latest"))) for k, v in data.items()]
+        return [(k, ui.one_line((v or {}).get("current")), ui.one_line((v or {}).get("latest"))) for k, v in data.items()]
 
 
 def upgrade(env: Env, words: List[str], dry_run: bool, yes: bool) -> Optional[int]:

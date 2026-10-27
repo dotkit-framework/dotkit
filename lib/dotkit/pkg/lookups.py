@@ -30,19 +30,6 @@ class Found:
     app: bool = False
 
 
-def field(value: Any) -> str:
-    """A JSON value as one field: `. // "" | tostring | gsub("[\\t\\n\\r]"; " ")` of jq."""
-    if value is None or value is False:
-        text = ""
-    elif value is True:
-        text = "true"
-    elif isinstance(value, str):
-        text = value
-    else:
-        text = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-    return re.sub(r"[\t\n\r]", " ", text)
-
-
 def nix_attr_ok(name: str) -> bool:
     """A valid Nix attribute path, safe to write into a list file."""
     return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*(\.[A-Za-z_][A-Za-z0-9_-]*)*", name) is not None
@@ -113,7 +100,7 @@ class Lookups:
             return None
         if not isinstance(info, dict):
             return None
-        return Found(field(info.get("version")), field(info.get("description")), field(info.get("bin")))
+        return Found(ui.one_line(info.get("version")), ui.one_line(info.get("description")), ui.one_line(info.get("bin")))
 
     def version_ge(self, a: str, b: str) -> bool:
         """True when version a is the same as or newer than version b, by builtins.compareVersions: the
@@ -177,11 +164,11 @@ class Lookups:
             targets = [a["target"].rsplit("/", 1)[-1] for a in artifacts
                        if "binary" in a and isinstance(a.get("target"), str)]
             app = any(k in a for a in artifacts for k in ("app", "pkg", "suite"))
-            return Found(field(c.get("version")), field(c.get("desc")), field(targets[0] if targets else None),
+            return Found(ui.one_line(c.get("version")), ui.one_line(c.get("desc")), ui.one_line(targets[0] if targets else None),
                          app)
         items = data.get("formulae") or [{}]
         f = items[0] or {}
-        return Found(field((f.get("versions") or {}).get("stable")), field(f.get("desc")), field(f.get("name")))
+        return Found(ui.one_line((f.get("versions") or {}).get("stable")), ui.one_line(f.get("desc")), ui.one_line(f.get("name")))
 
     def npm(self, name: str) -> Optional[Found]:
         """Only packages that install a command."""
@@ -199,7 +186,7 @@ class Lookups:
         if bin_ is None or bin_ == {}:
             return None
         command = sorted(bin_)[0] if isinstance(bin_, dict) else None
-        return Found(field(data.get("version")), field(data.get("description")), field(command))
+        return Found(ui.one_line(data.get("version")), ui.one_line(data.get("description")), ui.one_line(command))
 
     def pypi(self, name: str) -> Optional[Found]:
         r = self._quiet(["curl", "-fsSL", "--max-time", "10", f"https://pypi.org/pypi/{name}/json"])
@@ -212,7 +199,7 @@ class Lookups:
         info = (data.get("info") if isinstance(data, dict) else None) or {}
         if not isinstance(info, dict):
             return None
-        return Found(field(info.get("version")), field(info.get("summary")), field(info.get("name")))
+        return Found(ui.one_line(info.get("version")), ui.one_line(info.get("summary")), ui.one_line(info.get("name")))
 
     def mas_name(self, app_id: str) -> Union[str, int]:
         """The name of Mac App Store app app_id, from mas. 2: mas is not installed, 1: mas does not know the

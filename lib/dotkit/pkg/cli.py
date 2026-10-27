@@ -9,6 +9,7 @@ from typing import List, Optional, Sequence
 from ..core import lists, mise_toml, nix, proc, ui
 from ..core.env import Env
 from . import declared, edit, picker
+from .entries import KINDS, Entry, kinds_of
 from .lookups import Lookups
 from .resolve import KEYS, Candidates, Outcome, Resolver, Selection
 
@@ -20,8 +21,6 @@ PICK_ONE = {
     "app": "Homebrew has an app and a command-line tool with this name. Select one",
     "registry": "only npm or PyPI has this name. Anyone can publish there: check the package, then select it",
 }
-# The list file of each kind of entry.
-FILES = {"nix": "nix/packages.txt", "cask": "nix/casks.txt", "formula": "nix/brews.txt", "mas": "nix/mas.txt"}
 
 
 def print_candidates(c: Candidates, selected: Optional[Selection]) -> None:
@@ -37,6 +36,12 @@ def print_candidates(c: Candidates, selected: Optional[Selection]) -> None:
         ui.out(f"  {mark} {ui.pad(c.spec_of(key), 30)} {ui.pad(found.version or '?', 14)} {desc}")
 
 
+def _files(kinds) -> str:
+    """The files of the kinds, in the order of KINDS: "nix/brews.txt or nix/casks.txt"."""
+    files = [k.file for k in KINDS.values() if k.name in kinds]
+    return files[0] if len(files) == 1 else ", ".join(files[:-1]) + ("," if len(files) > 2 else "") + " or " + files[-1]
+
+
 class Pkg:
     def __init__(self, env: Env, dry_run: bool = False, yes: bool = False, force: bool = False):
         self.env = env
@@ -44,17 +49,13 @@ class Pkg:
         self.look = Lookups(env)
         self.resolver = Resolver(self.look)
 
-    @property
-    def mas_txt(self):
-        return self.env.repo / "nix/mas.txt"
-
     # --- add
 
     def add(self, tools: Sequence[str]) -> int:
         seen: List[str] = []
         commands: List[str] = []
-        nix_edits: List[str] = []
-        mise_specs: List[str] = []
+        nix_edits: List[Entry] = []
+        mise_entries: List[Entry] = []
         failed = False
         for tool in tools:
             if tool in seen:
@@ -62,7 +63,7 @@ class Pkg:
             seen.append(tool)
             found = declared.find(self.env, tool)
             if found:
-                ui.out(f"{tool}: already in {found[0][0]}")
+                ui.out(f"{tool}: already in {found[0].label}")
                 continue
             outcome = self.resolver.resolve(tool)
             if self._can_ask(outcome):
@@ -77,12 +78,11 @@ class Pkg:
                 failed = True
                 continue
             s = outcome.selection
-            entry = f"{s.kind}:{s.entry}"
-            if entry in nix_edits + mise_specs:
+            if s.entry in nix_edits + mise_entries:
                 ui.out(f"{tool}: same entry as an earlier argument ({s.spec})")
                 continue
             # An App Store app has no command to check.
-            if s.kind == "mas":
+            if s.entry.kind == "mas":
                 planned = self._plan_mas(tool, s, nix_edits)
                 if planned is None:
                     failed = True
@@ -104,14 +104,14 @@ class Pkg:
                 continue
             commands.append(s.command)
             if tool == s.spec:
-                ui.out(f"{s.spec} -> {s.target}")
+                ui.out(f"{s.spec} -> {s.entry.file}")
             else:
-                ui.out(f"{tool}: {s.spec} -> {s.target} ({s.reason})")
+                ui.out(f"{tool}: {s.spec} -> {s.entry.file} ({s.reason})")
             print_candidates(outcome.candidates, s)
-            (mise_specs if s.kind == "mise" else nix_edits).append(entry)
+            (nix_edits if s.entry.nix else mise_entries).append(s.entry)
         if failed:
             raise ui.die(FAILED)
-        planned = len(nix_edits) + len(mise_specs)
+        planned = len(nix_edits) + len(mise_entries)
         if planned == 0:
             return 0
         if self.dry_run:
@@ -124,14 +124,12 @@ class Pkg:
         if nix_edits:
             def change() -> None:
                 for e in nix_edits:
-                    kind, text = e.split(":", 1)
-                    lists.append(self.env.repo / FILES[kind], text)
+                    lists.append(self.env.repo / e.file, e.text)
             edit.apply_nix(self.env, change)
         # `mise use` writes "latest" when the spec has no version.
-        for e in mise_specs:
-            spec = e[len("mise:"):]
-            if not proc.mise(self.env.home, ["use", "-g", spec]).ok:
-                raise ui.die(f"mise could not add {spec}. The tools before it in the list are added.")
+        for e in mise_entries:
+            if not proc.mise(self.env.home, ["use", "-g", e.text]).ok:
+                raise ui.die(f"mise could not add {e.text}. The tools before it in the list are added.")
         return 0
 
     def _can_ask(self, outcome: Outcome) -> bool:
@@ -166,24 +164,25 @@ class Pkg:
             return outcome
         return Outcome(c, self.resolver.select(c, key, PICKED), bare=True)
 
-    def _plan_mas(self, tool: str, s: Selection, nix_edits: List[str]) -> Optional[str]:
+    def _plan_mas(self, tool: str, s: Selection, nix_edits: List[Entry]) -> Optional[Entry]:
         """The entry of an App Store app, or None after the warning (PARITY.md, Ad5)."""
-        if not self.mas_txt.is_file():
+        if not (self.env.repo / KINDS["mas"].file).is_file():
             ui.warn(f"{tool}: nix/mas.txt does not exist. Create it, and list it in dotkit.lists.masApps in "
                     "nix/darwin.nix.")
             return None
         # homebrew.masApps lists apps by name, and the name is only a label. A name that another app has
         # gets the label "Name (ID)".
-        app_id, label = s.entry.split(" ", 1)[0], s.reason
-        entry = f"mas:{s.entry}"
-        planned = [tuple(e[len("mas:"):].split(" ", 1)) for e in nix_edits if e.startswith("mas:")]
-        if lists.mas_id_of(label, self.mas_txt, planned) is not None:
+        app_id, label = s.entry.text.split(" ", 1)[0], s.reason
+        entry = s.entry
+        planned = [tuple(e.text.split(" ", 1)) for e in nix_edits if e.kind == "mas"]
+        mas_txt = self.env.repo / KINDS["mas"].file
+        if lists.mas_id_of(label, mas_txt, planned) is not None:
             label = f"{s.reason} ({app_id})"
-            if lists.mas_id_of(label, self.mas_txt, planned) is not None:
+            if lists.mas_id_of(label, mas_txt, planned) is not None:
                 ui.warn(f"{tool}: other apps have the names '{s.reason}' and '{label}'. Add it to nix/mas.txt "
                         f"under another name: {app_id} <name>")
                 return None
-            entry = f"mas:{app_id} {label}"
+            entry = Entry("mas", f"{app_id} {label}")
         ui.out(f"{s.spec} -> nix/mas.txt ({label})")
         if label != s.reason:
             ui.out(f"nix/mas.txt has another app named {s.reason}; added as '{label}'.")
@@ -192,47 +191,32 @@ class Pkg:
     # --- remove
 
     def remove(self, tools: Sequence[str]) -> int:
-        nix_edits: List[str] = []
-        mise_keys: List[str] = []
+        nix_edits: List[Entry] = []
+        mise_entries: List[Entry] = []
         failed = False
         for tool in tools:
-            found = declared.find(self.env, tool)
-            # A prefix selects the file.
-            files, pattern = "nix/packages.txt, nix/brews.txt, nix/casks.txt, or config/mise.toml", None
-            if tool.startswith("nix:"):
-                files, pattern = "nix/packages.txt", r"(dotkit:)?nix/packages"
-            elif tool.startswith("brew:"):
-                files, pattern = "nix/brews.txt or nix/casks.txt", r"(dotkit:)?nix/(brews|casks)"
-            elif tool.startswith("cask:"):
-                files, pattern = "nix/casks.txt", r"(dotkit:)?nix/casks"
-            elif tool.startswith("mas:"):
-                files, pattern = "nix/mas.txt", r"nix/mas"
-            elif ":" in tool:
-                files, pattern = "config/mise.toml", r"(dotkit:)?config/mise"
-            if pattern is not None:
-                found = [d for d in found if re.match(pattern, d[0])]
-            base = [d for d in found if d[0].startswith("dotkit:")]
+            # A prefix selects the kinds: nix:jq is only in nix/packages.txt.
+            kinds = kinds_of(tool)
+            found = [d for d in declared.find(self.env, tool) if d.entry.kind in kinds]
+            base = [d for d in found if d.base]
             if base:
-                ui.warn(f"{tool}: in the dotkit base ({base[0][0]}). Only dotkit can remove it.")
+                ui.warn(f"{tool}: in the dotkit base ({base[0].label}). Only dotkit can remove it.")
                 failed = True
                 continue
             if not found:
-                ui.warn(f"{tool}: not in {files}. See dotkit info {tool}.")
+                ui.warn(f"{tool}: not in {_files(kinds)}. See dotkit info {tool}.")
                 failed = True
                 continue
             if len(found) > 1:
-                ui.warn(f"{tool}: in more than one place: {','.join(d[0] for d in found)}. Use a prefix (nix:, "
+                ui.warn(f"{tool}: in more than one place: {','.join(d.label for d in found)}. Use a prefix (nix:, "
                         "brew:, cask:, mise:), or remove it by hand.")
                 failed = True
                 continue
-            file, name = found[0]
-            kind = {"config/mise.toml": "mise", "nix/packages.txt": "nix", "nix/brews.txt": "formula",
-                    "nix/casks.txt": "cask", "nix/mas.txt": "mas"}[file]
-            entry = f"{kind}:{name}"
-            if entry in nix_edits + mise_keys:
+            entry = found[0].entry
+            if entry in nix_edits + mise_entries:
                 continue
-            ui.out(f"{tool}: remove {name} from {file}")
-            (mise_keys if kind == "mise" else nix_edits).append(entry)
+            ui.out(f"{tool}: remove {entry.text} from {entry.file}")
+            (nix_edits if entry.nix else mise_entries).append(entry)
         if failed:
             raise ui.die(FAILED)
         if self.dry_run:
@@ -243,25 +227,19 @@ class Pkg:
         if nix_edits:
             def change() -> None:
                 for e in nix_edits:
-                    kind, text = e.split(":", 1)
-                    if kind == "mas":
-                        lists.delete_mas(self.env.repo / FILES[kind], text)
-                    else:
-                        lists.delete(self.env.repo / FILES[kind], text)
+                    (lists.delete_mas if e.kind == "mas" else lists.delete)(self.env.repo / e.file, e.text)
             edit.apply_nix(self.env, change)
             # Activation does not uninstall Homebrew packages (homebrew.onActivation.cleanup in
             # nix/darwin.nix), so uninstall the removed ones here. With cleanup = "uninstall", activation did
             # it already.
             for e in nix_edits:
-                kind, text = e.split(":", 1)
-                if kind in ("formula", "cask"):
-                    self._brew_uninstall(kind, text)
-                elif kind == "mas":
-                    ui.warn(f"the App Store app {text} stays installed. dotkit does not uninstall App Store apps.")
-        for e in mise_keys:
-            key = e[len("mise:"):]
-            if not proc.mise(self.env.home, ["unuse", "-g", key]).ok:
-                raise ui.die(f"mise could not remove {key}. The tools before it in the list are removed.")
+                if e.kind in ("formula", "cask"):
+                    self._brew_uninstall(e.kind, e.text)
+                elif e.kind == "mas":
+                    ui.warn(f"the App Store app {e.text} stays installed. dotkit does not uninstall App Store apps.")
+        for e in mise_entries:
+            if not proc.mise(self.env.home, ["unuse", "-g", e.text]).ok:
+                raise ui.die(f"mise could not remove {e.text}. The tools before it in the list are removed.")
         return 0
 
     def _brew_uninstall(self, kind: str, name: str) -> None:
@@ -285,8 +263,8 @@ class Pkg:
             found = declared.find(self.env, tool)
             if found:
                 found_any = True
-                for file, entry in found:
-                    ui.out(f"  {ui.pad('declared', 9)} {file} ({entry})")
+                for d in found:
+                    ui.out(f"  {ui.pad('declared', 9)} {d.label} ({d.entry.text})")
             else:
                 ui.out(f"  {ui.pad('declared', 9)} no")
             outcome = self.resolver.resolve(tool)
@@ -294,7 +272,7 @@ class Pkg:
                 ui.out(f"  add picks {outcome.selection.spec} ({outcome.selection.reason})")
             else:
                 ui.out(f"  add picks none: {outcome.reason}")
-            command = (outcome.selection.command if outcome.ok else "") or re.sub(r".*[:/]", "", tool)
+            command = (outcome.selection.command if outcome.ok else "") or mise_toml.short(tool)
             path = declared.existing_command(self.env, command)
             if path is not None:
                 found_any = True

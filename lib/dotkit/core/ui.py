@@ -62,6 +62,13 @@ def flush() -> None:
     sys.stderr.flush()
 
 
+def one_line(value: object) -> str:
+    """A value of JSON as one field of a row: a string or a number as text, on one line; anything else empty."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return ""
+    return str(value).replace("\t", " ").replace("\n", " ").replace("\r", " ")
+
+
 def width(text: str) -> int:
     """The columns that text takes in a terminal: 2 for a wide character such as 中 or 🙂 (wcwidth)."""
     if text.isascii():

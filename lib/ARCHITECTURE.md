@@ -46,6 +46,8 @@ lib/
   dotkit/
     __main__.py             main(): the environment, the command, and the exit code
     cli.py                  COMMANDS: each command, its argparse parser, and how to run it
+    complete.py             __complete for zsh: reads files only, imports no argparse
+    _vendor/                questionary, prompt_toolkit, wcwidth, tomli (_vendor/README.md)
     core/                   what the commands share
       env.py                DOTFILES, DOTKIT_DIR, and the paths of a run
       ui.py                 messages, errors as exceptions, the question, the width of the terminal
@@ -57,11 +59,12 @@ lib/
     commands/               apply, upgrade, clean, history, rollback, migrate, tidy
     pkg/                    add, remove, info, list
       names.py              the declared names for the completion (imports only the readers)
-      lookups.py            ask Nixpkgs, Homebrew, mise, npm, PyPI, and mas
+      entries.py            KINDS (kind -> file), Entry, Declaration, and the prefixes of arguments
+      lookups.py            ask Nixpkgs, Homebrew, mise, npm, PyPI, and mas; compare versions with Nix
       declared.py           where a tool is declared, and which global tool has a command
       resolve.py            select the source; choose() has the rules and runs no command
-      picker.py             the source picker of add
-      edit.py               change the lists, build, and restore them on a failure
+      picker.py             the source picker of add (questionary)
+      edit.py               change the lists, build, activate; restore the lists on a failure
       cli.py                the commands
     migrate/                the migration wizard
   tests/

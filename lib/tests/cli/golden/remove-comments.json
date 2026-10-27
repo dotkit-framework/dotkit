@@ -26,19 +26,6 @@
    }
   },
   {
-   "tool": "nix",
-   "argv": [
-    "build",
-    "path:@SB/repo/nix#darwinConfigurations.mac.system",
-    "--out-link",
-    "@SB/repo/.build/system"
-   ],
-   "cwd": "@SB/home",
-   "env": {
-    "DOTFILES": "@SB/repo"
-   }
-  },
-  {
    "tool": "sudo",
    "argv": [
     "-H",

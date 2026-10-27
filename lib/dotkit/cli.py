@@ -4,7 +4,7 @@ The first word selects the command; the parser of the command then reads
 the rest with parse_intermixed_args, so options can come anywhere after the
 command (`dotkit add -n ripgrep -y fd`). argparse has no subparsers with
 intermixed options, hence the two steps. Each command module imports only
-when its command runs, so that `dotkit __complete` starts fast.
+when its command runs. `dotkit __complete` does not come here (complete.py).
 """
 
 from __future__ import annotations
@@ -241,8 +241,6 @@ def parser(name: str) -> Parser:
 
 def main(env: Env, argv: Sequence[str]) -> int:
     cmd, rest = (argv[0], list(argv[1:])) if argv else ("", [])
-    if cmd == "__complete":
-        return complete(env, rest)
     if cmd in ("", "-h", "--help"):
         ui.out(usage())
         return 0
@@ -259,19 +257,3 @@ def main(env: Env, argv: Sequence[str]) -> int:
     p = parser(cmd)
     args = p.parse(rest)
     return args.run(env, args)
-
-
-def complete(env: Env, rest: List[str]) -> int:
-    """For the zsh completion (nix/completions/_dotkit): names, one per line. Reads files, runs no nix."""
-    what = rest[0] if rest else ""
-    if what == "inputs":
-        from .commands import upgrade
-        for _, name in upgrade.flake_inputs(env):
-            ui.out(name)
-        return 0
-    if what in ("tools-user", "tools-all"):
-        from .pkg import names
-        for n in names.declared(env, everything=what == "tools-all"):
-            ui.out(n)
-        return 0
-    raise ui.Exit(2, "dotkit: __complete takes inputs, tools-user, or tools-all.")

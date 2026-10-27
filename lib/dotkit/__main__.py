@@ -22,6 +22,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     try:
         e = env.load()
+        if argv[:1] == ["__complete"]:
+            from . import complete
+            return complete.main(e, argv[1:])
         from . import cli
         return cli.main(e, argv)
     except ui.Exit as x:

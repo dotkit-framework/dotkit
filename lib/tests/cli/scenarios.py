@@ -458,8 +458,7 @@ def add_apply() -> List[S]:
         S("add-tty-yes", ["add", "nix:dkt-a", "brew:dkt-f"], tty="y\n", rows=["Ad12", "Ad13"],
           rules=nix_a + fx.formula("dkt-f") + fx.nix_no_pkg("dkt-f") + fx.build_once() + fx.apply_ok()),
         S("add-build-fails", ["add", "-y", "nix:dkt-a"], rules=nix_a + fx.build(fails=True), rows=["Ad13"]),
-        S("add-apply-fails", ["add", "-y", "nix:dkt-a"], rows=["Ad13"],
-          rules=nix_a + fx.build_once() + fx.build_once(fails=True)),
+        S("add-apply-fails", ["add", "-y", "nix:dkt-a"], rows=["Ad13"], rules=nix_a + fx.build() + fx.switch_fails()),
         S("add-mise-use-fails", ["add", "-y", "mise:dkt-tool", "npm:dkt-cow"], rows=["Ad14"],
           rules=fx.mise_tool("dkt-tool", "aqua:o/t") + fx.nix_no_pkg("dkt-tool") + fx.mise_spec("npm:dkt-cow")
           + fx.npm("dkt-cow", bin={"dkt-cow": "c.js"}) + fx.mise_fails("use -g dkt-tool")),
