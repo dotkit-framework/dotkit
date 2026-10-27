@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -25,6 +26,7 @@ from ..model import AdoptResult, Facts, Identity
 from . import apps, plan
 from .actions import Actions
 from .clis import Tool
+from .pkgs import Receipt
 from .plan import Line
 
 MakeContext = Callable[[Path, base_mod.Base], Context]
@@ -82,6 +84,16 @@ def apply_tool(x: Line, tool: Tool, actions: Actions) -> Tuple[bool, str]:
         return False, f"`{' '.join(tool.uninstall)}` failed; its output is above."
     ok, why = actions.trash(tool.path)
     return (True, "") if ok else (False, f"it could not move it to the Trash: {why}")
+
+
+def apply_pkg(r: Receipt, actions: Actions, trash_dir: str) -> Tuple[bool, str]:
+    """Run one uninstall pkg: line. (True, "") or (False, why, with the next step)."""
+    units = [u for u in r.present if os.path.lexists(u)]
+    for unit in units:
+        if unit.endswith(".app") and not actions.quit_app(apps.read_info(Path(unit))[0], unit):
+            return False, f"{os.path.basename(unit)} does not quit. Quit it, then run dotkit tidy again."
+    ok, why = actions.pkg_uninstall(r.id, units, trash_dir)
+    return (True, "") if ok else (False, f"{why}. Run dotkit tidy again, or use the uninstaller of its vendor.")
 
 
 def apply_line(x: Line, app: apps.App, actions: Actions) -> Tuple[bool, str]:
@@ -221,12 +233,21 @@ def cmd_tidy(a: argparse.Namespace, make_context: MakeContext, make_actions: Cal
     actions = make_actions(t.brew)
     by_path = {x.path: x for x in t.apps}
     tools = {x.path: x for x in t.tools}
+    receipts = {f"pkg:{r.id}": r for r in t.receipts}
+    stamp = time.strftime("%Y-%m-%d %H.%M.%S")
+    trash_dirs: List[str] = []
     done: List[Line] = []
     failed: List[str] = []
     stopped = False
     try:
         for x in todo:
-            if x.path in tools:
+            if x.thing in receipts:
+                r = receipts[x.thing]
+                trash_dir = os.path.join(t.home, ".Trash", f"{r.id} {stamp}")
+                ok, why = apply_pkg(r, actions, trash_dir)
+                if ok and r.present:
+                    trash_dirs.append(tilde(trash_dir, t.home))
+            elif x.path in tools:
                 ok, why = apply_tool(x, tools[x.path], actions)
             else:
                 ok, why = apply_line(x, by_path[x.path], actions)
@@ -248,8 +269,9 @@ def cmd_tidy(a: argparse.Namespace, make_context: MakeContext, make_actions: Cal
         info(f"dotkit tidy: could not change the lists ({e}). Add the casks and App Store apps of the lines above "
              "with dotkit add.")
         return 1
-    trashed = [tilde(x.path, t.home) for x in done if x.verb == "trash"]
-    removed = [f"{x.thing} ({tilde(x.path, t.home)})" for x in done if x.verb == "uninstall"]
+    trashed = [tilde(x.path, t.home) for x in done if x.verb == "trash"] + trash_dirs
+    removed = [f"{x.thing} ({tilde(x.path, t.home)})" if x.path in tools else x.thing
+               for x in done if x.verb == "uninstall"]
     if added:
         print("Added to the lists:")
         print("\n".join("  " + s for s in added))

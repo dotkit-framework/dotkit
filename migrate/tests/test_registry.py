@@ -220,7 +220,7 @@ class NoWriteTests(unittest.TestCase):
 
     def test_the_scan_and_the_plan_of_tidy_do_not_write_or_run_commands(self):
         """TIDY.md, section 7: only tidy/actions.py and tidy/cli.py change the Mac."""
-        for name in ("apps.py", "clis.py", "plan.py"):
+        for name in ("apps.py", "clis.py", "pkgs.py", "plan.py"):
             f = PACKAGE / "tidy" / name
             with self.subTest(f=name):
                 self.assertEqual(write_findings(f.read_text(encoding="utf-8"), name), [])

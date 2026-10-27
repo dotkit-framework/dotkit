@@ -3,7 +3,7 @@
 import os
 import unittest
 
-from dotkit_migrate.tidy import apps
+from dotkit_migrate.tidy import apps, pkgs
 from tests.tidy.mac import TidyMac
 
 
@@ -129,10 +129,9 @@ class SourceTests(unittest.TestCase):
         m.app("Xcode.app", "com.apple.dt.Xcode")
         m.app("CleanShot X.app", "pl.maketheweb.cleanshotx", where=m.h.apps / "Setapp")
         m.app("IntelliJ IDEA.app", "com.jetbrains.intellij", where=m.h.home / "Applications/JetBrains Toolbox")
-        vpn = m.app("CorpVPN.app", "com.corp.vpn")
-        m.commands[f"pkgutil --file-info {vpn}"] = f"volume: /\npath: {vpn}\n\npkgid: com.corp.vpn.pkg\n"
-        m.commands["pkgutil --files com.corp.vpn.pkg"] = ("Applications/CorpVPN.app\n"
-                                                         "Library/LaunchDaemons/com.corp.vpn.helper.plist\n")
+        m.app("CorpVPN.app", "com.corp.vpn")
+        m.receipt("com.corp.vpn.pkg", ["Applications/CorpVPN.app/Contents/Info.plist",
+                                       "Library/LaunchDaemons/com.corp.vpn.helper.plist"], location="")
         m.app("Old.app", "com.example.old")
         t = m.scan()
         got = {a.name: a.source for a in t.apps}
@@ -141,13 +140,14 @@ class SourceTests(unittest.TestCase):
                                "Old.app": "hand"})
         self.assertEqual(m.found(t, "Slack.app").cask, "slack")
         self.assertEqual(m.found(t, "Pages.app").mas_id, 409201541)
-        self.assertEqual(m.found(t, "CorpVPN.app").system_parts, ["Library/LaunchDaemons/com.corp.vpn.helper.plist"])
+        self.assertEqual(m.found(t, "CorpVPN.app").system_parts,
+                         [str(m.h.root / "Library/LaunchDaemons/com.corp.vpn.helper.plist")])
 
     def test_an_installed_pkg_cask_has_the_app_that_its_bundle_id_finds(self):
         """Google Drive and SF Symbols: the cask names no app, and the package ID of the app differs."""
         m = self.m
-        drive = m.app("Google Drive.app", "com.google.drivefs")
-        m.commands[f"pkgutil --file-info {drive}"] = "pkgid: com.google.drivefs.shortcuts.x\n"
+        m.app("Google Drive.app", "com.google.drivefs")
+        m.receipt("com.google.drivefs.shortcuts.x", ["Google Drive.app/Contents/Info.plist"])
         m.cask("google-drive", quit=["com.google.drivefs"], pkgutil=["com.google.drivefs.arm64"], pkg=True,
                installed="132.0")
         m.app("SF Symbols.app", "com.apple.SFSymbols")
@@ -157,8 +157,8 @@ class SourceTests(unittest.TestCase):
 
     def test_an_installed_cask_by_its_package(self):
         m = self.m
-        k = m.app("Karabiner-Elements.app", "org.pqrs.Karabiner-Elements.Settings")
-        m.commands[f"pkgutil --file-info {k}"] = "pkgid: org.pqrs.Karabiner-Elements\n"
+        m.app("Karabiner-Elements.app", "org.pqrs.Karabiner-Elements.Settings")
+        m.receipt("org.pqrs.Karabiner-Elements", ["Karabiner-Elements.app/Contents/Info.plist"])
         m.cask("karabiner-elements", pkgutil=["org.pqrs.Karabiner-Elements"], pkg=True, installed="16.3.0")
         app = m.found(m.scan(), "Karabiner-Elements.app")
         self.assertEqual((app.source, app.cask), ("cask", "karabiner-elements"))
@@ -202,9 +202,9 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(apps.token_form("Notepad++.app"), "notepad-plus-plus")
 
     def test_pkg_patterns(self):
-        self.assertTrue(apps.pkg_matches("com.google.drivefs.*", "com.google.drivefs.arm64"))
-        self.assertTrue(apps.pkg_matches("a(b", "a(b"))
-        self.assertFalse(apps.pkg_matches("com.example", "com.example.more"))
+        self.assertTrue(pkgs.matches("com.google.drivefs.*", "com.google.drivefs.arm64"))
+        self.assertTrue(pkgs.matches("a(b", "a(b"))
+        self.assertFalse(pkgs.matches("com.example", "com.example.more"))
 
 
 if __name__ == "__main__":

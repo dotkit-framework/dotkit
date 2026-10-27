@@ -16,16 +16,11 @@ from typing import Dict, FrozenSet, Iterator, List, Optional, Set, Tuple
 
 from ..catalog import BREW_ENV
 from ..context import Context, tilde
-from . import clis
+from . import clis, pkgs
 
 # Directories with apps that are not apps of their own: the web apps of Chrome and Brave (*.localized), and
 # the apps of Nix and Home Manager.
 SKIP_DIRS = ("Nix Apps", "Home Manager Apps")
-
-# The files of a package that only the vendor's uninstaller removes, by the start of their path in
-# `pkgutil --files`.
-SYSTEM_PARTS = ("Library/LaunchDaemons/", "Library/LaunchAgents/", "Library/Extensions/",
-                "Library/PrivilegedHelperTools/", "Library/SystemExtensions/")
 
 # The bundle ID in a zap or uninstall path of a cask: ~/Library/Preferences/com.tinyspeck.slackmacgap.plist.
 _ID_PATH = re.compile(r"/(?:Preferences|Containers|Group Containers|Application Scripts|HTTPStorages|Caches|WebKit|"
@@ -69,8 +64,8 @@ class App:
     source: str = "hand"  # cask, mas, setapp, toolbox, pkg, system, or hand
     cask: str = ""  # source cask: the installed cask that has the app
     mas_id: int = 0  # source mas: the App Store ID from Spotlight; 0 when it is unknown
-    pkg_id: str = ""  # the package of `pkgutil --file-info`
-    system_parts: List[str] = field(default_factory=list)  # source pkg: files of SYSTEM_PARTS
+    pkg_id: str = ""  # the receipt that lists the app
+    system_parts: List[str] = field(default_factory=list)  # source pkg: files of pkgs.SYSTEM_DIRS and SYSTEM_INSIDE
     writable: bool = True  # you can change the app without sudo
     owner: str = ""
     running: bool = False
@@ -92,6 +87,7 @@ class TidyFacts:
     mas_names: Dict[int, str] = field(default_factory=dict)  # from `mas list`
     skipped: List[str] = field(default_factory=list)  # apps and tools that cannot be a line of the plan
     tools: List[clis.Tool] = field(default_factory=list)  # the command-line tools (TIDY.md, section 8.1)
+    receipts: List[pkgs.Receipt] = field(default_factory=list)  # the installer packages (TIDY.md, section 8.2)
     warnings: List[str] = field(default_factory=list)
 
 
@@ -170,14 +166,6 @@ def cask_from_info(c: dict) -> CaskInfo:
                     str(c.get("installed") or ""))
 
 
-def pkg_matches(pattern: str, pkg_id: str) -> bool:
-    """Homebrew reads a pkgutil ID of a cask as a pattern: com.google.drivefs.*."""
-    try:
-        return re.fullmatch(pattern, pkg_id) is not None
-    except re.error:
-        return pattern == pkg_id
-
-
 def token_form(name: str) -> str:
     """The name of an app in the form of a cask token: "Google Chrome.app" -> google-chrome."""
     stem = name[:-4] if name.endswith(".app") else name
@@ -202,7 +190,7 @@ class Index:
         """The casks with the name of the app or its package; without them, the casks that name its bundle ID."""
         found = set(self.by_name.get(app.name, ()))
         if app.pkg_id:
-            found |= {c.token for c in self.casks.values() if any(pkg_matches(p, app.pkg_id) for p in c.pkg_ids)}
+            found |= {c.token for c in self.casks.values() if any(pkgs.matches(p, app.pkg_id) for p in c.pkg_ids)}
         if not found and app.bundle_id:
             found = set(self.by_id.get(app.bundle_id, ()))
         return sorted(found)
@@ -351,6 +339,12 @@ def scan(ctx: Context) -> TidyFacts:
                 t.mas_names[int(m.group(1))] = m.group(2).strip()
     procs = (run.run(["/bin/ps", "-axo", "comm="], timeout=30) or "").splitlines()
     owned = {a: c.token for c in t.casks.values() for a in c.apps}
+    # The receipts of installer packages; an installed cask that uses one owns it (TIDY.md, section 8.2).
+    t.receipts = pkgs.scan(ctx)
+    for r in t.receipts:
+        r.cask = next((c.token for c in t.casks.values() if c.installed and
+                       any(pkgs.matches(p, r.id) for p in c.pkg_ids)), "")
+    owner = pkgs.pkg_owner(t.receipts)
     for path, fixed in app_paths(ctx):
         app = App(str(path), path.name)
         app.bundle_id, app.version, app.build = read_info(path)
@@ -367,18 +361,12 @@ def scan(ctx: Context) -> TidyFacts:
         elif fixed:
             app.source = fixed
         else:
-            out = run.run(["/usr/sbin/pkgutil", "--file-info", app.path], timeout=30) or ""
-            m = re.search(r"^pkgid: (\S+)", out, re.M)
-            app.pkg_id = m.group(1) if m else ""
-            by_pkg = [c.token for c in t.casks.values() if app.pkg_id and
-                      any(pkg_matches(p, app.pkg_id) for p in c.pkg_ids)]
-            if by_pkg:
-                app.source, app.cask = "cask", by_pkg[0]
-            elif app.pkg_id and not app.pkg_id.startswith("com.apple."):
-                app.source = "pkg"
-                files = run.run(["/usr/sbin/pkgutil", "--files", app.pkg_id], timeout=60) or ""
-                app.system_parts = [f for f in files.splitlines()
-                                    if f.startswith(SYSTEM_PARTS) or "/Contents/Library/SystemExtensions/" in f][:3]
+            receipt = owner.get(app.path)
+            app.pkg_id = receipt.id if receipt else ""
+            if receipt and receipt.cask:
+                app.source, app.cask = "cask", receipt.cask
+            elif receipt:
+                app.source, app.system_parts = "pkg", list(receipt.system_parts)
             elif app.bundle_id.startswith("com.apple."):
                 app.source = "system"
         if " #" in tilde(app.path, t.home) or "\n" in app.path:

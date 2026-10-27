@@ -58,9 +58,10 @@ usage() {
     '                              from a DMG or an installer that have a cask, and the App' \
     '                              Store apps that the lists do not have. Also finds old' \
     '                              copies of tools that dotkit has (npm, pipx, uv, cargo,' \
-    '                              Homebrew, files). Opens the plan in your editor, asks' \
-    '                              once, then installs the casks, adds them to the lists,' \
-    '                              and uninstalls the old copies. App data stays.' \
+    '                              Homebrew, files) and .pkg installer packages. Opens the' \
+    '                              plan in your editor, asks once, then installs the casks,' \
+    '                              adds them to the lists, and uninstalls what you chose.' \
+    '                              App data stays.' \
     '' \
     'Recovery:' \
     '  history                     The package changes of the last apply.' \

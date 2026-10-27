@@ -31,6 +31,7 @@ class TidyMac:
         self.paths = {"brew": fake.BREW}
         self.procs: list = []
         self.write_bulk = True
+        self.pkg_ids: list = ["com.apple.pkg.Something"]
 
     def app(self, name: str, bid: str = "", version: str = "1.0", build: str = "", where: Path | None = None,
             mas: int = 0, plist: bool = True) -> Path:
@@ -65,7 +66,9 @@ class TidyMac:
             raw.append([":pkg", [f"{token}.pkg"]])
         if zap:
             raw.append([":zap", {":trash": list(zap)}])
-        self.bulk[token] = {"version": version, "raw_artifacts": raw, **({"auto_updates": True} if auto_updates else {})}
+        self.bulk[token] = {"version": version, "raw_artifacts": raw}
+        if auto_updates:
+            self.bulk[token]["auto_updates"] = True
         arts: list = []
         if u:
             arts.append({"uninstall": [{k[1:]: v for k, v in u.items()}]})
@@ -78,6 +81,15 @@ class TidyMac:
         if installed:
             self.installed.append(self.info[token])
 
+    def receipt(self, pkg_id: str, files, location: str = "Applications", version: str = "1.0") -> None:
+        """A receipt of pkgutil. Its volume is the root of the fake Mac, so its location "Applications" is the
+        Applications directory of the fake Mac."""
+        self.pkg_ids.append(pkg_id)
+        self.commands[f"pkgutil --pkg-info {pkg_id}"] = (f"package-id: {pkg_id}\nversion: {version}\n"
+                                                         f"volume: {self.h.root}/\nlocation: {location}\n"
+                                                         "install-time: 1\n")
+        self.commands[f"pkgutil --only-files --files {pkg_id}"] = "".join(f + "\n" for f in files)
+
     def runner(self) -> fake.FakeRunner:
         if self.write_bulk:
             p = self.h.home / BULK
@@ -85,7 +97,8 @@ class TidyMac:
             p.write_text('{"protected":"x"}\n' + json.dumps({"formulae": {}, "casks": self.bulk}))
             (p.parents[1] / "cask_names.txt").write_text("".join(t + "\n" for t in sorted(self.bulk)))
         commands = {"brew info --json=v2 --installed --cask": json.dumps({"formulae": [], "casks": self.installed}),
-                    "ps -axo comm=": "".join(p + "\n" for p in self.procs)}
+                    "ps -axo comm=": "".join(p + "\n" for p in self.procs),
+                    "pkgutil --pkgs": "".join(i + "\n" for i in self.pkg_ids)}
         for token, info in self.info.items():
             commands[f"brew info --json=v2 --cask {token}"] = json.dumps({"formulae": [], "casks": [info]})
         commands.update(self.commands)

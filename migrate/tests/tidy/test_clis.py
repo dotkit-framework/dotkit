@@ -49,8 +49,10 @@ class ToolMac(TidyMac):
         h.write(".local/share/uv/tools/black/uv-receipt.toml",
                 '[tool]\nrequirements = [{ name = "black" }]\nentrypoints = [{ name = "black" }]\n')
         # cargo: bat (dotkit has it from Nix), rustup with its links, and cargo-deny.
-        h.json(".cargo/.crates2.json", {"installs": {"bat 0.24.0 (registry+https://x)": {"bins": ["bat"]},
-                                                     "cargo-deny 0.16.0 (registry+https://x)": {"bins": ["cargo-deny"]}}})
+        h.json(".cargo/.crates2.json", {"installs": {
+            "bat 0.24.0 (registry+https://x)": {"bins": ["bat"]},
+            "cargo-deny 0.16.0 (registry+https://x)": {"bins": ["cargo-deny"]},
+        }})
         executable(h.home / ".cargo/bin/rustup")
         for name in ("cargo", "rustc"):
             os.symlink("rustup", h.home / ".cargo/bin" / name)
@@ -138,12 +140,14 @@ class DefaultTests(unittest.TestCase):
         self.assertEqual(got["~/.npm-global/lib/node_modules/typescript"],
                          ("keep", "", "~/.npm-global; dotkit has npm:typescript (from mise); no npm next to it to "
                                       "uninstall it"))
-        self.assertEqual(got["~/.local/pipx/venvs/ruff"], ("uninstall", "pipx:ruff", "dotkit has pipx:ruff (from mise)"))
+        self.assertEqual(got["~/.local/pipx/venvs/ruff"],
+                         ("uninstall", "pipx:ruff", "dotkit has pipx:ruff (from mise)"))
         self.assertEqual(got["~/.local/share/uv/tools/black"],
                          ("uninstall", "uv:black", "dotkit has pipx:black (from mise)"))
         self.assertEqual(got["~/.cargo/bin/bat"], ("uninstall", "cargo:bat", "dotkit has bat (from Nix)"))
         self.assertEqual(got["~/go/bin/jq"], ("trash", "", "from go install; dotkit has jq (from Nix)"))
-        self.assertEqual(got["~/.local/bin/mise"], ("trash", "", "a file from an installer; dotkit has mise (from Nix)"))
+        self.assertEqual(got["~/.local/bin/mise"],
+                         ("trash", "", "a file from an installer; dotkit has mise (from Nix)"))
         self.assertEqual(got["~/.local/bin/uv"], ("trash", "", "a file from an installer; dotkit has uv (from mise)"))
 
     def test_what_dotkit_migrate_adds_and_what_the_lists_have(self):
@@ -187,7 +191,8 @@ class CheckTests(unittest.TestCase):
         return errors + plan.check(parsed, self.t)[0]
 
     def test_errors(self):
-        h, apps_dir = self.m.h.home, self.m.h.apps
+        apps_dir = self.m.h.apps
+        owner = self.m.tool(self.t, str(self.m.usr_local / "tailscale")).owner
         text = "\n".join([
             f"adopt cask:jq {self.m.h.prefix}/Cellar/jq",
             f"uninstall ~/.local/bin/mise",
@@ -203,11 +208,9 @@ class CheckTests(unittest.TestCase):
             f"line 3: ~/{NVM}/lib/node_modules/typescript is npm:typescript: uninstall npm:typescript <path>.",
             "line 4: the scan found no command that uninstalls npm:typescript.",
             "line 5: pipx:ruff is a package. Use uninstall, so that its package manager forgets it too.",
-            f"line 6: {self.m.usr_local}/tailscale is owned by {self.m.tool(self.t, str(self.m.usr_local / 'tailscale')).owner}, "
-            "so tidy cannot move it to the Trash.",
+            f"line 6: {self.m.usr_local}/tailscale is owned by {owner}, so tidy cannot move it to the Trash.",
             "line 7: uninstall is for command-line tools. Use trash or keep for an app.",
         ])
-        del h
 
     def test_commands(self):
         x = plan.Line("uninstall", str(self.m.h.home / ".local/pipx/venvs/ruff"), "pipx:ruff")

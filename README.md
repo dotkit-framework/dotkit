@@ -149,8 +149,17 @@ for example `npm uninstall -g typescript` with the npm of that nvm node. A
 file in `~/.local/bin`, `~/bin`, or `/usr/local/bin` that dotkit has, for
 example `mise` from its installer, gets `trash`. Other files, version
 managers such as `~/.nvm`, and zsh frameworks are `keep` lines, so that you
-see them; change one to `trash` to move it to the Trash. `dotkit tidy -n`
-prints the plan and changes nothing. `migrate/TIDY.md` has the details.
+see them; change one to `trash` to move it to the Trash.
+
+The last part of the plan has the packages of `.pkg` installers that are not
+Apple's. `uninstall pkg:<id>` moves their files to a directory in the Trash
+and makes macOS forget the package (`pkgutil --forget`); it asks for your
+password. A package whose files are all gone gets `uninstall` by default;
+the others are `keep`. Tidy never uninstalls a package with launch daemons,
+kernel or system extensions, or privileged helpers: only the vendor's
+uninstaller removes those. The packages of the App Store and of Homebrew
+casks are not in the plan. `dotkit tidy -n` prints the plan and changes
+nothing. `migrate/TIDY.md` has the details.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
@@ -304,8 +313,9 @@ applies again, then `tests/e2e/verify.sh` checks the result: the login shell, th
 `MIGRATION.md`. `tests/e2e/tidy.sh` makes two apps that look installed by hand, then
 checks that `dotkit tidy` adopts one and that `dotkit add` adopts the
 other, with the same bundle and the same app data. Then tidy uninstalls the
-pipx copy of pycowsay, which mise has after setup, and moves a copy of `jq`
-in `~/.local/bin` to the Trash.
+pipx copy of pycowsay, which mise has after setup, moves a copy of `jq` in
+`~/.local/bin` to the Trash, and uninstalls two packages that it builds with
+`pkgbuild`.
 The `e2e-etc` job, on macOS 26 only, installs Nix first and keeps the changed
 `/etc/shells` of the runner, so the first activation fails. It checks that
 setup moved `/etc/zshrc` and `/etc/bashrc` back, then moves `/etc/shells`

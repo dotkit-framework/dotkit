@@ -1,7 +1,8 @@
 # Design: `dotkit tidy`
 
-Status: phases 1 (apps) and 2 (command-line tools, section 8.1) are
-implemented in `dotkit_migrate/tidy/`. Phase 3 (section 8) is not.
+Status: all three phases are implemented in `dotkit_migrate/tidy/`: apps
+(sections 3 to 6), command-line tools (section 8.1), and installer packages
+(section 8.2).
 
 ## 1. The problem
 
@@ -79,7 +80,7 @@ Tidy gives each app one source. The first rule that matches wins:
 | `mas` | `Contents/_MASReceipt/receipt` exists |
 | `setapp` | the app is in `/Applications/Setapp` |
 | `toolbox` | the app is in `~/Applications/JetBrains Toolbox` |
-| `pkg` | `pkgutil --file-info <app>` names a `pkgid`, and the ID is not `com.apple.pkg.*` |
+| `pkg` | the receipt of a package that is not Apple's lists files in the app (section 8.2) |
 | `system` | the bundle ID starts with `com.apple.` (Xcode from a `.xip`, for example) |
 | `hand` | none of these: a DMG, a zip, or a copy |
 
@@ -362,8 +363,7 @@ Rules:
 
 1. **Apps:** sections 3 to 6.
 2. **Command-line tools:** section 8.1.
-3. **pkg uninstalls:** `pkgutil --forget` and the files of a receipt, only
-   for packages without system parts. Not implemented.
+3. **Installer packages:** section 8.2.
 
 ### 8.1 Command-line tools
 
@@ -434,6 +434,95 @@ its output on the terminal. `trash` moves the file or the directory to the
 Trash. Before a line runs, tidy checks that its path still exists. Phase 2
 writes nothing to the lists.
 
+### 8.2 Installer packages
+
+A `.pkg` installer leaves a receipt: `pkgutil --pkgs` lists the package
+IDs, `pkgutil --pkg-info <id>` gives the volume, the install location, and
+the version, and `pkgutil --only-files --files <id>` lists the files,
+relative to the volume and the location. The third part of the plan has one
+line per receipt that is not Apple's (`com.apple.*`).
+
+The scan (`tidy/pkgs.py`, read-only, with the rules of section 7) reads all
+receipts once. The phase 1 scan also uses them: an app that a receipt lists
+has the source `pkg` and the system parts of that receipt. `pkgutil
+--file-info` missed apps that a receipt lists, such as Tailscale.app.
+
+A receipt lists every file of a bundle. Tidy works on **units**: the
+outermost bundle (`.app`, `.framework`, `.kext`, `.plugin`, and the other
+bundle types of `pkgs.BUNDLES`) that has a file, or the file itself. Tidy
+never moves a directory that is not a bundle, so it cannot move
+`/Applications` or `/Library/Application Support`. A unit stays when:
+
+- another receipt lists it too (**shared**);
+- it is in a system directory: `/System`, `/bin`, `/sbin`, `/usr/bin`,
+  `/usr/sbin`, `/usr/lib`, `/usr/libexec`, `/private`, `/opt/homebrew`, or
+  `/nix` (**protected**);
+- it does not exist.
+
+The other units are the **present** ones. A receipt has **system parts**
+when one of its files is in `/Library/LaunchDaemons`,
+`/Library/LaunchAgents`, `/Library/Extensions`,
+`/Library/PrivilegedHelperTools`, `/Library/SystemExtensions`,
+`/Library/DriverExtensions`, `/Library/Audio/Plug-Ins/HAL`,
+`/Library/Security`, `/Library/Filesystems`, `/Library/Input Methods`, or
+`/System`, or in `Contents/Library/SystemExtensions`,
+`Contents/Library/LaunchServices`, or `Contents/Library/LaunchDaemons` of a
+bundle, or in a `.kext`, `.dext`, or `.systemextension`. Moving such files
+does not unload them; the vendor's uninstaller does that. The paths compare
+as they are on the volume of the package.
+
+The default verbs:
+
+| The receipt | Default | Comment |
+|---|---|---|
+| an app of it has an App Store receipt | not a line | the App Store app has its own line |
+| an installed cask names it in `uninstall` `pkgutil` | not a line | `brew uninstall --cask` uses it |
+| it has system parts | `keep` | the first system part; `uninstall` is an error |
+| no unit exists | `uninstall` | uninstall only forgets the package |
+| no present unit, but shared or protected ones | `keep` | uninstall only forgets the package; what stays |
+| present units | `keep` | how many units uninstall moves; what stays |
+
+A receipt whose files are all gone is harmless, but it is noise in
+`pkgutil --pkgs`; forgetting it changes no file. Google's updater and the
+updater of ChatGPT Classic left such receipts on the Mac where this was
+written. A live package is `keep` by default, because its app usually has a
+line of its own in phase 1.
+
+The plan line has the thing `pkg:<id>` and the path of the first present app,
+else the first present unit, else the first unit:
+
+```
+# Installer packages (.pkg): uninstall pkg:<id> moves their files to the Trash and makes macOS forget the
+# package. It asks for your password. The App Store and Homebrew casks have their own packages.
+uninstall  pkg:com.google.Keystone       /Library/Application Support/Google/GoogleUpdater/PkgStaging/GoogleUpdater.app  # version 0; no files of it are left, so uninstall only forgets the package
+keep       pkg:com.jabra.directonline    /Applications/Jabra Direct.app      # version 8.3.26701; uninstall moves 1 item to the Trash
+keep       pkg:com.tailscale.ipn.macsys  /Applications/Tailscale.app         # version 1.104.2; system parts (io.tailscale.ipn.macsys.tssentineld.plist) that only the vendor's uninstaller removes
+```
+
+A package line is keyed by its thing, not by its path, because its path is
+often the path of an app line. The check adds to section 5:
+
+- The package is a receipt of the scan, not one of the App Store or of an
+  installed cask, and the path is the path of the scan.
+- The verb is `uninstall` or `keep`. `uninstall` of a package with system
+  parts is an error.
+- When `uninstall pkg:` moves a unit, no other line may have `adopt`,
+  `replace`, `trash`, or `uninstall` for it.
+
+The apply adds to section 6. For an `uninstall pkg:` line, tidy quits each
+app of the present units that runs, then, with `sudo`:
+
+1. moves each present unit that still exists to
+   `~/.Trash/<id> <date and time>/<its absolute path>`, with `mv -n`;
+2. gives the moved files to you (`chown -R`), so that the Finder can empty
+   the Trash;
+3. runs `pkgutil --forget <id>`.
+
+When a move fails, tidy stops that line and does not forget the package.
+The directories that the receipt lists stay, also when they are empty. The
+Finder cannot "Put Back" these units, but their path under the Trash
+directory says where they were.
+
 ## 9. Tests
 
 - `tests/tidy/mac.py`: a fake Mac for tidy. Apps with an `Info.plist` from
@@ -460,6 +549,12 @@ writes nothing to the lists.
   scan and its uninstall commands, the default verbs of section 8.1, the
   check, and the apply: the commands run in order, and the lists do not
   change.
+- `tests/tidy/test_pkgs.py`: a fake Mac whose receipts have the fake root
+  as their volume: units, system parts, shared and protected units, a
+  stale receipt, the App Store, and an installed cask; the default verbs;
+  the check, also a line that changes a file of a package that
+  `uninstall pkg:` moves; the commands; and the apply with a fake
+  `Actions`.
 - **e2e** (`tests/e2e/tidy.sh`, after the migration checks of the CI e2e
   job): it installs a small cask, copies its app aside, uninstalls the
   cask, and puts the copy back, so the app has the version of the cask and
@@ -472,7 +567,12 @@ writes nothing to the lists.
   before setup, and the wizard moves it to mise. `dotkit tidy -n` must
   propose `uninstall pipx:pycowsay`, and `trash` for a copy of `jq` in
   `~/.local/bin`. After the plan runs, pipx does not have pycowsay, the
-  Trash has `jq`, and the `pycowsay` of mise runs.
+  Trash has `jq`, and the `pycowsay` of mise runs. Then phase 3: it builds
+  two packages with `pkgbuild` and installs them with `installer`, and
+  deletes the file of the second one. `dotkit tidy -n` must propose `keep`
+  for the first and `uninstall` for the second. After `uninstall` of both,
+  `pkgutil` knows neither, the file of the first is in its directory in the
+  Trash, and owned by you.
 
 ## 10. Decisions
 

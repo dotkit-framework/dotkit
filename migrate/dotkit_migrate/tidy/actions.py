@@ -1,5 +1,5 @@
-"""The changes of dotkit tidy: install a cask, quit an app, uninstall a tool, move a path to the Trash (TIDY.md,
-sections 6 and 8.1).
+"""The changes of dotkit tidy: install a cask, quit an app, uninstall a tool or a package, move a path to the Trash
+(TIDY.md, sections 6, 8.1, and 8.2).
 
 This is the only module of the package that changes the Mac. cli.py creates
 the one Actions object; the tests give a fake with the same methods.
@@ -43,6 +43,29 @@ class Actions:
         except OSError:
             return False
         return r.returncode == 0
+
+    def pkg_uninstall(self, pkg_id: str, units: List[str], trash_dir: str) -> Tuple[bool, str]:
+        """Move the units of a package into trash_dir, with their paths under it, then make macOS forget the
+        package. Both need sudo; sudo asks for the password on the terminal. (True, "") or (False, the error)."""
+
+        def sudo(*argv: str) -> bool:
+            try:
+                return subprocess.run(["/usr/bin/sudo", *argv], check=False).returncode == 0
+            except OSError:
+                return False
+
+        for unit in units:
+            dest = trash_dir + unit
+            if not sudo("/bin/mkdir", "-p", os.path.dirname(dest)):
+                return False, f"could not make {os.path.dirname(dest)}"
+            if not sudo("/bin/mv", "-n", unit, dest) or os.path.lexists(unit):
+                return False, f"could not move {unit}"
+        if units:
+            # The files are yours in the Trash, so the Finder can empty it.
+            sudo("/usr/sbin/chown", "-R", str(os.getuid()), trash_dir)
+        if not sudo("/usr/sbin/pkgutil", "--forget", pkg_id):
+            return False, "pkgutil --forget failed" + (f"; the files are in {trash_dir}" if units else "")
+        return True, ""
 
     def running(self, path: str) -> bool:
         try:

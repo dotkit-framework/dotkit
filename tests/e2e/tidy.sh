@@ -16,6 +16,11 @@
 #      the pipx copy is an old copy. A copy of jq in ~/.local/bin is a file
 #      that dotkit has from Nix. tidy uninstalls the first and moves the
 #      second to the Trash.
+#   4. Installer packages (TIDY.md, section 8.2): two packages from
+#      pkgbuild. The file of the second one is deleted, so its receipt is
+#      stale. tidy proposes keep and uninstall, and uninstalls both: the
+#      file of the first goes to a directory in the Trash, and pkgutil
+#      forgets both packages.
 set -euo pipefail
 
 fail() { printf 'tidy.sh: %s\n' "$*" >&2; exit 1; }
@@ -93,5 +98,36 @@ rm -f "$plan"
 [[ -n $(find ~/.Trash -maxdepth 1 -name 'jq*') ]] || fail 'the Trash does not have jq.'
 # mise has pycowsay still.
 /run/current-system/sw/bin/zsh -lc 'pycowsay hi' >/dev/null || fail 'pycowsay of mise does not run.'
+
+# 4. Installer packages.
+pkgroot=$(mktemp -d)
+for n in one two; do
+  mkdir -p "$pkgroot/$n/usr/local/share/dotkit-tidy-e2e-$n"
+  echo "$n" >"$pkgroot/$n/usr/local/share/dotkit-tidy-e2e-$n/$n.txt"
+  pkgbuild --root "$pkgroot/$n" --identifier "dev.dotkit.e2e.$n" --version 1.0 --install-location / \
+    "$pkgroot/$n.pkg"
+  sudo installer -pkg "$pkgroot/$n.pkg" -target /
+done
+rm -rf "$pkgroot"
+one=/usr/local/share/dotkit-tidy-e2e-one/one.txt
+two=/usr/local/share/dotkit-tidy-e2e-two/two.txt
+sudo rm "$two"
+out=$("${dotkit[@]}" 'dotkit tidy -n')
+printf '%s\n' "$out"
+grep -Eq "^keep +pkg:dev\.dotkit\.e2e\.one +$one +# version 1\.0; uninstall moves 1 item to the Trash" <<<"$out" ||
+  fail 'the plan does not keep dev.dotkit.e2e.one.'
+grep -Eq "^uninstall +pkg:dev\.dotkit\.e2e\.two +$two +# version 1\.0; no files of it are left" <<<"$out" ||
+  fail 'the plan does not uninstall dev.dotkit.e2e.two.'
+plan=$(mktemp)
+printf '%s\n' "uninstall pkg:dev.dotkit.e2e.one $one" "uninstall pkg:dev.dotkit.e2e.two $two" >"$plan"
+"${dotkit[@]}" "dotkit tidy -y --plan '$plan'"
+rm -f "$plan"
+for n in one two; do
+  ! pkgutil --pkg-info "dev.dotkit.e2e.$n" >/dev/null 2>&1 || fail "pkgutil still knows dev.dotkit.e2e.$n."
+done
+[[ ! -e $one ]] || fail "$one is still there."
+moved=$(find ~/.Trash -maxdepth 1 -name 'dev.dotkit.e2e.one *' | head -n 1)
+[[ -f $moved$one ]] || fail "the Trash does not have $one."
+[[ $(stat -f %u "$moved$one") == "$(id -u)" ]] || fail "$moved$one is not yours."
 
 echo 'tidy.sh: ok'

@@ -12,12 +12,14 @@ from typing import Dict, List, Optional, Tuple
 
 from ..context import expand, shell_path, tilde
 from ..declared import Declared
+from ..migrators import and_list
 from .apps import App, TidyFacts
 from .clis import PACKAGES, Tool
+from .pkgs import Receipt, part_name
 
 VERBS = ("adopt", "replace", "add", "uninstall", "keep", "trash")
 # The prefixes of a thing: cask:<token>, mas:<id>, and the kinds of tools.
-THINGS = ("cask", "mas") + PACKAGES + ("go",)
+THINGS = ("cask", "mas") + PACKAGES + ("go", "pkg")
 PATH_WIDTH = 40
 
 HEADER = """\
@@ -35,6 +37,8 @@ HEADER = """\
 """
 TOOLS = ("# Command-line tools: old copies of tools that dotkit has, and files that no package manager knows. "
          "dotkit migrate\n# adds the tools that the lists do not have.")
+PKGS = ("# Installer packages (.pkg): uninstall pkg:<id> moves their files to the Trash and makes macOS forget the\n"
+        "# package. It asks for your password. The App Store and Homebrew casks have their own packages.")
 CHECK_REFERENCES = ("Before trash, check that nothing points into it: LaunchAgents, IDE interpreter settings, "
                     "git hooks")
 
@@ -127,7 +131,7 @@ def default_line(app: App, t: TidyFacts, declared: Declared) -> Optional[Line]:
                                      "system": "from Apple"}[app.source])
     src = source_text(app)
     if app.system_parts:
-        src += (f", with system parts ({app.system_parts[0]}) that only the vendor's uninstaller removes")
+        src += f", with system parts ({part_name(app.system_parts[0])}) that only the vendor's uninstaller removes"
     if not app.writable:
         alt = f"; or: replace cask:{app.match}" if app.match else ""
         return Line("keep", p, note=f"{src}; owned by {app.owner or 'another user'}, so tidy does not change it{alt}")
@@ -194,6 +198,30 @@ def default_tool_line(tool: Tool, t: TidyFacts, declared: Declared) -> Optional[
     return Line("keep", p, note=what + (f"; dotkit has {src}" if src else "") + owner)
 
 
+def default_pkg_line(r: Receipt, t: TidyFacts) -> Optional[Line]:
+    """The line of an installer package with its default verb (TIDY.md, section 8.2); None for a package of the
+    App Store or of an installed cask."""
+    if r.mas or r.cask:
+        return None
+    thing, p = f"pkg:{r.id}", r.path
+    version = f"version {r.version}; " if r.version else ""
+    stays = []
+    if r.shared:
+        stays.append(f"{len(r.shared)} that another package has too")
+    if r.protected:
+        stays.append(f"{len(r.protected)} in a system directory")
+    rest = f"; {' and '.join(stays)} stay" if stays else ""
+    if r.system_parts:
+        return Line("keep", p, thing, f"{version}system parts ({part_name(r.system_parts[0])}) that only the "
+                                      "vendor's uninstaller removes")
+    if not r.present and not stays:
+        return Line("uninstall", p, thing, f"{version}no files of it are left, so uninstall only forgets the package")
+    if not r.present:
+        return Line("keep", p, thing, f"{version}uninstall only forgets the package{rest}")
+    n = len(r.present)
+    return Line("keep", p, thing, f"{version}uninstall moves {n} item{'s' if n != 1 else ''} to the Trash{rest}")
+
+
 def _order(x: Line) -> Tuple[int, str]:
     return VERBS.index(x.verb), x.path.rsplit("/", 1)[-1].lower()
 
@@ -209,15 +237,18 @@ def defaults(t: TidyFacts, declared: Declared) -> Tuple[List[Line], int]:
         else:
             lines.append(line)
     tools = [x for x in (default_tool_line(tool, t, declared) for tool in t.tools) if x is not None]
-    return sorted(lines, key=_order) + sorted(tools, key=_order), listed
+    receipts = [x for x in (default_pkg_line(r, t) for r in t.receipts) if x is not None]
+    return sorted(lines, key=_order) + sorted(tools, key=_order) + sorted(receipts, key=_order), listed
 
 
 def render(lines: List[Line], t: TidyFacts, listed: int) -> str:
     """The plan text for the editor."""
     tools = {x.path for x in t.tools}
-    n_tools = sum(1 for x in lines if x.path in tools)
-    parts = [(len(lines) - n_tools, "app", "apps"), (n_tools, "command-line tool", "command-line tools")]
-    count = " and ".join(f"{n} {one if n == 1 else many}" for n, one, many in parts if n) or "nothing"
+    n_pkgs = sum(1 for x in lines if x.thing.startswith("pkg:"))
+    n_tools = sum(1 for x in lines if x.path in tools and not x.thing.startswith("pkg:"))
+    parts = [(len(lines) - n_tools - n_pkgs, "app", "apps"), (n_tools, "command-line tool", "command-line tools"),
+             (n_pkgs, "installer package", "installer packages")]
+    count = and_list([f"{n} {one if n == 1 else many}" for n, one, many in parts if n]) or "nothing"
     out = HEADER.format(count=count).splitlines()
     if listed:
         out.append(f"# Not shown: {listed} app{'s' if listed != 1 else ''} that the lists have already.")
@@ -228,10 +259,13 @@ def render(lines: List[Line], t: TidyFacts, listed: int) -> str:
     verb_width = max(len(x.verb) for x in lines)
     # The comments line up after the paths, up to a path of PATH_WIDTH characters.
     path_width = min(max(len(tilde(x.path, t.home)) for x in lines), PATH_WIDTH)
-    first_tool = next((x for x in lines if x.path in tools), None)
+    first_tool = next((x for x in lines if x.path in tools and not x.thing.startswith("pkg:")), None)
+    first_pkg = next((x for x in lines if x.thing.startswith("pkg:")), None)
     for x in lines:
         if x is first_tool:
             out += ["", *TOOLS.splitlines()]
+        if x is first_pkg:
+            out += ["", *PKGS.splitlines()]
         head = f"{x.verb:<{max(verb_width + 1, 8)}} " + (f"{x.thing:<{width}}  " if width else "")
         path = tilde(x.path, t.home)
         out.append(f"{head}{path:<{path_width}}  # {x.note}" if x.note else f"{head}{path}")
@@ -282,13 +316,45 @@ def check_tool(x: Line, tool: Tool, t: TidyFacts) -> List[str]:
     return []
 
 
+def check_pkg(x: Line, r: Optional[Receipt], t: TidyFacts) -> List[str]:
+    """The errors of a line of an installer package (TIDY.md, section 8.2)."""
+    where, pkg_id = f"line {x.number}", x.thing[len("pkg:"):]
+    if r is None:
+        return [f"{where}: there is no package {pkg_id}."]
+    if r.mas:
+        return [f"{where}: {pkg_id} is a package of the App Store. The App Store app has its own line."]
+    if r.cask:
+        return [f"{where}: the cask {r.cask} has the package {pkg_id}. `dotkit remove cask:{r.cask}` uninstalls it."]
+    if x.path != r.path:
+        return [f"{where}: the path of {x.thing} is {tilde(r.path, t.home)}."]
+    if x.verb not in ("uninstall", "keep"):
+        return [f"{where}: {x.verb} is not for packages. Use uninstall or keep."]
+    if x.verb == "uninstall" and r.system_parts:
+        return [f"{where}: {pkg_id} has system parts ({part_name(r.system_parts[0])}). Use the uninstaller of its "
+                "vendor."]
+    return []
+
+
 def check(lines: List[Line], t: TidyFacts) -> Tuple[List[str], List[str]]:
     """The errors and the notes of the parsed lines against the scan (TIDY.md, sections 5 and 8.1)."""
     apps: Dict[str, App] = {a.path: a for a in t.apps}
     tools: Dict[str, Tool] = {x.path: x for x in t.tools}
+    receipts: Dict[str, Receipt] = {r.id: r for r in t.receipts}
     errors, notes, seen = [], [], set()
+    removed: List[Tuple[Line, Receipt]] = []
     for x in lines:
         where = f"line {x.number}"
+        if x.thing.startswith("pkg:"):
+            if x.thing in seen:
+                errors.append(f"{where}: {x.thing} has another line already.")
+                continue
+            seen.add(x.thing)
+            r = receipts.get(x.thing[len("pkg:"):])
+            found = check_pkg(x, r, t)
+            errors += found
+            if r is not None and not found and x.verb == "uninstall":
+                removed.append((x, r))
+            continue
         app = apps.get(x.path)
         tool = tools.get(x.path)
         if app is None and tool is None:
@@ -342,6 +408,14 @@ def check(lines: List[Line], t: TidyFacts) -> Tuple[List[str], List[str]]:
             elif app.system_parts:
                 notes.append(f"{where}: trash moves only the app. Its package has system parts that only the "
                              "vendor's uninstaller removes.")
+    # uninstall pkg: moves the files of the package; no other line may change one of them.
+    for x, r in removed:
+        units = set(r.present)
+        for y in lines:
+            if y.verb in ("adopt", "replace", "trash", "uninstall") and not y.thing.startswith("pkg:") and \
+                    y.path in units:
+                errors.append(f"line {x.number}: uninstall {x.thing} moves {tilde(y.path, t.home)}, and line "
+                              f"{y.number} has {y.verb} for it. Keep one of them.")
     return errors, notes
 
 
@@ -354,7 +428,12 @@ def commands(lines: List[Line], t: TidyFacts) -> List[str]:
         app = apps.get(x.path)
         tool = tools.get(x.path)
         name = tilde(x.path, t.home)
-        if x.verb == "uninstall" and tool is not None:
+        if x.verb == "uninstall" and x.thing.startswith("pkg:"):
+            r = next((r for r in t.receipts if f"pkg:{r.id}" == x.thing), None)
+            n = len(r.present) if r else 0
+            moves = f"move {n} item{'s' if n != 1 else ''} of it to the Trash, then " if n else ""
+            out.append(f"sudo: {moves}pkgutil --forget {x.thing[len('pkg:'):]}")
+        elif x.verb == "uninstall" and tool is not None:
             out.append(" ".join(shell_path(tilde(a, t.home)) for a in tool.uninstall))
         elif x.verb == "adopt":
             out.append(f"brew install --cask --adopt {x.token}    ({name})")
