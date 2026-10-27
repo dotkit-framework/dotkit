@@ -1,7 +1,11 @@
 # Plan: the dotkit command in Python
 
-Status: steps 0 to 7 are done. The `dotkit` command runs the Python code
-of `lib/dotkit`, and the Bash scripts are gone. Step 8 is open.
+Status: done. The `dotkit` command runs the Python code of `lib/dotkit`,
+and the Bash scripts are gone. `lib/ARCHITECTURE.md` describes the result.
+In step 8, the wizard kept its own readers of the lists and of
+`config/mise.toml`: they differ from the readers of the command on
+purpose (a TOML parser, other whitespace rules), so a shared reader would
+change the behavior of one of them.
 
 This plan replaces the Bash scripts of the `dotkit` command with one Python
 package. The behavior stays the same, with one new feature: `dotkit add`

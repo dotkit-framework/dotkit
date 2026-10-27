@@ -286,8 +286,9 @@ nix build .#checks.aarch64-darwin.example           # builds the example Mac
 The `dotkit` command and the migration wizard are Python, in `lib/dotkit/`,
 and run with the macOS Python of the Xcode Command Line Tools. The command
 is in `commands/` (apply, upgrade, and the others), `pkg/` (add, remove,
-info, list), and `core/` (what they share). `lib/tests/PARITY.md` lists its
-behavior, row by row, with the tests that cover each row. The wizard is in
+info, list), and `core/` (what they share); `lib/ARCHITECTURE.md` describes
+them, and `lib/tests/PARITY.md` lists the behavior, row by row, with the
+tests that cover each row. The wizard is in
 `lib/dotkit/migrate/`: `migrate/ARCHITECTURE.md` describes its parts, the
 rules for secrets, writes, and errors, and how to add a migration; the
 docstring of `lib/dotkit/migrate/__init__.py` has the short version and the
