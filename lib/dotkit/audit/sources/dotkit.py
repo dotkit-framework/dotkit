@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import json
 import re
-from typing import List
+from typing import List, Optional
 
+from ...core import proc
 from ..match import HEX40
 from ..model import Item, Part, package_query
 
@@ -34,6 +35,25 @@ def inputs(lock: dict) -> List[Item]:
         rev = locked.get("rev")
         if isinstance(rev, str) and HEX40.fullmatch(rev):
             out.append(Item(NAME, f"input {name}", rev[:12], [{"commit": rev}]))
+    return out
+
+
+def upgrades(ctx, items: List[Item]) -> List[Optional[Item]]:
+    """The newest release on PyPI of each vendored package (lib/tools/vendor.py updates them); none for a
+    flake input, whose fix is a new commit."""
+    out: List[Optional[Item]] = []
+    for i in items:
+        if i.name.startswith("input "):
+            out.append(None)
+            continue
+        r = proc.run(["curl", "-fsS", "--max-time", "30", f"https://pypi.org/pypi/{i.name}/json"], stdout=proc.CAPTURE,
+                     stderr=proc.DEVNULL)
+        try:
+            version = (json.loads(r.out).get("info") or {}).get("version") if r.ok else None
+        except (ValueError, AttributeError):
+            version = None
+        out.append(Item(NAME, i.name, version, [package_query("PyPI", i.name, version)])
+                   if isinstance(version, str) and version else None)
     return out
 
 

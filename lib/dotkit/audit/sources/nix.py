@@ -18,14 +18,8 @@ from ..model import Item, Part, git_query
 
 NAME, LABEL, NOUNS = "nix", "Nix", ("Nix package", "Nix packages")
 
-# The packages of Home Manager and of the system. A wrapper (neovim) has the source in its unwrapped
-# package. The expression is part of the command line, which the scenario tests compare.
-NIX_EXPR = '''
-    sys:
-    let
-      lib = sys.pkgs.lib;
-      users = lib.attrValues sys.config.home-manager.users;
-      drvs = lib.concatMap (u: u.home.packages) users ++ sys.config.environment.systemPackages;
+# The fields of one package, or null. A wrapper (neovim) has the source in its unwrapped package.
+ONE = '''
       str = x: if builtins.isString x then x else "";
       one =
         d:
@@ -44,9 +38,29 @@ NIX_EXPR = '''
           };
           r = builtins.tryEval (builtins.deepSeq v v);
         in
-        if r.success then v else null;
+        if r.success then v else null;'''
+
+# The packages of Home Manager and of the system. The expression is part of the command line, which the
+# scenario tests compare.
+NIX_EXPR = '''
+    sys:
+    let
+      lib = sys.pkgs.lib;
+      users = lib.attrValues sys.config.home-manager.users;
+      drvs = lib.concatMap (u: u.home.packages) users ++ sys.config.environment.systemPackages;''' + ONE + '''
     in
     builtins.filter (x: x != null) (map one drvs)'''
+
+# The Nixpkgs that has the fixes first: an upgrade of dotkit takes them from it.
+UNSTABLE = "github:NixOS/nixpkgs/nixpkgs-unstable#legacyPackages.aarch64-darwin"
+
+
+def upgrade_expr(names: List[str]) -> str:
+    """The fields of each package of NAMES in a Nixpkgs, by its pname as an attribute; null for a name that
+    is not one."""
+    return ("\n    pkgs:\n    let" + ONE + "\n    in\n    map (n: if builtins.hasAttr n pkgs then one pkgs.${n} else null) [ "
+            + " ".join(json.dumps(n) for n in names) + " ]")
+
 
 # The repository of a source URL: https://github.com/OWNER/REPO/archive/..., .../releases/download/TAG/...,
 # https://github.com/OWNER/REPO.git
@@ -123,6 +137,23 @@ def items(packages: List[dict]) -> List[Item]:
             seen.add((i.name, i.version))
             out.append(i)
     return out
+
+
+def upgrades(ctx, items: List[Item]) -> List[Optional[Item]]:
+    """The items of the same packages in nixpkgs-unstable: one `nix eval`, which fetches it."""
+    names = [i.name for i in items if re.fullmatch(r"[A-Za-z0-9_+.-]+", i.name)]
+    if not names:
+        return [None] * len(items)
+    r = proc.run(["nix", "eval", "--json", UNSTABLE, "--apply", upgrade_expr(names)], stdout=proc.CAPTURE,
+                 stderr=proc.DEVNULL)
+    try:
+        found = json.loads(r.out) if r.ok else None
+    except ValueError:
+        found = None
+    by_name: Dict[str, Optional[Item]] = {}
+    if isinstance(found, list) and len(found) == len(names):
+        by_name = {n: item(p) if isinstance(p, dict) else None for n, p in zip(names, found)}
+    return [by_name.get(i.name) for i in items]
 
 
 def collect(ctx) -> Part:

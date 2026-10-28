@@ -254,11 +254,27 @@ def brew_vulns(findings: list = (), skipped: list = (), checked: int = 1) -> Lis
 OSV = "https://api.osv.dev/v1"
 
 
-def osv_batch(results: List[List[str]]) -> List[dict]:
-    """POST /v1/querybatch: the advisory IDs of each query, in order. The log has the queries."""
+def osv_batch(results: List[List[str]], once: bool = False) -> List[dict]:
+    """POST /v1/querybatch: the advisory IDs of each query, in order. The log has the queries. once: for the
+    first of two batches (the second asks about the versions of the upgrades)."""
     out = {"results": [{"vulns": [{"id": i, "modified": "2026-10-01T00:00:00Z"} for i in ids]} if ids else {}
                        for ids in results]}
-    return [_r("curl", rf"--data-binary @- {re.escape(OSV)}/querybatch$", json.dumps(out), stdin=True)]
+    return [_r("curl", rf"--data-binary @- {re.escape(OSV)}/querybatch$", json.dumps(out), stdin=True,
+               **({"once": True} if once else {}))]
+
+
+def kev(cves: List[str]) -> List[dict]:
+    """The KEV catalog of CISA, which curl writes to its -o file in the cache."""
+    text = json.dumps({"vulnerabilities": [{"cveID": c} for c in cves]})
+    return [_r("curl", r"known_exploited_vulnerabilities\.json$",
+               actions=[{"write": "@SB/home/.cache/dotkit/kev.download", "text": text}])]
+
+
+def nix_unstable(packages: List[dict]) -> List[dict]:
+    """The packages of nixpkgs-unstable for the upgrade of the Nix findings (audit/sources/nix.upgrades)."""
+    keys = ("name", "version", "url", "git", "tag", "rev", "homepage")
+    out = [None if p is None else {**{k: "" for k in keys}, "patches": [], **p} for p in packages]
+    return [_r("nix", r"(?s)^eval --json github:NixOS/nixpkgs/nixpkgs-unstable#", json.dumps(out))]
 
 
 def osv_vulns(records: List[dict]) -> List[dict]:

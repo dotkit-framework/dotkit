@@ -73,6 +73,8 @@ lib/
                             each collect(ctx) returns a Part, with its decisions in pure functions
       macho.py              the Mach-O sections of an executable: Go build info and function names, Rust crates
       match.py              the advisories, notices, ranges, severity, and ignore rules; runs no command
+      triage.py             what the report lists: malicious, known exploited, a fix that an upgrade installs
+      kev.py                the catalog of known exploited vulnerabilities of CISA, cached for a day
       cvss4.py              the CVSS 4.0 base score, ported from the reference calculator of FIRST
       osv.py                the OSV API with curl, and the cache of the advisories
       issues.py             one GitHub issue per finding, with gh
@@ -164,11 +166,16 @@ cd lib && /usr/bin/python3 -B -m unittest discover -s tests -t .
    through `core/proc.py`. `ctx.mise_ls()` runs `mise ls` once for all
    sources; `ctx.system(path)` gives a path of the system, which the
    scenarios move into the sandbox.
-2. A failure is `Part(error=...)`: the audit is not complete, and a daily
+2. When the source knows what an upgrade installs, add `upgrades(ctx, items)`:
+   for each item, the same tool at that version with its queries, or None.
+   triage.py asks OSV about them, so a finding with a fix is listed and one
+   without is counted. A source whose items are packages inside a tool sets
+   `DEPENDENCY = True`: the report counts its findings.
+3. A failure is `Part(error=...)`: the audit is not complete, and a daily
    workflow fails. A source that does not apply here, for example tools that
    CI does not install, is `Part(skipped=...)`: not checked, not a failure.
-3. Add it to `SOURCES` in `sources/__init__.py`, in the order of the report.
+4. Add it to `SOURCES` in `sources/__init__.py`, in the order of the report.
    The core asks OSV once for the queries of all sources, and match.py
    decides for all of them.
-4. Add its row to `tests/BEHAVIOR.md`, unit tests for its pure functions, and
+5. Add its row to `tests/BEHAVIOR.md`, unit tests for its pure functions, and
    a scenario when it runs a command.

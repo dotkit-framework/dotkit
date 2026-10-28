@@ -5,7 +5,7 @@
  ],
  "exit": 0,
  "stdout": "",
- "stderr": "Collecting the tools...\nAsking OSV.dev...\nNot checked, its source is not in a Git repository that OSV knows: poppler-utils.\nNot checked, mise cannot resolve its version: github:modem-dev/dkt-hunk.\nNot checked, its ref is not a release tag: owner/x.\nNot checked here: the packages in the mise tools (--config-only checks the configuration, not the installed tools).\nNot checked here: the packages in binaries (--config-only checks the configuration, not the installed tools).\nApps (Homebrew casks) are checked only for the Go and Rust packages in their executables: OSV has no data for the apps themselves. `brew outdated --cask --greedy` shows the old ones.\nChecked 3 Nix packages, 1 Homebrew formula, 4 mise tools, 2 GitHub Actions, 1 package of dotkit.\nNo known vulnerabilities or malicious releases.\n",
+ "stderr": "Collecting the tools...\nAsking OSV.dev...\nNot checked here: the packages in the mise tools (--config-only checks the configuration, not the installed tools).\nNot checked here: the packages in binaries (--config-only checks the configuration, not the installed tools).\nChecked 3 Nix packages, 1 Homebrew formula, 4 mise tools, 2 GitHub Actions, 1 package of dotkit.\nNo known vulnerabilities or malicious releases.\n",
  "files": {},
  "calls": [
   {

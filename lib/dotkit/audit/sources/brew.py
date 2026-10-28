@@ -16,8 +16,9 @@ from typing import List, Tuple
 
 from ...core import proc
 from ...core.nix import Nix
+from .. import match
 from ..match import HEX40
-from ..model import Advisory, Finding, Item, Part
+from ..model import FIX_AVAILABLE, FIX_NONE, FIX_UNKNOWN, Advisory, Finding, Item, Part
 
 NAME, LABEL, NOUNS = "brew", "Homebrew", ("Homebrew formula", "Homebrew formulae")
 
@@ -92,4 +93,35 @@ def collect(ctx) -> Part:
         return Part(tap_items, error=error)
     part = report(data)
     part.items = tap_items + part.items
+    if part.findings:
+        _fix_status(exe, part.findings)
     return part
+
+
+def fix_status(installed: str, stable: str, fixed: List[str]) -> str:
+    """FIX_AVAILABLE when the stable version of the formula is newer than the installed one and is a fixed
+    version or newer (or brew vulns names no fixed version); FIX_NONE when it is the installed one."""
+    if not stable:
+        return FIX_UNKNOWN
+    if match.version_key(stable) <= match.version_key(installed):
+        return FIX_NONE
+    if not fixed or any(match.version_key(f) <= match.version_key(stable) for f in fixed):
+        return FIX_AVAILABLE
+    return FIX_NONE
+
+
+def _fix_status(exe: str, findings: List[Finding]) -> None:
+    names = sorted({f.item.name for f in findings})
+    r = proc.run([exe, "info", "--json=v2", "--formula", *names], env={"HOMEBREW_NO_AUTO_UPDATE": "1"},
+                 stdout=proc.CAPTURE, stderr=proc.DEVNULL)
+    try:
+        data = json.loads(r.out) if r.ok else {}
+    except ValueError:
+        data = {}
+    stable = {f.get("name"): (f.get("versions") or {}).get("stable") for f in (data.get("formulae") or [])
+              if isinstance(f, dict)} if isinstance(data, dict) else {}
+    for f in findings:
+        version = stable.get(f.item.name)
+        f.fix = fix_status(f.item.version, version if isinstance(version, str) else "", f.advisory.fixed)
+        if f.fix == FIX_AVAILABLE:
+            f.upgrade = version

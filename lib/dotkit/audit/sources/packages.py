@@ -17,6 +17,8 @@ from typing import List, Set, Tuple
 from ..model import Item, Part, package_query
 
 NAME, LABEL, NOUNS = "packages", "in mise", ("package in the mise tools", "packages in the mise tools")
+# Its packages are inside a tool: an upgrade of the tool fixes them. The report collapses them (--deps lists them).
+DEPENDENCY = True
 
 # (OSV ecosystem, what the report calls it)
 KINDS = {"gem": ("RubyGems", "gem"), "npm": ("npm", "npm package"), "python": ("PyPI", "Python package")}

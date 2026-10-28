@@ -729,12 +729,22 @@ def audit_rules(found: Optional[List[List[str]]] = None, brew: Optional[List[dic
              + (fx.brew_vulns() if brew is None else brew)
              + fx.mise_ls({"node": "24.1.0", "npm:cowsay": "1.6.0"})
              + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
-             + fx.osv_batch(found or [[]] * 7))
+             + fx.osv_batch(found or [[]] * 7, once=bool(found)))
     return rules + (fx.osv_vulns(AUDIT_RECORDS) if found else [])
 
 
 def audit_findings_rules() -> List[dict]:
-    return audit_rules(AUDIT_FOUND, fx.brew_vulns([("wget", "1.25.0", [("CVE-2026-2", "MODERATE", "wget overflow")])]))
+    """With the upgrades: jq 1.8.2 of nixpkgs-unstable is fixed, node has no newer release (no fix), cowsay
+    1.6.1 is fixed, and Homebrew has wget 1.25.1. CVE-2026-3, an alias of GHSA-jq-1, is known exploited."""
+    return (audit_rules(AUDIT_FOUND, fx.brew_vulns([("wget", "1.25.0", [("CVE-2026-2", "MODERATE", "wget overflow")])]))
+            + fx.kev(["CVE-2026-3", "CVE-1999-1"])
+            + fx.nix_unstable([{"name": "jq", "version": "1.8.2",
+                                "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-1.8.2.tar.gz"}])
+            + fx.brew(r"^info --json=v2 --formula wget$",
+                      json.dumps({"formulae": [{"name": "wget", "versions": {"stable": "1.25.1"}}]}))
+            + fx.mise_ok(r"latest node@lts$", "24.1.0\n") + fx.mise_ok(r"latest npm:cowsay@1\.6\.0$", "1.6.1\n")
+            # jq 1.8.2, node 24.1.0, npm:@dkt-ai/dkt-code 2.0.0, npm:cowsay 1.6.1
+            + fx.osv_batch([[], ["CVE-2026-1"], ["MAL-2026-1"], []]))
 
 
 NODE = "@SB/home/.local/share/mise/installs/node/24.1.0"
@@ -777,7 +787,12 @@ def audit_sources_rules() -> List[dict]:
     return (fx.audit_nix(AUDIT_PACKAGES) + fx.brewfile() + fx.brew_vulns()
             + fx.mise_ls({"node": "24.1.0", "npm:cowsay": "1.6.0", "ruby": "3.4.12"}, {"node": NODE})
             + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
-            + fx.osv_batch(found) + fx.osv_vulns(records))
+            + fx.osv_batch(found, once=True) + fx.osv_vulns(records) + fx.kev(["CVE-1999-1"])
+            # The upgrades: node 24.1.0 is the newest (no fix), ruby 3.4.13 is fixed, and changed-files v46.0.1.
+            + fx.mise_ok(r"latest node@lts$", "24.1.0\n") + fx.mise_ok(r"latest ruby@3\.4$", "3.4.13\n")
+            + [{"tool": "git", "re": r"^ls-remote --tags https://github\.com/tj-actions/changed-files$",
+                "stdout": "a\trefs/tags/v45.0.7\nb\trefs/tags/v46.0.1\nc\trefs/tags/v46.0.1^{}\n"}]
+            + fx.osv_batch([["BIT-node-1"], [], ["GHSA-tj-1", "GHSA-tj-2"]]))
 
 
 def audit_config_only_rules() -> List[dict]:
@@ -801,7 +816,7 @@ def audit() -> List[S]:
     return [
         S("audit-clean", ["audit"], audit_rules(), files=AUDIT_FILES, rows=["Au2", "Au3", "Au4", "Au5", "Au6", "Au8"]),
         S("audit-findings", ["audit"], audit_findings_rules(), files={**AUDIT_FILES, "repo/audit.toml": AUDIT_TOML},
-          rows=["Au1", "Au3", "Au6", "Au7", "Au8"]),
+          rows=["Au1", "Au3", "Au6", "Au7", "Au8", "Au16"]),
         S("audit-json", ["audit", "--json"], audit_findings_rules(),
           files={**AUDIT_FILES, "repo/audit.toml": AUDIT_TOML}, rows=["Au9", "O6"]),
         S("audit-issues", ["audit", "--issues"], audit_findings_rules() + gh, files=AUDIT_FILES, rows=["Au11"]),
@@ -816,9 +831,11 @@ def audit() -> List[S]:
                                  "stderr": "curl: (22) The requested URL returned error: 503\n"}],
           files=AUDIT_FILES, rows=["Au6"]),
         S("audit-sources", ["audit"], audit_sources_rules(), files={**AUDIT_FILES, **AUDIT_SOURCE_FILES},
-          rows=["Au4", "Au12", "Au14", "Au15"]),
+          rows=["Au4", "Au12", "Au14", "Au15", "Au16"]),
         S("audit-config-only", ["audit", "--config-only"], audit_config_only_rules(),
           files={**AUDIT_FILES, **AUDIT_SOURCE_FILES}, rows=["Au15", "O6"]),
+        S("audit-all", ["audit", "--all", "--min-severity", "medium"], audit_findings_rules(),
+          files={**AUDIT_FILES, "repo/audit.toml": AUDIT_TOML}, rows=["Au16", "O6"]),
         S("audit-toml-invalid", ["audit"], files={"repo/audit.toml": '[[ignore]]\nid = "X"\n'}, rows=["Au1"]),
         S("audit-toml-broken", ["audit"], files={"dotkit/audit.toml": "[[ignore]\n"}, rows=["Au1"]),
     ]

@@ -121,9 +121,7 @@ def collect(ctx) -> Part:
         versions = [e["version"] for e in installed.get(key, [])]
         if not versions:
             for req, age in requests(value):
-                age = age or (default_age if isinstance(default_age, str) else "")
-                args = ["latest", *(["--minimum-release-age", age] if age else []),
-                        key if req in ("", "latest") else f"{key}@{req}"]
+                args = latest_args(key, {"version": req, "minimum_release_age": age} if age else req, "", default_age)
                 r = proc.mise(env.home, args, stdout=proc.CAPTURE, stderr=proc.DEVNULL)
                 if r.ok and r.value:
                     versions.append(r.value)
@@ -134,5 +132,29 @@ def collect(ctx) -> Part:
         if ":" not in key and key not in MISE_CORE and key not in ("go", "ruby"):
             r = proc.mise(env.home, ["registry", key], stdout=proc.CAPTURE, stderr=proc.DEVNULL)
             backends = r.value.split() if r.ok else []
-        part.items += [item(key, v, backends) for v in dict.fromkeys(versions)]
+        for v in dict.fromkeys(versions):
+            i = item(key, v, backends)
+            i.meta = {"latest": latest_args(key, value, v, default_age), "backends": backends}
+            part.items.append(i)
     return part
+
+
+def latest_args(key: str, value: object, version: str, default_age: object) -> List[str]:
+    """The arguments of `mise latest` for the version that an upgrade installs: the request of the config
+    that VERSION is for (the first one when it is not known), with its minimum release age."""
+    reqs = requests(value) or [("", "")]
+    req, age = next(((r, a) for r, a in reqs if version.startswith(r)), reqs[0])
+    age = age or (default_age if isinstance(default_age, str) else "")
+    return ["latest", *(["--minimum-release-age", age] if age else []), key if req in ("", "latest") else f"{key}@{req}"]
+
+
+def upgrades(ctx, items: List[Item]) -> List[Optional[Item]]:
+    """The item of the version that `mise latest` gives: an upgrade installs it."""
+    out: List[Optional[Item]] = []
+    for i in items:
+        args = i.meta.get("latest")
+        r = proc.mise(ctx.env.home, args, stdout=proc.CAPTURE, stderr=proc.DEVNULL) if isinstance(args, list) else None
+        backends = i.meta.get("backends")
+        out.append(item(i.name, r.value, backends if isinstance(backends, list) else [])
+                   if r is not None and r.ok and r.value else None)
+    return out

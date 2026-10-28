@@ -31,7 +31,7 @@ def notice(record: dict) -> str:
     return info if isinstance(info, str) else ""
 
 
-def _version_key(v: str) -> tuple:
+def version_key(v: str) -> tuple:
     """A version for comparison: the numbers in order, without zeros at the end (47.1 is 47.1.0); a
     pre-release (1.0.0-rc.1) before its release."""
     v = v[1:] if v[:1] in ("v", "V") else v
@@ -53,7 +53,7 @@ def in_ranges(record: dict, query: dict, version: str) -> bool:
     """True when VERSION is in a range of the record for the package of the query: introduced, then fixed
     (not included) or last_affected (included), or in its list of versions. For an ecosystem where OSV
     does not compare versions itself (GitHub Actions)."""
-    key = _version_key(version)
+    key = version_key(version)
     for a in _affected_of(record, query):
         if version in (a.get("versions") or []):
             return True
@@ -63,13 +63,13 @@ def in_ranges(record: dict, query: dict, version: str) -> bool:
             start = None
             for e in r.get("events") or []:
                 if "introduced" in e:
-                    start = _version_key(e["introduced"])
+                    start = version_key(e["introduced"])
                 elif start is not None and "fixed" in e:
-                    if start <= key < _version_key(e["fixed"]):
+                    if start <= key < version_key(e["fixed"]):
                         return True
                     start = None
                 elif start is not None and "last_affected" in e:
-                    if start <= key <= _version_key(e["last_affected"]):
+                    if start <= key <= version_key(e["last_affected"]):
                         return True
                     start = None
             if start is not None and start <= key:

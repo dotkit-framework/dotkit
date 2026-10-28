@@ -248,7 +248,14 @@ def _audit(p: Parser):
                    help="Show a macOS notification for the new findings (the launchd agent).")
     p.add_argument("--config-only", action="store_true",
                    help="Check what the configuration declares, not the tools installed here (for CI).")
-    return lambda env, a: _mod("audit.cli").audit(env, a.json, a.issues, a.notify, a.config_only)
+    p.add_argument("--all", action="store_true", dest="all_",
+                   help="List every finding: also the ones that no upgrade fixes yet, and the ones in the packages "
+                        "inside the tools (gems, npm dependencies, Go modules, Rust crates).")
+    p.add_argument("--min-severity", choices=("low", "medium", "high", "critical"), metavar="LEVEL",
+                   help="Show only findings of LEVEL or higher: low, medium, high, or critical. An unknown severity "
+                        "counts as low. A malicious release always shows.")
+    return lambda env, a: _mod("audit.cli").audit(env, a.json, a.issues, a.notify, a.config_only, a.all_,
+                                                  a.min_severity or "")
 
 
 def _mod(name: str):
@@ -303,8 +310,15 @@ COMMANDS: Dict[str, Command] = {
                      "Asks OSV.dev (https://osv.dev) about the tools that dotkit installs: the Nix packages, the\n"
                      "Homebrew formulae (brew vulns), the mise tools, and the Python packages of dotkit. The\n"
                      "findings go to stdout. Exit code 1 when there are findings, unless --issues or --notify\n"
-                     "reported them. audit.toml in the repository ignores an advisory: see the README.",
+                     "reported them. audit.toml in the repository ignores an advisory: see the README.\n\n"
+                     "The report lists what you can act on: a malicious release, a known exploited vulnerability\n"
+                     "(CISA KEV), and a finding of a tool whose fix an upgrade installs. It counts the findings\n"
+                     "that no upgrade fixes yet, and the ones in the packages inside the tools: --all lists them.\n"
+                     "--min-severity hides the findings below a level. The notification and the issues follow the\n"
+                     "same list.",
                      epilog="Examples:\n  dotkit audit                 the findings, and what was not checked\n"
+                            "  dotkit audit --all --min-severity high\n"
+                            "                               every finding that is high or critical\n"
                             "  dotkit audit --json          the report for a script\n"
                             "  dotkit audit --config-only --issues\n"
                             "                               the daily workflow of the template"),

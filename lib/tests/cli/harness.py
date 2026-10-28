@@ -28,7 +28,7 @@ from tests import fake
 
 ROOT = fake.ROOT
 HERE = Path(__file__).resolve().parent
-TOOLS = ("nix", "brew", "mise", "mas", "curl", "sudo", "darwin-rebuild", "gh")
+TOOLS = ("nix", "brew", "mise", "mas", "curl", "sudo", "darwin-rebuild", "gh", "git")
 
 # The dotkit base of the sandbox: small lists, so that the goldens do not
 # change when the real base lists change.

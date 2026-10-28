@@ -123,13 +123,6 @@ def finding(name="fzf", rid="CVE-1", version="1.0", source="nix") -> Finding:
     return Finding(Item(source, name, version), Advisory(rid, [], "A bug", "HIGH", []))
 
 
-class OnePerKeyTests(unittest.TestCase):
-    def test_versions_join(self):
-        a, b, c = finding("node", version="22.1.0"), finding("node", version="20.9.0"), finding("node", version="22.1.0")
-        out = cli._one_per_key([a, b, c, finding("jq")])
-        self.assertEqual([(f.item.name, f.item.version) for f in out], [("node", "20.9.0, 22.1.0"), ("jq", "1.0")])
-
-
 class IssueTests(unittest.TestCase):
     REPO = Path("/repo")
 

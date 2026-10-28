@@ -15,7 +15,7 @@ from typing import Collection, Dict, List, Sequence
 
 from ..core import proc, ui
 from . import match
-from .model import Finding
+from .model import FIX_AVAILABLE, FIX_NONE, Finding
 
 LABEL = "dotkit-audit"
 # A key can have spaces: dotkit/input zsh-abbr/ID.
@@ -41,8 +41,14 @@ def body(f: Finding) -> str:
             ("Advisory", f"[{a.id}]({a.url})"), ("Severity", match.severity_text(a))]
     if a.aliases:
         rows.append(("Aliases", ", ".join(a.aliases)))
+    if f.exploited:
+        rows.append(("Known exploited", "yes: in the [KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) of CISA"))
     if a.fixed:
         rows.append(("Fixed in", ", ".join(a.fixed)))
+    if f.fix == FIX_AVAILABLE and f.upgrade:
+        rows.append(("Fix", f"an upgrade installs {f.upgrade}, which has the fix"))
+    elif f.fix == FIX_NONE:
+        rows.append(("Fix", "no upgrade fixes it yet"))
     lines = [f"<!-- dotkit-audit: {f.key} -->"]
     if a.malicious:
         lines += ["**OSV lists this release as malicious.** Remove it, and treat the Mac as compromised until "
@@ -63,9 +69,10 @@ def body(f: Finding) -> str:
 
 
 def sync(repo: Path, findings: Sequence[Finding], complete_sources: Collection[str],
-         unchecked: Collection[str] = ()) -> Dict[str, int]:
+         unchecked: Collection[str] = (), hidden: Collection[str] = ()) -> Dict[str, int]:
     """Opens, reopens, updates, and closes the issues. unchecked: the tool keys (SOURCE/NAME) that the run
-    did not check. Returns the count of each change."""
+    did not check; hidden: the keys of the findings that the run does not show (--min-severity): their
+    issues stay as they are. Returns the count of each change."""
     _gh(repo, ["label", "create", LABEL, "--color", "B60205", "--force",
                "--description", "A finding of dotkit audit: a known vulnerability or a malicious release"])
     r = _gh(repo, ["issue", "list", "--label", LABEL, "--state", "all", "--limit", "1000",
@@ -107,7 +114,8 @@ def sync(repo: Path, findings: Sequence[Finding], complete_sources: Collection[s
                 counts["closed"] += 1
     for key, issue in by_key.items():
         source, tool = key.split("/", 1)[0], key.rsplit("/", 1)[0]
-        if key in current or issue.get("state") != "OPEN" or source not in complete_sources or tool in unchecked:
+        if (key in current or key in hidden or issue.get("state") != "OPEN" or source not in complete_sources
+                or tool in unchecked):
             continue
         _gh(repo, ["issue", "close", str(issue["number"]), "--comment",
                    "dotkit audit does not find this any more: the tool was upgraded or removed, the advisory changed, "

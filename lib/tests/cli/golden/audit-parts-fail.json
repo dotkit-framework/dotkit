@@ -4,7 +4,7 @@
  ],
  "exit": 1,
  "stdout": "",
- "stderr": "Collecting the tools...\nerror: undefined variable 'oops'\nerror: undefined variable 'oops'\nAsking OSV.dev...\ndotkit: Nix: the configuration did not evaluate, so the Nix packages are not checked.\ndotkit: Homebrew: the Brewfile of the configuration did not evaluate, so the formulae are not checked.\ndotkit: mise: `mise ls --global --json` failed, so the mise tools are not checked.\nNot checked here: the packages in the mise tools (mise does not run here).\nNot checked here: the packages in binaries (no tool is installed here).\nApps (Homebrew casks) are checked only for the Go and Rust packages in their executables: OSV has no data for the apps themselves. `brew outdated --cask --greedy` shows the old ones.\nChecked 1 package of dotkit.\ndotkit: no findings, but the audit is not complete: see the warnings above.\n",
+ "stderr": "Collecting the tools...\nerror: undefined variable 'oops'\nerror: undefined variable 'oops'\nAsking OSV.dev...\ndotkit: Nix: the configuration did not evaluate, so the Nix packages are not checked.\ndotkit: Homebrew: the Brewfile of the configuration did not evaluate, so the formulae are not checked.\ndotkit: mise: `mise ls --global --json` failed, so the mise tools are not checked.\nNot checked here: the packages in the mise tools (mise does not run here).\nNot checked here: the packages in binaries (no tool is installed here).\nChecked 1 package of dotkit.\ndotkit: nothing to act on, but the audit is not complete: see the warnings above.\n",
  "files": {},
  "calls": [
   {

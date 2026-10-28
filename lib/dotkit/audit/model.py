@@ -3,12 +3,16 @@
 A source (sources/) collects the tools of one kind and returns a Part: items with OSV queries, the
 findings that it made itself (brew vulns asks OSV on its own), and an error or the reason that it does not
 apply here. The core (cli.py) asks OSV about the queries of all parts at once, and match.py decides.
+
+A source can also say what an upgrade installs: upgrades(ctx, items) -> one Item or None per item, the
+same tool at the version of the upgrade, with its queries. The core asks OSV about those too: a finding
+whose advisory the upgrade does not have has a fix available.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, FrozenSet, List, Optional
+from typing import Callable, Dict, FrozenSet, List, Optional
 
 # A check of an advisory that only the source can make (a version range, the functions of a binary):
 # None keeps the advisory; "" drops it, because it does not apply; other text drops it and says why, for
@@ -47,6 +51,8 @@ class Item:
     # The tool that has the package: the name that an ignore rule with `tool` can also give.
     parent: str = ""
     accept: Optional[Accept] = None
+    # What only the source reads, for example the arguments of `mise latest` for its upgrades().
+    meta: Dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -82,10 +88,20 @@ class Advisory:
         return f"https://osv.dev/vulnerability/{self.id}"
 
 
+# Finding.fix: an upgrade installs a version without the advisory; no version that an upgrade installs
+# is without it (a fix is not released, or the source does not have it yet); or not known.
+FIX_AVAILABLE, FIX_NONE, FIX_UNKNOWN = "available", "none", ""
+
+
 @dataclass
 class Finding:
     item: Item
     advisory: Advisory
+    fix: str = FIX_UNKNOWN
+    # The version that an upgrade installs, when the source knows it.
+    upgrade: str = ""
+    # In the catalog of known exploited vulnerabilities of CISA (KEV).
+    exploited: bool = False
 
     @property
     def key(self) -> str:

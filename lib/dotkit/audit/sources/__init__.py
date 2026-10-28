@@ -3,6 +3,9 @@
   NAME     the key of its findings and issues: nix, brew, mise, ...
   LABEL    what the report shows after a version: (Nix)
   NOUNS    one and many, for "Checked 38 Nix packages"
+  DEPENDENCY  (optional) True: its items are packages inside a tool, which the report collapses
+  upgrades    (optional) (Context, items) -> the same tools at the version that an upgrade installs, or
+              None per item when it does not know (triage.check_fixes)
   collect  (Context) -> model.Part
 
 A source runs its own commands, through core/proc.py, and keeps its decisions in pure functions that
@@ -24,8 +27,10 @@ from . import actions, binaries, brew, dotkit, mise, nix, packages
 
 SOURCES = (nix, brew, mise, packages, binaries, actions, dotkit)
 NAMES = tuple(s.NAME for s in SOURCES)
+MODULES = {s.NAME: s for s in SOURCES}
 LABELS = {s.NAME: s.LABEL for s in SOURCES}
 NOUNS = {s.NAME: s.NOUNS for s in SOURCES}
+DEPENDENCIES = frozenset(s.NAME for s in SOURCES if getattr(s, "DEPENDENCY", False))
 
 
 CONFIG_ONLY = "--config-only checks the configuration, not the installed tools"

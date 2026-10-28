@@ -305,18 +305,14 @@ apply will move aside.
 ## Security
 
 `dotkit audit` asks [OSV.dev](https://osv.dev) about the tools that dotkit
-installs and the packages in them, and prints their known vulnerabilities
-and malicious releases:
+installs and the packages in them, for known vulnerabilities and malicious
+releases:
 
 ```
 $ dotkit audit
-fzf 0.74.5 (Nix):
-  CVE-2026-115319 (low 2.0): fzf 0.36.0 through 0.74.5 Denial of Service via maskActionContents
-    https://osv.dev/vulnerability/CVE-2026-115319
-
-mise > zip 8.6.0 (Rust crate in mise 2026.10.17 (Nix)):
-  RUSTSEC-2026-0369 (critical 9.1): ZipStreamReader::extract() and ZipArchive::extract() apply Unix permissions through symlinks
-    Fixed in 9.0.0. https://osv.dev/vulnerability/RUSTSEC-2026-0369
+jq 1.8.1 (Nix):
+  GHSA-xxxx-xxxx-xxxx (high 7.5): jq crash on a long key
+    An upgrade installs 1.8.2, which has the fix. https://osv.dev/vulnerability/GHSA-xxxx-xxxx-xxxx
 ```
 
 | Source | What | How |
@@ -328,6 +324,30 @@ mise > zip 8.6.0 (Rust crate in mise 2026.10.17 (Nix)):
 | Packages in binaries | the Go modules and Go version of Go executables, and the crates of Rust executables, of the Nix profile, Homebrew, the mise tools, and the apps in `/Applications` | Sections of the executable: Go writes its build info, cargo-auditable the crates. A Go advisory whose functions the executable does not have is left out, as govulncheck does |
 | GitHub Actions | the actions of `.github/workflows` | The tag of each action, also from the comment after a commit (`@HASH # v4.1.2`) |
 | dotkit | the Python packages of `lib/dotkit/_vendor`, and the inputs of `flake.lock` | |
+
+The report lists what you can act on:
+
+- a malicious release, and a vulnerability that attackers use (in the
+  [KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
+  of CISA), wherever they are;
+- an advisory of a tool of your configuration whose fix an upgrade installs.
+  The audit asks OSV about the version that an upgrade installs: the newest
+  mise release (with the minimum release age), the version in
+  nixpkgs-unstable, the stable Homebrew formula, the newest tag of an action.
+
+It counts the rest in one line: the advisories that no upgrade fixes yet (no
+fixed release, or Nixpkgs does not have it yet), and the ones in the packages
+inside the tools, which only a new release of the tool fixes. `--all` lists
+them too, and `--min-severity high` hides what is below high. The
+notification and the GitHub issues follow the same list.
+
+```
+$ dotkit audit
+Checked 38 Nix packages, 2 Homebrew formulae, 8 mise tools, 353 packages in the mise tools, 2730 packages in binaries, 12 packages of dotkit.
+Not listed: 1 finding that no upgrade fixes yet (fzf); 105 in the packages inside 13 tools (5 critical, 20 high, 23 medium, 57 low or unknown).
+› dotkit audit --all lists them.
+✓ Nothing to act on.
+```
 
 The packages in the mise tools and in binaries exist only where the tools are
 installed, so the Mac checks them; CI runs with `--config-only`. The audit leaves out the

@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ...core import proc
 from .. import match
 from ..match import HEX40
 from ..model import Item, Part, package_query
@@ -52,6 +53,30 @@ def item(action: str, ref: str, comment: str) -> Item:
         return None if match.in_ranges(record, query, version) else ""
 
     out.accept = accept
+    return out
+
+
+def newest_tag(refs: str) -> str:
+    """The newest release tag of the output of `git ls-remote --tags`: three numbers or more, no pre-release.
+    An annotated tag is there twice, also as TAG^{}."""
+    tags = set()
+    for line in refs.split("\n"):
+        _, _, ref = line.partition("\trefs/tags/")
+        if ref:
+            tags.add(ref[:-3] if ref.endswith("^{}") else ref)
+    releases = [t for t in tags if re.fullmatch(r"v?\d+\.\d+\.\d+(\.\d+)*", t)]
+    return max(releases, key=match.version_key, default="")
+
+
+def upgrades(ctx, items: List[Item]) -> List[Optional[Item]]:
+    """The item of the newest release tag of each action (`git ls-remote --tags`): a Dependabot update or an
+    edit of the workflow installs it."""
+    out: List[Optional[Item]] = []
+    for i in items:
+        r = proc.run(["git", "ls-remote", "--tags", f"https://github.com/{i.name}"], stdout=proc.CAPTURE,
+                     stderr=proc.DEVNULL, env={"GIT_TERMINAL_PROMPT": "0"})
+        tag = newest_tag(r.out) if r.ok else ""
+        out.append(item(i.name, tag, "") if tag else None)
     return out
 
 

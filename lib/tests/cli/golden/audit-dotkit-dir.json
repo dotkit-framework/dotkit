@@ -4,7 +4,7 @@
  ],
  "exit": 0,
  "stdout": "",
- "stderr": "Collecting the tools...\nAsking OSV.dev...\nNot checked, its source is not in a Git repository that OSV knows: poppler-utils.\nNot checked, brew vulns does not check the formulae of other taps: owner/tap/dkt-tool.\nNot checked, mise cannot resolve its version: github:modem-dev/dkt-hunk.\nNot checked here: the packages in the mise tools (no mise tool is installed here).\nNot checked here: the packages in binaries (no tool is installed here).\nApps (Homebrew casks) are checked only for the Go and Rust packages in their executables: OSV has no data for the apps themselves. `brew outdated --cask --greedy` shows the old ones.\nChecked 3 Nix packages, 1 Homebrew formula, 3 mise tools, 1 package of dotkit.\nNo known vulnerabilities or malicious releases.\n",
+ "stderr": "Collecting the tools...\nAsking OSV.dev...\nNot checked here: the packages in the mise tools (no mise tool is installed here).\nNot checked here: the packages in binaries (no tool is installed here).\nChecked 3 Nix packages, 1 Homebrew formula, 3 mise tools, 1 package of dotkit.\nNo known vulnerabilities or malicious releases.\n",
  "files": {},
  "calls": [
   {

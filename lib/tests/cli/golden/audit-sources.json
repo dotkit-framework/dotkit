@@ -3,9 +3,10 @@
   "audit"
  ],
  "exit": 1,
- "stdout": "node > undici 6.28.0 (npm package in node 24.1.0):\n  GHSA-undici-1 (high): undici TLS bypass\n    https://osv.dev/vulnerability/GHSA-undici-1\n\nnode 24.1.0 (mise):\n  BIT-node-1 (unknown): Node bug\n    https://osv.dev/vulnerability/BIT-node-1\n\nruby 3.4.12 (mise):\n  BIT-ruby-1 (unknown): Ruby regex heap read\n    Fixed in 3.4.13. https://osv.dev/vulnerability/BIT-ruby-1\n\ntj-actions/changed-files v45.0.7 (GitHub Actions):\n  GHSA-tj-1 (unknown): changed-files leaks secrets\n    Fixed in 46.0.1. https://osv.dev/vulnerability/GHSA-tj-1\n",
- "stderr": "Collecting the tools...\nAsking OSV.dev...\nNot checked, its source is not in a Git repository that OSV knows: poppler-utils.\nNot checked, mise cannot resolve its version: github:modem-dev/dkt-hunk.\nNot checked, its ref is not a release tag: owner/x.\nNot checked here: the packages in binaries (no tool is installed here).\nApps (Homebrew casks) are checked only for the Go and Rust packages in their executables: OSV has no data for the apps themselves. `brew outdated --cask --greedy` shows the old ones.\nChecked 3 Nix packages, 1 Homebrew formula, 4 mise tools, 2 packages in the mise tools, 2 GitHub Actions, 1 package of dotkit.\ndotkit: 4 findings for 4 tools. Upgrade them (dotkit upgrade), or add an ignore rule to audit.toml.\n",
+ "stdout": "ruby 3.4.12 (mise):\n  BIT-ruby-1 (unknown): Ruby regex heap read\n    Fixed in 3.4.13. An upgrade installs 3.4.13, which has the fix. https://osv.dev/vulnerability/BIT-ruby-1\n\ntj-actions/changed-files v45.0.7 (GitHub Actions):\n  GHSA-tj-1 (unknown): changed-files leaks secrets\n    Fixed in 46.0.1. An upgrade installs v46.0.1, which has the fix. https://osv.dev/vulnerability/GHSA-tj-1\n",
+ "stderr": "Collecting the tools...\nAsking OSV.dev...\nChecking what an upgrade fixes...\nNot checked here: the packages in binaries (no tool is installed here).\nChecked 3 Nix packages, 1 Homebrew formula, 4 mise tools, 2 packages in the mise tools, 2 GitHub Actions, 1 package of dotkit.\nNot listed: 1 finding that no upgrade fixes yet (node); 1 in the packages inside 1 tool (1 high).\ndotkit audit --all lists them.\ndotkit: 2 findings to act on, for 2 tools. Upgrade them (dotkit upgrade), or add an ignore rule to audit.toml.\n",
  "files": {
+  "home/.cache/dotkit/kev.json": "{\"vulnerabilities\": [{\"cveID\": \"CVE-1999-1\"}]}",
   "home/.cache/dotkit/osv/BIT-node-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"BIT-node-1\", \"summary\": \"Node bug\"}}",
   "home/.cache/dotkit/osv/BIT-ruby-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"BIT-ruby-1\", \"summary\": \"Ruby regex heap read\", \"affected\": [{\"package\": {\"ecosystem\": \"Bitnami\", \"name\": \"ruby\"}, \"ranges\": [{\"type\": \"SEMVER\", \"events\": [{\"introduced\": \"3.4.0\"}, {\"fixed\": \"3.4.13\"}]}]}]}}",
   "home/.cache/dotkit/osv/BIT-ruby-2.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"BIT-ruby-2\", \"summary\": \"Ruby, every version\", \"affected\": [{\"package\": {\"ecosystem\": \"Bitnami\", \"name\": \"ruby\"}, \"ranges\": [{\"type\": \"SEMVER\", \"events\": [{\"introduced\": \"0\"}]}]}]}}",
@@ -148,6 +149,83 @@
    "env": {
     "DOTFILES": "@SB/repo"
    }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsS",
+    "--max-time",
+    "60",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "5",
+    "--retry-all-errors",
+    "-o",
+    "@SB/home/.cache/dotkit/kev.download",
+    "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "node@lts"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "ruby@3.4"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "git",
+   "argv": [
+    "ls-remote",
+    "--tags",
+    "https://github.com/tj-actions/changed-files"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsS",
+    "--max-time",
+    "60",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "5",
+    "--retry-all-errors",
+    "-H",
+    "Content-Type: application/json",
+    "--data-binary",
+    "@-",
+    "https://api.osv.dev/v1/querybatch"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   },
+   "stdin": "{\"queries\": [{\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/nodejs/node\"}, \"version\": \"v24.1.0\"}, {\"package\": {\"ecosystem\": \"Bitnami\", \"name\": \"ruby\"}, \"version\": \"3.4.13\"}, {\"package\": {\"ecosystem\": \"GitHub Actions\", \"name\": \"tj-actions/changed-files\"}}]}"
   }
  ],
  "tmp_left": 0

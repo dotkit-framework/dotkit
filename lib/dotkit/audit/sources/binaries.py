@@ -20,6 +20,8 @@ from .. import macho
 from ..model import Accept, Item, Part, package_query
 
 NAME, LABEL, NOUNS = "binaries", "in a binary", ("package in binaries", "packages in binaries")
+# Its packages are inside a tool: an upgrade of the tool fixes them. The report collapses them (--deps lists them).
+DEPENDENCY = True
 
 NOT_CALLED = "the binaries do not have the functions of the advisory"
 _STORE = re.compile(r"/nix/store/[0-9a-z]{32}-([^/]+)/")

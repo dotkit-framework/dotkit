@@ -4,7 +4,7 @@
  ],
  "exit": 1,
  "stdout": "",
- "stderr": "Collecting the tools...\nAsking OSV.dev...\ndotkit: Homebrew: brew vulns needs Homebrew 6.0.11 or newer, so the formulae are not checked. Run `brew update`.\nNot checked, its source is not in a Git repository that OSV knows: poppler-utils.\nNot checked, brew vulns does not check the formulae of other taps: owner/tap/dkt-tool.\nNot checked, mise cannot resolve its version: github:modem-dev/dkt-hunk.\nNot checked here: the packages in the mise tools (no mise tool is installed here).\nNot checked here: the packages in binaries (no tool is installed here).\nApps (Homebrew casks) are checked only for the Go and Rust packages in their executables: OSV has no data for the apps themselves. `brew outdated --cask --greedy` shows the old ones.\nChecked 3 Nix packages, 3 mise tools, 1 package of dotkit.\ndotkit: no findings, but the audit is not complete: see the warnings above.\n",
+ "stderr": "Collecting the tools...\nAsking OSV.dev...\ndotkit: Homebrew: brew vulns needs Homebrew 6.0.11 or newer, so the formulae are not checked. Run `brew update`.\nNot checked here: the packages in the mise tools (no mise tool is installed here).\nNot checked here: the packages in binaries (no tool is installed here).\nChecked 3 Nix packages, 3 mise tools, 1 package of dotkit.\ndotkit: nothing to act on, but the audit is not complete: see the warnings above.\n",
  "files": {},
  "calls": [
   {
