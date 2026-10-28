@@ -492,7 +492,7 @@ item silently, so that a second run with nothing new outputs nothing.
   Nix). Old copy: `cargo uninstall bat`". It is skipped silently when
   `yours_mise_key` is true for its key (`npm:prettier`), and in adopt also
   when `mise_key` is.
-- A runtime asks `yours_mise_key` only. The base's `node = "24"` is a
+- A runtime asks `yours_mise_key` only. The base's `node = "24.22.1"` is a
   default, not a version of yours, so an nvm `node 20` is still offered and
   added.
 

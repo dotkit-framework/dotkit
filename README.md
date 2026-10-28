@@ -12,9 +12,9 @@ upgrade is one command and a rollback is one command.
 | Nix | nix-darwin, Home Manager, weekly garbage collection |
 | Shell | zsh from Nix with completion, suggestions, syntax colors, history search; fzf, zoxide, Starship, mise, direnv. `ls` is eza; `diff` and `grep` have colors; `dk` expands to `dotkit`, which has zsh completion |
 | Tools | `nix/packages.txt`: bat, eza, fd, ripgrep, jq, yq, tree, hyperfine, tealdeer, git, git-lfs, git-secret, gh, gnupg, the Zulu 17 JDK, and more; `timeout`, `nproc`, `tac`, `shuf`, and `numfmt` from GNU coreutils |
-| Runtimes | Node.js 24, Python 3.14, Ruby 3.4, and uv from mise (`config/mise.toml`), as defaults outside projects |
+| Runtimes | Node.js 24.22.1, Python 3.14.10, and Ruby 3.4.12, pinned so that each Mac has the same versions, and uv, from mise (`config/mise.toml`), as defaults outside projects |
 | Apps | Ghostty (`nix/casks.txt`), the JetBrains Mono Nerd Font, herdr (`config/mise.toml`) |
-| Config | Git, Ghostty, herdr with its Git status plugin, Starship, mise, npm, pnpm, uv, bun, RubyGems, EditorConfig. New npm, pnpm, bun, PyPI (uv and pip), gem (Bundler), and mise releases wait 7 days; the Node, Python, and Ruby runtimes wait 1 day |
+| Config | Git, Ghostty, herdr with its Git status plugin, Starship, mise, npm, pnpm, uv, bun, RubyGems, EditorConfig. New npm, pnpm, bun, PyPI (uv and pip), gem (Bundler), and mise releases wait 7 days |
 | macOS | Touch ID for sudo, also in terminal multiplexers |
 
 The base links its files from `config/` into the home directory. See the
@@ -342,7 +342,8 @@ until = 2027-01-01   # optional: then the finding comes back
 The audit finds what is known. The 7-day wait for new npm, pnpm, bun, PyPI,
 gem, and mise releases (see What the base has) is the other half: a
 registry often removes a malicious release in that time. The runtimes
-wait 1 day, because their new releases often fix vulnerabilities.
+are pinned: when the audit reports an advisory, set the fixed release in
+`config/mise.toml`.
 
 ### Each day, on GitHub
 

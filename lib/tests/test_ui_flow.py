@@ -178,7 +178,8 @@ class FlowTests(unittest.TestCase):
         runtimes = by_id["runtimes"]
         self.assertEqual((runtimes.kind, runtimes.title, runtimes.dest),
                          ("checklist", "Runtime versions of version managers", "config/mise.toml"))
-        self.assertEqual(runtimes.note, "off: mise installs them; the base has Node 24, Python 3.14, and Ruby 3.4")
+        self.assertEqual(runtimes.note,
+                         "off: mise installs them; the base has Node 24.22.1, Python 3.14.10, and Ruby 3.4.12")
         self.assertEqual(runtimes.detail("runtime:node"), "From nvm")
         self.assertNotIn("cargo", by_id, "dotkit has bat already: no cargo page")
         files = by_id["files"]
