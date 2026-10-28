@@ -187,16 +187,7 @@ def upgrade() -> List[S]:
     ]
 
 
-def manifest(base: dict, links: dict, layers: Optional[dict] = None, version: int = 1) -> str:
-    """etc/dotkit/links.json of the built system (nix/links.nix): base and links map a target to a file of
-    the base (dotkit/...) or of the repository (repo/...), or None. The base links that links does not
-    name stay."""
-    def path(f):
-        return None if f is None else f"@SB/{f}"
-    effective = {**{t: path(f) for t, f in base.items()}, **{t: path(f) for t, f in links.items()}}
-    return json.dumps({"version": version, "dotkit": "@SB/dotkit", "base": {t: path(f) for t, f in base.items()},
-                       "layers": layers or {}, "links": effective, "copies": {},
-                       "backupFileExtension": "before-dotkit"}, indent=1)
+manifest = fx.manifest
 
 
 MANIFEST = "system-1/etc/dotkit/links.json"
@@ -301,6 +292,10 @@ def own() -> List[S]:
           files=OWN_FILES, rows=["Ow1", "Ow2", "Ow3", "Ow8"]),
         S("own-yes", ["own", "-y", "herdr"], rules=ok, files=OWN_FILES, rows=["Ow3", "Ow4", "Ow9"]),
         S("own-two", ["own", "-y", "herdr", "gemrc"], rules=ok, files=OWN_FILES, rows=["Ow8", "Ow9"]),
+        S("own-acknowledged", ["own", "-y", "herdr"], rules=ok, rows=["Ow9", "Ov7"],
+          files={**OWN_FILES, MANIFEST: manifest({".config/herdr/config.toml": "dotkit/config/herdr.toml"},
+                                                 {".config/herdr/config.toml": "repo/config/herdr.toml"})}),
+        S("own-null", ["own", "gemrc"], rules=eval_manifest({".gemrc": None}), files=OWN_FILES, rows=["Ow5"]),
         S("own-dotted", ["own", "-y", "~/.gemrc"], rules=ok, files=dotted, rows=["Ow2", "Ow4"]),
         S("own-no-links", ["own", "herdr"], rules=eval_manifest(), rows=["Ow4", "Ow8"],
           files={**OWN_FILES, "repo/nix/home.nix": "{ }\n"}),

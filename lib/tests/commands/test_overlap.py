@@ -11,7 +11,9 @@ from unittest import mock
 from dotkit.commands import overlap
 from dotkit.core import mise_toml
 from dotkit.core.env import Env
+from dotkit.core.manifest import Manifest
 from tests import fake
+from tests.cli import fixtures as fx
 from tests.cli import harness
 
 
@@ -25,6 +27,11 @@ class Sandbox(unittest.TestCase):
             p.write_text(text)
         (self.dir / "home").mkdir()
         self.env = Env(repo=self.dir / "repo", dotkit=self.dir / "dotkit", home=self.dir / "home")
+        # The state file in the home of the sandbox.
+        environ = mock.patch.dict(overlap.os.environ)
+        environ.start()
+        self.addCleanup(environ.stop)
+        overlap.os.environ.pop("XDG_STATE_HOME", None)
         # The text without colors, also where stdout is a terminal (the sandbox of nix flake check).
         patcher = mock.patch.object(overlap.ui, "_no_color", True)
         patcher.start()
@@ -38,11 +45,7 @@ class Sandbox(unittest.TestCase):
         return p
 
     def manifest(self, base: dict, links: dict) -> None:
-        sb = str(self.dir)
-        self.write("system/etc/dotkit/links.json", json.dumps({
-            "version": 1, "dotkit": f"{sb}/dotkit", "layers": {}, "copies": {}, "backupFileExtension": "before-dotkit",
-            "base": {t: f"{sb}/{f}" for t, f in base.items()},
-            "links": {t: f"{sb}/{f}" for t, f in {**base, **links}.items()}}))
+        self.write("system/etc/dotkit/links.json", fx.manifest(base, links, root=str(self.dir)))
 
     def doctor(self) -> tuple:
         out, err = io.StringIO(), io.StringIO()
@@ -81,6 +84,31 @@ class DoctorTests(Sandbox):
         self.assertEqual(err, f"{self.system} has no link manifest, so the config files are not compared. "
                               "Run dotkit apply.\n")
         self.assertIn("fd is in the dotkit base too", out)
+
+
+class AcknowledgeTests(Sandbox):
+    """After dotkit own, the next report does not show the owned file as new (Ow9, Ov7)."""
+
+    def test_acknowledge(self):
+        from dotkit.commands.own import HEADER
+        self.write("dotkit/config/herdr.toml", "# dotkit base. herdr reads one\n# config file.\n\na = 1\n")
+        self.write("repo/config/herdr.toml", HEADER + "\na = 1\n")
+        self.write("repo/nix/packages.txt", "fd\n")
+        self.manifest({".config/herdr/config.toml": "dotkit/config/herdr.toml"},
+                      {".config/herdr/config.toml": "repo/config/herdr.toml"})
+        overlap.acknowledge(self.env, self.system, ["link:.config/herdr/config.toml"])
+        err = io.StringIO()
+        with mock.patch.object(overlap.ui, "note", lambda text: err.write(text + "\n")):
+            overlap.report(self.env, self.system, dry_run=True)
+        self.assertEqual(err.getvalue().splitlines(), [
+            "dotkit: your dotfiles repeat or replace parts of the dotkit base:",
+            "  nix/packages.txt  fd is in the dotkit base too. Remove yours: dotkit remove nix:fd",
+            "And 1 known overlap with the dotkit base. dotkit doctor lists it.",
+        ])
+
+    def test_without_a_manifest(self):
+        overlap.acknowledge(self.env, self.system, ["link:.x"])
+        self.assertFalse((self.dir / "home/.local/state/dotkit/overlaps.json").exists())
 
 
 class CompareTests(Sandbox):
@@ -131,9 +159,10 @@ class ResolveTests(unittest.TestCase):
 
     def test_resolve(self):
         from dotkit.commands import own
-        m = {"dotkit": "/d", "base": {".config/herdr/config.toml": "/d/config/herdr.toml",
-                                     ".config/herdr/git-status.sh": "/d/scripts/herdr/git-status.sh",
-                                     ".bunfig.toml": "/d/config/bunfig.toml", ".gemrc": "/d/config/gemrc"}}
+        m = Manifest.parse(json.loads(fx.manifest({".config/herdr/config.toml": "dotkit/config/herdr.toml",
+                                                   ".config/herdr/git-status.sh": "dotkit/scripts/herdr/git-status.sh",
+                                                   ".bunfig.toml": "dotkit/config/bunfig.toml",
+                                                   ".gemrc": "dotkit/config/gemrc"}, {}, root="/d")))
         home = Path("/Users/jane")
         self.assertEqual(own.resolve("/Users/jane/.gemrc", m, home), [".gemrc"])
         self.assertEqual(own.resolve("/Users/jane/x/../.gemrc", m, home), [".gemrc"])

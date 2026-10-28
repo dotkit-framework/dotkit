@@ -223,3 +223,17 @@ def mas(info: Optional[dict] = None) -> List[dict]:
         rules.append(_r("mas", rf"^info --json {app_id}$", json.dumps(obj) + "\n"))
     rules.append(_r("mas", r"^info --json ", stderr="Error: No apps found in the App Store for ADAM ID\n", exit=1))
     return rules
+
+
+# --- the manifest of the links
+
+def manifest(base: dict, links: dict, layers: Optional[dict] = None, version: int = 1, root: str = "@SB") -> str:
+    """etc/dotkit/links.json of a system (nix/links.nix): base and links map a target to a file of the base
+    (dotkit/...) or of the repository (repo/...), relative to root, or None. The base links that links does
+    not name stay."""
+    def path(f):
+        return None if f is None else f"{root}/{f}"
+    effective = {**{t: path(f) for t, f in base.items()}, **{t: path(f) for t, f in links.items()}}
+    return json.dumps({"version": version, "dotkit": f"{root}/dotkit", "base": {t: path(f) for t, f in base.items()},
+                       "layers": layers or {}, "links": effective, "copies": {},
+                       "backupFileExtension": "before-dotkit"}, indent=1)

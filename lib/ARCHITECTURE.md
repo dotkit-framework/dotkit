@@ -50,7 +50,10 @@ lib/
       proc.py               the only place that starts processes
       nix.py                the flake commands: the override of DOTKIT_DIR, the build, the switch
       lists.py              the list files: read (the rules of nix/read-*.nix), append, delete
-      mise_toml.py          the [tools] table of a mise config, read as TOML
+      mise_toml.py          the [tools] table of a mise config, read as TOML; a TOML value on one line
+      paths.py              paths for messages (~, the repository, the base), the links of Home Manager
+      manifest.py           the manifest of the links (etc/dotkit/links.json): from a system, or by nix eval
+      nix_links.py          the link lines of dotkit.links in nix/: plan, check, and edit them
       backup.py             copies of files to restore on a failure or a signal
     commands/               apply, upgrade, own, doctor, clean, history, rollback, migrate, tidy
       overlap.py            what the repository repeats or replaces of the base: the report, doctor

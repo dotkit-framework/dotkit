@@ -27,8 +27,8 @@ from typing import Dict, List, Optional
 
 from ..core import lists, mise_toml, paths, ui
 from ..core.env import Env
+from ..core.manifest import Manifest
 
-MANIFEST = "etc/dotkit/links.json"
 ACTIVE = Path("/run/current-system")
 # A diff is shown when at least this part of the lines is the same and it changes at most MAX_CHANGED lines.
 # Else the files are too different to read as a diff: the report gives the diff command.
@@ -88,27 +88,6 @@ def tools(env: Env, dotkit: Path) -> List[Overlap]:
 # --- config files
 
 
-def load_manifest(system: Path) -> Optional[dict]:
-    """The manifest of a system; None when it has none (a release of dotkit before the manifest)."""
-    path = system / MANIFEST
-    try:
-        data = json.loads(path.read_bytes())
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError) as e:
-        ui.warn(f"cannot read {path}: {e}. The config files are not compared with the base.")
-        return None
-    if not valid_manifest(data):
-        ui.warn(f"{path} has a format that this dotkit does not know. The config files are not compared.")
-        return None
-    return data
-
-
-def valid_manifest(data: object) -> bool:
-    return isinstance(data, dict) and data.get("version") == 1 and all(
-        isinstance(data.get(k), dict) for k in ("base", "layers", "links"))
-
-
 def _read(path: str) -> Optional[bytes]:
     try:
         return Path(path).read_bytes() if os.path.isfile(path) else None
@@ -157,15 +136,15 @@ def compare(base_path: str, yours_path: str, base_label: str, yours_label: str) 
                                     f"Compare them: diff -u {base_path} {yours_path}"], changed, fingerprint)
 
 
-def links(env: Env, manifest: dict, dotkit: Path) -> List[Overlap]:
-    base, effective, layers = manifest.get("base") or {}, manifest.get("links") or {}, manifest.get("layers") or {}
+def links(env: Env, manifest: Manifest, dotkit: Path) -> List[Overlap]:
+    base = manifest.base
     out = []
     for target in sorted(base):
-        source = effective.get(target, base[target])
-        if source == base[target]:
+        if not manifest.replaced(target):
             continue
+        source = manifest.source(target)
         where = f"~/{target}"
-        layer = layers.get(target)
+        layer = manifest.layers.get(target)
         if source is None:
             text = "has no link: your configuration sets it to null, so the base file is off."
             if layer:
@@ -199,13 +178,13 @@ def _content(path: Path) -> str:
         return ""
 
 
-def moved(env: Env, manifest: dict, dry_run: bool) -> List[Overlap]:
+def moved(env: Env, manifest: Manifest, dry_run: bool) -> List[Overlap]:
     """The files that an apply moved aside, and with dry_run the ones that the apply will move."""
-    ext = manifest.get("backupFileExtension")
+    ext = manifest.backup_ext
     if not ext:
         return []
-    layers = manifest.get("layers") or {}
-    targets = [t for t, s in (manifest.get("links") or {}).items() if s is not None]
+    layers = manifest.layers
+    targets = [t for t, s in manifest.links.items() if s is not None]
     out, seen = [], set()
     for target in sorted(targets):
         parts = target.split("/")
@@ -233,9 +212,9 @@ def moved(env: Env, manifest: dict, dry_run: bool) -> List[Overlap]:
 # --- the report
 
 
-def find(env: Env, manifest: Optional[dict], dry_run: bool = False) -> List[Overlap]:
+def find(env: Env, manifest: Optional[Manifest], dry_run: bool = False) -> List[Overlap]:
     """The overlaps; only the tools without a manifest."""
-    dotkit = Path(manifest["dotkit"]) if manifest and isinstance(manifest.get("dotkit"), str) else env.dotkit
+    dotkit = Path(manifest.dotkit) if manifest and manifest.dotkit else env.dotkit
     out = tools(env, dotkit)
     if manifest is not None:
         out += links(env, manifest, dotkit) + moved(env, manifest, dry_run)
@@ -256,13 +235,12 @@ def _seen(env: Env) -> Dict[str, str]:
     return seen if isinstance(seen, dict) else {}
 
 
-def _remember(env: Env, found: List[Overlap]) -> None:
+def _remember(env: Env, seen: Dict[str, str]) -> None:
     path = _state_file(env)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"version": 1, "seen": {o.key: o.fingerprint for o in found}}, indent=1) + "\n",
-                       encoding="utf-8")
+        tmp.write_text(json.dumps({"version": 1, "seen": seen}, indent=1) + "\n", encoding="utf-8")
         tmp.replace(path)
     except OSError as e:
         ui.warn(f"cannot write {path}: {e}.")
@@ -280,7 +258,7 @@ def show(found: List[Overlap], stdout: bool = False) -> None:
 
 def report(env: Env, system: Path, dry_run: bool) -> None:
     """After apply and upgrade: the new and changed overlaps, then one line for the others."""
-    found = find(env, load_manifest(system), dry_run)
+    found = find(env, Manifest.from_system(system), dry_run)
     seen = _seen(env)
     new = [o for o in found if seen.get(o.key) != o.fingerprint]
     if new:
@@ -290,13 +268,26 @@ def report(env: Env, system: Path, dry_run: bool) -> None:
     if known:
         ui.hint(f"{'And' if new else 'Your dotfiles have'} {known} known overlap{'s' if known > 1 else ''} with "
                 f"the dotkit base. dotkit doctor lists {'them' if known > 1 else 'it'}.")
-    if not dry_run and ({o.key: o.fingerprint for o in found} != seen):
-        _remember(env, found)
+    now = {o.key: o.fingerprint for o in found}
+    if not dry_run and now != seen:
+        _remember(env, now)
+
+
+def acknowledge(env: Env, system: Path, keys: List[str]) -> None:
+    """Marks the overlaps of keys in the manifest of system as seen: the user made them on purpose, for example
+    with dotkit own, so the next report does not show them as new."""
+    manifest = Manifest.from_system(system)
+    if manifest is None:
+        return
+    now = {o.key: o.fingerprint for o in find(env, manifest) if o.key in keys}
+    seen = _seen(env)
+    if now and any(seen.get(k) != v for k, v in now.items()):
+        _remember(env, {**seen, **now})
 
 
 def doctor(env: Env, system: Path = ACTIVE) -> int:
     """All overlaps of the active system."""
-    manifest = load_manifest(system)
+    manifest = Manifest.from_system(system)
     found = find(env, manifest)
     if manifest is None:
         ui.hint(f"{system} has no link manifest, so the config files are not compared. Run dotkit apply.")

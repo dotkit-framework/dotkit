@@ -31,6 +31,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ..core.mise_toml import bare_or_quoted as _bare_or_quoted
 from ..core.mise_toml import toml_key, toml_value  # noqa: F401 - the migrators import them from here
+from ..core import nix_links
 from ..core.nix_links import nix_string  # noqa: F401 - the migrators import it from here
 from . import base as base_mod
 from . import rcparse, secrets, secrets_file
@@ -530,7 +531,7 @@ class MiseDoc(_Doc):
 
 
 LINKS_ANCHOR = '    ".zshrc.local" = "config/zsh/zshrc";\n'
-_LINK_ROW = re.compile(r'^\s*"((?:[^"\\]|\\.)*)" = (?:null|"((?:[^"\\]|\\.)*)");\s*$')
+_LINK_ROW = nix_links.ROW
 
 
 class LinksDoc(_Doc):
