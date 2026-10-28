@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
- "stderr": "Checking Nix...\nNo change. Run dotkit upgrade to apply.\n",
+ "stderr": "Checking Nix...\nBuilding the system...\nNo change. Run dotkit upgrade to apply.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1"
  },

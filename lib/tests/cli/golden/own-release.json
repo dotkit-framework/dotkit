@@ -7,7 +7,7 @@
  ],
  "exit": 0,
  "stdout": "starship: remove the link of ~/.config/starship.toml from nix/home.nix, so the base file comes back; config/my-starship.toml stays in the repository\n",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nReleased ~/.config/starship.toml.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/home.nix": "{\n  imports = [ ./shell.nix ];\n\n  dotkit.links = {\n    \".zshrc.local\" = \"config/zsh/zshrc\";\n  };\n}\n"

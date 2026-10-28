@@ -12,7 +12,7 @@ import os
 import re
 from typing import List, Optional
 
-from . import proc
+from . import proc, ui
 from .env import Env
 
 WARNING = re.compile(r"^warning: not writing (modified )?lock file of flake")
@@ -49,9 +49,11 @@ class Nix:
     def eval_raw(self, attr: str) -> proc.Result:
         return self.flake(["eval", "--raw", f"{self.env.flake}#{attr}"], stdout=proc.CAPTURE)
 
-    def build_system(self) -> int:
+    def build_system(self, label: bool = True) -> int:
         """Builds the system and links it to env.result. With DOTKIT_DIR, nix evaluates through flake()
         and builds the derivation without the flake: no lock file warning, and nix keeps its progress bar."""
+        if label:
+            ui.progress("Building the system...")
         if not self.env.override:
             return proc.run(["nix", "build", f"{self.env.flake}#darwinConfigurations.mac.system",
                              "--out-link", str(self.env.result)]).code
@@ -60,14 +62,14 @@ class Nix:
             return drv.code
         return proc.run(["nix", "build", f"{drv.value}^*", "--out-link", str(self.env.result)]).code
 
-    def switch(self) -> int:
+    def switch(self, built: bool = False) -> int:
         """Builds as this user, then activates as root; the first failure stops it.
 
         darwin-rebuild switch would evaluate the flake again as root, and root
         cannot read the Git repository of another user (a git+file input such
-        as DOTKIT_DIR).
+        as DOTKIT_DIR). built: the caller built the system already; the build then only links it, quietly.
         """
-        code = self.build_system()
+        code = self.build_system(label=not built)
         if code:
             return code
         return self.activate()
@@ -75,6 +77,7 @@ class Nix:
     def activate(self) -> int:
         """Activates the system that build_system linked: nix-env --set, then darwin-rebuild activate."""
         system = os.readlink(self.env.result)
+        ui.progress("Activating the system...")
         code = proc.run(["sudo", "-H", "/usr/bin/env", "NIX_REMOTE=daemon", f"{system}/sw/bin/nix-env",
                          "-p", "/nix/var/nix/profiles/system", "--set", system]).code
         if code:

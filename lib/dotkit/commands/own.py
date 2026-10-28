@@ -158,7 +158,7 @@ class Own:
         if not changes:
             return 0
         if self.dry_run:
-            ui.note(f"No change. Run the command without -n to {'release' if release else 'own'} "
+            ui.hint(f"No change. Run the command without -n to {'release' if release else 'own'} "
                     f"{'it' if len(changes) == 1 else 'them'}.")
             return 0
         n = len(changes)
@@ -168,8 +168,11 @@ class Own:
         nix_files = sorted({c.nix_file for c in changes})
         created = [self.env.repo / c.repo_file for c in changes if c.copy_from is not None]
         edit.apply_nix(self.env, lambda: self._write(changes), paths=nix_files, created=created)
-        if not release:
-            ui.note("Commit " + ", ".join(c.repo_file for c in changes) + ". After a dotkit upgrade, dotkit doctor "
+        if release:
+            ui.success("Released " + ", ".join(f"~/{c.target}" for c in changes) + ".")
+        else:
+            ui.success("Owned " + ", ".join(c.repo_file for c in changes) + ".")
+            ui.hint("Commit " + ", ".join(c.repo_file for c in changes) + ". After a dotkit upgrade, dotkit doctor "
                     "shows how yours differs from the base file.")
         return 0
 
@@ -178,7 +181,7 @@ class Own:
         where = f"~/{target}"
         if target not in base:
             if target in links:
-                ui.out(f"{arg}: {where} is yours already ({_yours(self.env, links[target])}).")
+                ui.out(f"{ui.paint(arg, 'name')}: {where} is yours already ({_yours(self.env, links[target])}).")
                 return SKIP
             own = next((o for o in OWN_FILES if o.target == target), None)
             hint = f" Its tool reads it after the dotkit settings, which are in {own.base_place}: create it." if own \
@@ -196,7 +199,7 @@ class Own:
             ui.warn(f"{arg}: {where} is a script of the dotkit base, and cannot be owned.")
             return None
         if links.get(target, base[target]) != base[target]:
-            ui.out(f"{arg}: {where} is yours already ({_yours(self.env, links.get(target))}). dotkit doctor shows "
+            ui.out(f"{ui.paint(arg, 'name')}: {where} is yours already ({_yours(self.env, links.get(target))}). dotkit doctor shows "
                    "how it differs from the base file.")
             return SKIP
         repo_file = "config/" + base[target].rsplit("/", 1)[-1]
@@ -209,8 +212,8 @@ class Own:
                     f"file to {repo_file}, and run dotkit apply: dotkit.links.\"{target}\" = \"{repo_file}\";")
             return None
         path, at, line = point
-        ui.out(f"{arg}: copy the base file to {repo_file}, and link it as {where} "
-               f"({path.relative_to(self.env.repo)})")
+        ui.out(f"{ui.paint(arg, 'name')}: copy the base file to {ui.paint(repo_file, 'added')}, and link it as "
+               f"{ui.paint(where, 'file')} {ui.paint(f'({path.relative_to(self.env.repo)})', 'dim')}")
         return Change(arg, target, path, at, line, Path(base[target]), repo_file)
 
     def _release(self, arg: str, target: str, manifest: dict) -> Optional[Change]:
@@ -229,8 +232,8 @@ class Own:
         mine = links.get(target)
         keep = f"; {_yours(self.env, mine)} stays in the repository" if mine and mine.startswith(f"{self.env.repo}/") \
             else ""
-        ui.out(f"{arg}: remove the link of {where} from {path.relative_to(self.env.repo)}, so the base file comes "
-               f"back{keep}")
+        ui.out(f"{ui.paint(arg, 'name')}: remove the link of {ui.paint(where, 'file')} from "
+               f"{ui.paint(str(path.relative_to(self.env.repo)), 'removed')}, so the base file comes back{keep}")
         return Change(arg, target, path, at)
 
     def _write(self, changes: List[Change]) -> None:

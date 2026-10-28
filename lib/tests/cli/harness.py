@@ -82,6 +82,8 @@ class Scenario:
     rows: List[str] = field(default_factory=list)
     # The text of the terminal is not compared: it has the redraws of prompt_toolkit, which depend on timing.
     no_terminal: bool = False
+    # Colors on the terminal: without NO_COLOR, which the other scenarios set.
+    color: bool = False
 
 
 @dataclass
@@ -236,6 +238,8 @@ def run(impl: Impl, s: Scenario) -> dict:
         env = {"HOME": str(sb / "home"), "TMPDIR": str(sb / "tmp"), "LC_ALL": "en_US.UTF-8", "PROMPT_TOOLKIT_NO_CPR": "1",
                "PATH": f"{sb / 'bin'}:/usr/bin:/bin:/usr/sbin:/sbin", "FAKE_DIR": str(sb / "fake"),
                "USER": os.environ.get("USER", "")}
+        if not s.color:
+            env["NO_COLOR"] = "1"
         if not s.no_dotfiles:
             env["DOTFILES"] = str(sb / "repo")
         if s.dotkit_dir:

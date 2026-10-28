@@ -346,3 +346,40 @@ class HelpStyleTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"TERM": "dumb"}):
             os.environ.pop("NO_COLOR", None)
             self.assertFalse(ui.colors(tty))
+
+
+class ColorTests(unittest.TestCase):
+    """The colors of the messages (C9), with a stream that is a terminal."""
+
+    def setUp(self):
+        tty = mock.Mock(isatty=lambda: True)
+        for name, value in (("stdout", tty), ("stderr", tty)):
+            patcher = mock.patch.object(ui.sys, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        env = mock.patch.dict(os.environ, {"TERM": "xterm"})
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("NO_COLOR", None)
+        os.environ.pop("DOTKIT_NO_COLOR", None)
+
+    def test_commands(self):
+        c = ui.STYLES["command"]
+        self.assertEqual(ui.commands("Run dotkit own --release ~/.npmrc, then `x y`."),
+                         f"Run \033[0;{c}mdotkit own --release ~/.npmrc\033[0m, then \033[0;{c}mx y\033[0m.")
+        self.assertEqual(ui.commands("dotkit apply: error"), f"\033[0;{c}mdotkit apply\033[0m: error")
+
+    def test_paint_and_mark(self):
+        self.assertEqual(ui.paint("x", "ok"), "\033[1;32mx\033[0m")
+        self.assertEqual(ui.mark("✓", "ok"), "\033[1;32m✓\033[0m ")
+        self.assertEqual(ui.paint("", "ok"), "")
+
+    def test_off(self):
+        with mock.patch.dict(os.environ, {"DOTKIT_NO_COLOR": "1"}):
+            self.assertEqual(ui.paint("x", "ok"), "x")
+            self.assertEqual(ui.mark("✓", "ok"), "")
+        with mock.patch.object(ui, "_no_color", True):
+            self.assertEqual(ui.commands("dotkit apply"), "dotkit apply")
+
+    def test_error_text(self):
+        self.assertEqual(ui.error_text("dotkit: nothing changed."), "\033[1;31mdotkit:\033[0m nothing changed.")

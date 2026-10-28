@@ -21,7 +21,6 @@ import difflib
 import hashlib
 import json
 import os
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -289,22 +288,22 @@ def _remember(env: Env, found: List[Overlap]) -> None:
         ui.warn(f"cannot write {path}: {e}.")
 
 
-def _color(line: str, stream) -> str:
-    """A line of a diff in colors, when stream is a terminal and NO_COLOR is not set."""
-    if not stream.isatty() or os.environ.get("NO_COLOR") or line.startswith(("+++", "---")):
-        return line
-    code = {"+": "32", "-": "31", "@": "36"}.get(line[:1])
-    return f"\033[{code}m{line}\033[0m" if code else line
+def _color(line: str, err: bool) -> str:
+    """A line of a diff in colors on a terminal."""
+    if line.startswith(("+++", "---")):
+        return ui.paint(line, "dim", err)
+    role = {"+": "added", "-": "removed", "@": "command"}.get(line[:1])
+    return ui.paint(line, role, err) if role else line
 
 
 def show(found: List[Overlap], stdout: bool = False) -> None:
     """The overlaps on stderr, or on stdout for doctor."""
-    write, stream = (ui.out, sys.stdout) if stdout else (ui.note, sys.stderr)
+    write, err = (ui.out, False) if stdout else (ui.note, True)
     width = max(ui.width(o.where) for o in found)
     for o in found:
-        write(f"  {ui.pad(o.where, width)}  {o.text}")
+        write(f"  {ui.paint(ui.pad(o.where, width), 'file', err)}  {ui.commands(o.text, err)}")
         for line in o.detail:
-            write("      " + _color(line, stream))
+            write("      " + _color(line, err))
 
 
 def report(env: Env, system: Path, dry_run: bool) -> None:
@@ -317,7 +316,7 @@ def report(env: Env, system: Path, dry_run: bool) -> None:
         show(new)
     known = len(found) - len(new)
     if known:
-        ui.note(f"{'And' if new else 'Your dotfiles have'} {known} known overlap{'s' if known > 1 else ''} with "
+        ui.hint(f"{'And' if new else 'Your dotfiles have'} {known} known overlap{'s' if known > 1 else ''} with "
                 f"the dotkit base. dotkit doctor lists {'them' if known > 1 else 'it'}.")
     if not dry_run and ({o.key: o.fingerprint for o in found} != seen):
         _remember(env, found)
@@ -328,10 +327,10 @@ def doctor(env: Env, system: Path = ACTIVE) -> int:
     manifest = load_manifest(system)
     found = find(env, manifest)
     if manifest is None:
-        ui.note(f"{system} has no link manifest, so the config files are not compared. Run dotkit apply.")
+        ui.hint(f"{system} has no link manifest, so the config files are not compared. Run dotkit apply.")
     if not found:
-        ui.out("Your dotfiles do not repeat or replace any part of the dotkit base.")
+        ui.out(ui.mark("✓", "ok") + ui.paint("Your dotfiles do not repeat or replace any part of the dotkit base.", "ok"))
         return 0
-    ui.out("Your dotfiles repeat or replace these parts of the dotkit base:")
+    ui.out(ui.paint("Your dotfiles repeat or replace these parts of the dotkit base:", "heading"))
     show(found, stdout=True)
     return 0

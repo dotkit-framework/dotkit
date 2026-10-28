@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "  brew  wget                                 1.24.5                 -> 1.25.0\n  brew  zed                                  1.25.2 1.25.1          -> 1.25.3\n  brew  ghostty                              1.2.0                  -> 1.2.1\n",
- "stderr": "Checking Homebrew...\n",
+ "stderr": "Checking Homebrew...\nUpgrading the Homebrew packages...\nUpgraded.\n",
  "files": {},
  "calls": [
   {

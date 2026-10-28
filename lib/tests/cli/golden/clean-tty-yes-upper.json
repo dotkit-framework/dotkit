@@ -4,7 +4,7 @@
  ],
  "exit": 0,
  "stdout": "",
- "terminal": "Delete Nix generations older than 14d, old Homebrew downloads, and unused mise versions? [y/N] ",
+ "terminal": "Delete Nix generations older than 14d, old Homebrew downloads, and unused mise versions? [y/N] Cleaned up.\n",
  "files": {},
  "calls": [
   {

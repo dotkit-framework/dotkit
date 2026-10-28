@@ -7,7 +7,7 @@
  ],
  "exit": 0,
  "stdout": "herdr: copy the base file to config/herdr.toml, and link it as ~/.config/herdr/config.toml (nix/home.nix)\ngemrc: copy the base file to config/gemrc, and link it as ~/.gemrc (nix/home.nix)\n",
- "stderr": "Commit config/herdr.toml, config/gemrc. After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nOwned config/herdr.toml, config/gemrc.\nCommit config/herdr.toml, config/gemrc. After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/config/gemrc": "gem: --no-document\n",

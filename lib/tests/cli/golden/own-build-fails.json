@@ -6,7 +6,7 @@
  ],
  "exit": 1,
  "stdout": "herdr: copy the base file to config/herdr.toml, and link it as ~/.config/herdr/config.toml (nix/home.nix)\n",
- "stderr": "error: builder for '/nix/store/x.drv' failed\ndotkit: the build failed. The Nix files are restored.\n",
+ "stderr": "Building the system...\nerror: builder for '/nix/store/x.drv' failed\ndotkit: the build failed. The Nix files are restored.\n",
  "files": {},
  "calls": [
   {

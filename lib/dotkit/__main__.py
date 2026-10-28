@@ -20,6 +20,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     from .core import backup, env, ui
 
     argv = sys.argv[1:] if argv is None else argv
+    # --no-color goes with every command, before `--`.
+    end = argv.index("--") if "--" in argv else len(argv)
+    if "--no-color" in argv[:end]:
+        ui.no_color()
+        argv = [a for i, a in enumerate(argv) if i >= end or a != "--no-color"]
     try:
         e = env.load()
         if argv[:1] == ["__complete"]:
@@ -29,7 +34,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cli.main(e, argv)
     except ui.Exit as x:
         if x.text:
-            ui.note(x.text)
+            ui.note(ui.error_text(x.text))
         return x.code
     except KeyboardInterrupt:
         return 130
@@ -42,7 +47,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except (OSError, ValueError) as x:
         # A file that dotkit cannot read or write, or text that is not what it expects: a message, not a
         # traceback. The text of OSError names the file.
-        ui.note(f"dotkit: {x}")
+        ui.note(ui.error_text(f"dotkit: {x}"))
         return 1
 
 

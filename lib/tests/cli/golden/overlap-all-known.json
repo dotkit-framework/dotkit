@@ -4,7 +4,7 @@
  ],
  "exit": 0,
  "stdout": "",
- "stderr": "Your dotfiles have 1 known overlap with the dotkit base. dotkit doctor lists it.\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nYour dotfiles have 1 known overlap with the dotkit base. dotkit doctor lists it.\nApplied the config.\n",
  "files": {
   "home/.local/state/dotkit/overlaps.json": "{\n \"version\": 1,\n \"seen\": {\n  \"nix:fd\": \"\"\n }\n}\n",
   "repo/.build/system": "-> @SB/system-1"

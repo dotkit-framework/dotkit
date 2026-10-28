@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "fd: remove fd from nix/packages.txt; the dotkit base keeps it (dotkit:nix/packages.txt)\n",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nRemoved fd.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/packages.txt": "jq\n"

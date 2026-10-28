@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "wget: remove wget from nix/brews.txt; the dotkit base keeps it (dotkit:nix/brews.txt)\n",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nRemoved wget.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/brews.txt": ""

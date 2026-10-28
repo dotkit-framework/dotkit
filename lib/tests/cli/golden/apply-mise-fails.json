@@ -4,7 +4,7 @@
  ],
  "exit": 1,
  "stdout": "",
- "stderr": "mise ERROR failed\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nmise ERROR failed\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1"
  },

@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "cask:dkt-app -> nix/casks.txt\n  ✓ cask:dkt-app                   1.0            \n",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nAdded dkt-app.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/casks.txt": "zed\ndkt-app\n"

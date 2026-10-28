@@ -6,7 +6,7 @@
  ],
  "exit": 1,
  "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n",
- "stderr": "Checking Nix...\nerror: builder for '/nix/store/x.drv' failed\n",
+ "stderr": "Checking Nix...\nBuilding the system...\nerror: builder for '/nix/store/x.drv' failed\n",
  "files": {},
  "calls": [
   {

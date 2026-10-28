@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "  nix   dotkit/nixpkgs                       2025-10-09 aaaaaaa     -> 2025-10-22 eeeeeee\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
- "stderr": "Checking Nix...\nwarning: Git tree '@SB/checkout' is dirty\nNo change. Run dotkit upgrade to apply.\n",
+ "stderr": "Checking Nix...\nBuilding the system...\nwarning: Git tree '@SB/checkout' is dirty\nNo change. Run dotkit upgrade to apply.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1"
  },

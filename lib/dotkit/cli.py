@@ -312,7 +312,8 @@ def usage() -> str:
     for group, title in GROUPS:
         lines += ["", f"{title}:"]
         lines += [f"  {name:<10} {c.summary}" for name, c in COMMANDS.items() if c.group == group]
-    lines += ["", "Run `dotkit <command> --help` for the options of a command.", "", EXAMPLES]
+    lines += ["", "Run `dotkit <command> --help` for the options of a command. --no-color, NO_COLOR, or",
+              "DOTKIT_NO_COLOR turns the colors off.", "", EXAMPLES]
     return "\n".join(lines)
 
 

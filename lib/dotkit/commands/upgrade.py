@@ -80,7 +80,8 @@ def lock_changes(old_file: Path, new_file: Path, label: str) -> List[Tuple[str, 
 
 
 def plan_row(src: str, name: str, before: str, after: str) -> str:
-    return f"  {ui.pad(src, 5)} {ui.pad(name, 36)} {ui.pad(before, 22)} -> {after}"
+    return (f"  {ui.paint(ui.pad(src, 5), src)} {ui.paint(ui.pad(name, 36), 'name')} {ui.paint(ui.pad(before, 22), 'dim')} "
+            f"{ui.paint('->', 'dim')} {ui.paint(after, 'added')}")
 
 
 class Upgrade:
@@ -137,16 +138,16 @@ class Upgrade:
         brew_rows: List[Tuple[str, str, str]] = []
         mise_rows: List[Tuple[str, str, str]] = []
         if up_nix:
-            ui.note("Checking Nix...")
+            ui.progress("Checking Nix...")
             nix_rows = self._check_nix(selected)
         if up_brew:
-            ui.note("Checking Homebrew...")
+            ui.progress("Checking Homebrew...")
             brew_rows = self._check_brew()
         if up_mise:
-            ui.note("Checking mise...")
+            ui.progress("Checking mise...")
             mise_rows = self._check_mise()
         if not (nix_rows or brew_rows or mise_rows):
-            ui.out("Everything is up to date.")
+            ui.out(ui.mark("✓", "ok") + ui.paint("Everything is up to date.", "ok"))
             return 0
         for src, rows in (("nix", nix_rows), ("brew", brew_rows), ("mise", mise_rows)):
             for row in rows:
@@ -155,7 +156,7 @@ class Upgrade:
             code = self.nix.build_system()
             if code:
                 return code
-            ui.out("\nNix package changes:")
+            ui.out("\n" + ui.paint("Nix package changes:", "heading"))
             code = proc.run(["nix", "store", "diff-closures", "/run/current-system", str(self.env.result)]).code
             if code:
                 return code
@@ -163,18 +164,19 @@ class Upgrade:
             self.restore_locks()
             if nix_rows:
                 overlap.report(self.env, self.env.result, dry_run=True)
-            ui.note("No change. Run dotkit upgrade to apply.")
+            ui.hint("No change. Run dotkit upgrade to apply.")
             return 0
         if not ui.confirm("Upgrade?", self.yes):
             self.restore_locks()
             raise ui.die("nothing changed.")
 
         if nix_rows:
-            if self.nix.switch() != 0:
+            if self.nix.switch(built=True) != 0:
                 self.restore_locks()
                 raise ui.die("the switch failed. The lock files are restored.")
             self.keep_locks()
         if brew_rows:
+            ui.progress("Upgrading the Homebrew packages...")
             # Read the Brewfile from the flake, so it matches the config.
             brewfile = self.nix.brewfile()
             if not brewfile.ok:
@@ -184,15 +186,17 @@ class Upgrade:
             if code:
                 return code
         if mise_rows:
+            ui.progress("Upgrading the mise tools...")
             code = proc.mise(self.env.home, ["upgrade"]).code
             if code:
                 return code
+        ui.success("Upgraded.")
         if nix_rows:
             # A new dotkit can have tools and config files that the repository has already.
             overlap.report(self.env, self.env.result, dry_run=False)
-            ui.note("Commit nix/flake.lock to keep the upgrade.")
+            ui.hint("Commit nix/flake.lock to keep the upgrade.")
             if self.env.dotkit_dir is not None:
-                ui.note(f"Commit flake.lock in {self.env.dotkit_dir} too, if it changed.")
+                ui.hint(f"Commit flake.lock in {self.env.dotkit_dir} too, if it changed.")
         return 0
 
     def _check_nix(self, selected: List[Tuple[int, str]]) -> List[Tuple[str, str, str]]:

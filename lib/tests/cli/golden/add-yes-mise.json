@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "mise:dkt-tool -> config/mise.toml\n  ✓ mise:dkt-tool                  1.0            \n",
- "stderr": "",
+ "stderr": "Added dkt-tool.\n",
  "files": {},
  "calls": [
   {

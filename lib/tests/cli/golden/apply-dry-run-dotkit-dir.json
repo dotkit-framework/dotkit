@@ -5,7 +5,7 @@
  ],
  "exit": 0,
  "stdout": "Nix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
- "stderr": "warning: Git tree '@SB/checkout' is dirty\nreal warning\nNo change. Run dotkit apply to apply.\n",
+ "stderr": "Building the system...\nwarning: Git tree '@SB/checkout' is dirty\nreal warning\nNo change. Run dotkit apply to apply.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1"
  },

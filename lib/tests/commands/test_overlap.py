@@ -25,6 +25,10 @@ class Sandbox(unittest.TestCase):
             p.write_text(text)
         (self.dir / "home").mkdir()
         self.env = Env(repo=self.dir / "repo", dotkit=self.dir / "dotkit", home=self.dir / "home")
+        # The text without colors, also where stdout is a terminal (the sandbox of nix flake check).
+        patcher = mock.patch.object(overlap.ui, "_no_color", True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.system = self.dir / "system"
 
     def write(self, rel: str, text: str) -> Path:

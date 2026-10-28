@@ -5,7 +5,7 @@
  ],
  "exit": 0,
  "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
- "terminal": "Checking Nix...\nUpgrade? [y/N] Commit nix/flake.lock to keep the upgrade.\n",
+ "terminal": "Checking Nix...\nBuilding the system...\nUpgrade? [y/N] Activating the system...\nUpgraded.\nCommit nix/flake.lock to keep the upgrade.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/flake.lock": "{\n  \"nodes\": {\n    \"root\": {\n      \"inputs\": {\n        \"dotkit\": \"dotkit\",\n        \"nixpkgs\": [\n          \"dotkit\",\n          \"nixpkgs\"\n        ]\n      }\n    },\n    \"dotkit\": {\n      \"locked\": {\n        \"lastModified\": 1761000000,\n        \"rev\": \"ddddddd4444444\"\n      }\n    }\n  },\n  \"root\": \"root\",\n  \"version\": 7\n}\n"

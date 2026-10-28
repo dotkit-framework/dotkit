@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "~/.gemrc: copy the base file to config/gemrc, and link it as ~/.gemrc (nix/home.nix)\n",
- "stderr": "Commit config/gemrc. After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nOwned config/gemrc.\nCommit config/gemrc. After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/config/gemrc": "gem: --no-document\n",

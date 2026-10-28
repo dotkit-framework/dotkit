@@ -107,7 +107,12 @@ def options() -> List[S]:
 def apply() -> List[S]:
     return [
         S("apply-args", ["apply", "x"], rows=["A1"]),
-        S("apply", ["apply"], rules=fx.apply_ok(), rows=["A2"]),
+        S("apply", ["apply"], rules=fx.apply_ok(), rows=["A2", "C10"]),
+        S("color-apply", ["apply"], rules=fx.apply_ok(), tty="", color=True, rows=["C9", "C10"]),
+        S("color-errors", ["remove", "dkt-x", "nix:jq"], tty="n\n", color=True, rows=["C9"]),
+        S("color-no-color-flag", ["remove", "dkt-x", "--no-color"], tty="", color=True, rows=["C9"]),
+        S("color-no-color-env", ["remove", "dkt-x"], tty="", color=True, env={"DOTKIT_NO_COLOR": "1"}, rows=["C9"]),
+        S("color-option-error", ["apply", "--frob"], tty="", color=True, rows=["C9"]),
         S("apply-build-fails", ["apply"], rules=fx.build(fails=True), rows=["A3"]),
         S("apply-switch-fails", ["apply"], rules=fx.build() + fx.switch_fails() + fx.switch_ok(), rows=["A4"]),
         S("apply-mise-fails", ["apply"], rules=fx.build() + fx.switch_ok() + fx.mise_fails("install"),
@@ -139,7 +144,7 @@ def upgrade() -> List[S]:
           rows=["U4", "U5", "U9", "U10", "U11"]),
         S("upgrade-nix-up-to-date", ["upgrade", "nix"], rules=fx.flake_update(REPO_LOCK, SAME_REPO_LOCK),
           rows=["U5", "U8"]),
-        S("upgrade-nix-yes", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_ok(), rows=["U13", "U14"]),
+        S("upgrade-nix-yes", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_ok(), rows=["U13", "U14", "C10"]),
         S("upgrade-nix-no-terminal", ["upgrade", "nix"], rules=nix_rules, rows=["U12", "U15", "Q1"]),
         S("upgrade-nix-tty-no", ["upgrade", "nix"], rules=nix_rules, tty="n\n", rows=["U12"]),
         S("upgrade-nix-tty-yes", ["upgrade", "nix"], rules=nix_rules + fx.switch_ok(), tty="y\n",
@@ -336,7 +341,7 @@ def clean() -> List[S]:
         S("clean-tty-no", ["clean", "7d"], rules=wet, tty="n\n", rows=["K4", "Q1"]),
         S("clean-tty-yes-upper", ["clean"], rules=wet, tty="Y\n", rows=["K5", "Q1"]),
         S("clean-tty-yes-word", ["clean"], rules=wet, tty="yes\n", rows=["Q1"]),
-        S("clean-yes", ["clean", "-y"], rules=wet, rows=["K5"]),
+        S("clean-yes", ["clean", "-y"], rules=wet, rows=["K5", "C10"]),
     ]
 
 
@@ -655,7 +660,7 @@ def picker() -> List[S]:
 def remove() -> List[S]:
     ok = fx.build_once() + fx.apply_ok()
     return [
-        S("remove-nix", ["remove", "-y", "jq"], rules=ok, rows=["Rm9", "F2"]),
+        S("remove-nix", ["remove", "-y", "jq"], rules=ok, rows=["Rm9", "F2", "C10"]),
         S("remove-dry-run", ["remove", "-n", "jq", "zed"], rows=["Rm5", "Rm7"]),
         S("remove-base", ["remove", "ripgrep"], rows=["Rm2", "Rm6"]),
         S("remove-base-and-repo", ["remove", "-y", "fd"], files={"repo/nix/packages.txt": "jq\nfd\n"}, rules=ok,

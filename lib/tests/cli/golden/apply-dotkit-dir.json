@@ -4,7 +4,7 @@
  ],
  "exit": 0,
  "stdout": "",
- "stderr": "warning: Git tree '@SB/checkout' is dirty\n",
+ "stderr": "Building the system...\nwarning: Git tree '@SB/checkout' is dirty\nActivating the system...\nInstalling the mise tools...\nApplied the config.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1"
  },

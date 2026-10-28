@@ -162,7 +162,8 @@ casks are not in the plan. `dotkit tidy -n` prints the plan and changes
 nothing. `lib/dotkit/migrate/TIDY.md` has the details.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
-`dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
+`dotkit --help` lists the commands. On a terminal the output has colors;
+`--no-color`, `NO_COLOR`, or `DOTKIT_NO_COLOR` turns them off. Before the first apply, `./dotkit` in the
 dotfiles repository does the same.
 
 ## Your dotfiles repository

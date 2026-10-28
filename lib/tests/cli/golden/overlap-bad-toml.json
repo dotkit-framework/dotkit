@@ -4,7 +4,7 @@
  ],
  "exit": 0,
  "stdout": "",
- "stderr": "dotkit: @SB/repo/config/mise.toml is not valid TOML: Expected ']' at the end of a table declaration (at line 1, column 7). The mise tools are not compared with the base.\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\ndotkit: @SB/repo/config/mise.toml is not valid TOML: Expected ']' at the end of a table declaration (at line 1, column 7). The mise tools are not compared with the base.\nApplied the config.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1"
  },

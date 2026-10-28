@@ -9,6 +9,7 @@ prints the text and exits with the code (BEHAVIOR.md, the introduction).
 from __future__ import annotations
 
 import os
+import re
 import sys
 from typing import Optional
 
@@ -36,6 +37,57 @@ def _write(stream, text: str) -> None:
     stream.buffer.flush()
 
 
+# --- Colors. The text is the same with and without them: colors and symbols are only for a terminal.
+
+# --no-color of the command line (cli.main), for this run.
+_no_color = False
+
+# The roles of the text, and their SGR codes.
+STYLES = {
+    "error": "1;31", "warn": "1;33", "ok": "1;32", "heading": "1", "name": "1", "file": "36", "command": "36",
+    "added": "32", "removed": "31", "changed": "33", "dim": "2", "nix": "34", "brew": "33", "mise": "35",
+}
+# A dotkit command in a message: highlighted as a command on a terminal.
+_COMMAND = re.compile(r"\b(?:dotkit|brew|mise|nix|npm|git) [a-z](?:[\w:@./~-]*[\w/])?"
+                      r"(?: (?:--?[a-z][\w-]*|~?[\w:@./~-]*[\w/]))*")
+_CODE = re.compile(r"`([^`]+)`")
+
+
+def no_color() -> None:
+    global _no_color
+    _no_color = True
+
+
+def colors(stream=None) -> bool:
+    """Colors for a stream (stdout by default): a terminal, without --no-color, NO_COLOR, DOTKIT_NO_COLOR, and
+    TERM=dumb."""
+    stream = sys.stdout if stream is None else stream
+    return (not _no_color and not os.environ.get("NO_COLOR") and not os.environ.get("DOTKIT_NO_COLOR")
+            and os.environ.get("TERM") != "dumb" and stream.isatty())
+
+
+def paint(text: str, role: str, err: bool = False) -> str:
+    """text in the color of role, when the stream (stderr with err) gets colors."""
+    if not text or not colors(sys.stderr if err else sys.stdout):
+        return text
+    return f"\033[{STYLES[role]}m{text}\033[0m"
+
+
+def mark(symbol: str, role: str, err: bool = False) -> str:
+    """A symbol and a space before a line, only with colors: ✓, !, ▸."""
+    return paint(symbol, role, err) + " " if colors(sys.stderr if err else sys.stdout) else ""
+
+
+def commands(text: str, err: bool = False, base: str = "") -> str:
+    """The commands in text (dotkit apply, `code`) in the command color; base: the role of the rest."""
+    if not colors(sys.stderr if err else sys.stdout):
+        return text
+    on = f"\033[{STYLES[base]}m" if base else ""
+    text = _CODE.sub(lambda m: f"\033[0;{STYLES['command']}m{m[1]}\033[0m{on}", text)
+    text = _COMMAND.sub(lambda m: f"\033[0;{STYLES['command']}m{m[0]}\033[0m{on}", text)
+    return on + text + ("\033[0m" if on else "")
+
+
 def out(text: str = "") -> None:
     """A line on stdout."""
     _write(sys.stdout, text + "\n")
@@ -48,7 +100,31 @@ def note(text: str) -> None:
 
 def warn(msg: str) -> None:
     """dotkit: MSG on stderr; the command goes on."""
-    note(f"dotkit: {msg}")
+    note(paint("dotkit:", "warn", True) + " " + commands(msg, True))
+
+
+def progress(text: str) -> None:
+    """A step that takes a while, on stderr: "Checking Nix..."."""
+    note(mark("▸", "command", True) + paint(text, "dim", True))
+
+
+def hint(text: str) -> None:
+    """What to do next, on stderr: "No change. Run dotkit apply to apply."."""
+    note(mark("›", "dim", True) + commands(text, True))
+
+
+def success(text: str) -> None:
+    """The end of a command that changed something, on stderr."""
+    note(mark("✓", "ok", True) + paint(text, "ok", True))
+
+
+def error_text(text: str) -> str:
+    """The text of an Exit for stderr: "dotkit:" and "error:" in red."""
+    if not colors(sys.stderr):
+        return text
+    text = re.sub(r"^dotkit:", paint("dotkit:", "error", True), text, flags=re.M)
+    text = re.sub(r"^(dotkit [a-z]+: )error:", lambda m: m[1] + paint("error:", "error", True), text, flags=re.M)
+    return commands(text, True)
 
 
 def raw_err(text: str) -> None:
@@ -60,11 +136,6 @@ def flush() -> None:
     """Flush both streams, before a command writes to them."""
     sys.stdout.flush()
     sys.stderr.flush()
-
-
-def colors(stream) -> bool:
-    """Colors for a stream: a terminal, without NO_COLOR and TERM=dumb."""
-    return stream.isatty() and not os.environ.get("NO_COLOR") and os.environ.get("TERM") != "dumb"
 
 
 def one_line(value: object) -> str:
@@ -110,7 +181,7 @@ def confirm(question: str, yes: bool) -> bool:
         return True
     if not (os.isatty(0) and os.isatty(2)):
         raise die("confirmation needs a terminal. Use -y to continue without one.")
-    _write(sys.stderr, f"{question} [y/N] ")
+    _write(sys.stderr, f"{mark('?', 'warn', True)}{paint(question, 'heading', True)} {paint('[y/N]', 'dim', True)} ")
     return (read_line() or "").strip(" \t") in ("y", "Y")
 
 

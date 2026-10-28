@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
- "stderr": "Checking Nix...\ndotkit: your dotfiles repeat or replace parts of the dotkit base:\n  nix/packages.txt  fd is in the dotkit base too. Remove yours: dotkit remove nix:fd\n  nix/brews.txt     wget is in the dotkit base too. Remove yours: dotkit remove brew:wget\n  config/mise.toml  node = \"22\" replaces \"lts\" of the dotkit base.\n  config/mise.toml  npm:@dkt-ai/dkt-code is the same in the dotkit base. Remove yours: dotkit remove npm:@dkt-ai/dkt-code\nCommit nix/flake.lock to keep the upgrade.\n",
+ "stderr": "Checking Nix...\nBuilding the system...\nActivating the system...\nUpgraded.\ndotkit: your dotfiles repeat or replace parts of the dotkit base:\n  nix/packages.txt  fd is in the dotkit base too. Remove yours: dotkit remove nix:fd\n  nix/brews.txt     wget is in the dotkit base too. Remove yours: dotkit remove brew:wget\n  config/mise.toml  node = \"22\" replaces \"lts\" of the dotkit base.\n  config/mise.toml  npm:@dkt-ai/dkt-code is the same in the dotkit base. Remove yours: dotkit remove npm:@dkt-ai/dkt-code\nCommit nix/flake.lock to keep the upgrade.\n",
  "files": {
   "home/.local/state/dotkit/overlaps.json": "{\n \"version\": 1,\n \"seen\": {\n  \"nix:fd\": \"\",\n  \"formula:wget\": \"\",\n  \"mise:node\": \"6b542cc27b524981\",\n  \"mise:npm:@dkt-ai/dkt-code\": \"00719de4e99ec2e4\"\n }\n}\n",
   "repo/.build/system": "-> @SB/system-1",

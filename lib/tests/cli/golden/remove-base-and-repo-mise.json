@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "node: remove node from config/mise.toml; the dotkit base keeps it (dotkit:config/mise.toml)\n",
- "stderr": "",
+ "stderr": "Removed node.\n",
  "files": {},
  "calls": [
   {

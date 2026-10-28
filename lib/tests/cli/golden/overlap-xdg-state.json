@@ -4,7 +4,7 @@
  ],
  "exit": 0,
  "stdout": "",
- "stderr": "dotkit: your dotfiles repeat or replace parts of the dotkit base:\n  nix/packages.txt  fd is in the dotkit base too. Remove yours: dotkit remove nix:fd\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\ndotkit: your dotfiles repeat or replace parts of the dotkit base:\n  nix/packages.txt  fd is in the dotkit base too. Remove yours: dotkit remove nix:fd\nApplied the config.\n",
  "files": {
   "home/state/dotkit/overlaps.json": "{\n \"version\": 1,\n \"seen\": {\n  \"nix:fd\": \"\"\n }\n}\n",
   "repo/.build/system": "-> @SB/system-1"

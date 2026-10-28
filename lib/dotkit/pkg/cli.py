@@ -26,9 +26,20 @@ def print_candidates(c: Candidates, selected: Optional[Selection]) -> None:
         found = c.found.get(key)
         if found is None:
             continue
-        mark = "✓" if selected is not None and key == selected.key else " "
+        chosen = selected is not None and key == selected.key
+        mark = ui.paint("✓", "ok") if chosen else " "
         desc = found.description if width is None else ui.cut(found.description, width)
-        ui.out(f"  {mark} {ui.pad(c.spec_of(key), 30)} {ui.pad(found.version or '?', 14)} {desc}")
+        spec = ui.paint(ui.pad(c.spec_of(key), 30), "name" if chosen else "dim")
+        ui.out(f"  {mark} {spec} {ui.paint(ui.pad(found.version or '?', 14), 'dim')} {ui.paint(desc, 'dim')}")
+
+
+def _arrow(spec: str, file: str, role: str = "added") -> str:
+    """SPEC -> FILE of a plan line, in colors on a terminal."""
+    return f"{ui.paint(spec, role)} {ui.paint('->', 'dim')} {ui.paint(file, 'file')}"
+
+
+def _tool(tool: str) -> str:
+    return ui.paint(tool, "name") + ":"
 
 
 def _files(kinds) -> str:
@@ -58,7 +69,7 @@ class Pkg:
             seen.append(tool)
             found = declared.find(self.env, tool)
             if found:
-                ui.out(f"{tool}: already in {found[0].label}")
+                ui.out(f"{_tool(tool)} already in {ui.paint(found[0].label, 'file')}")
                 continue
             outcome = self.resolver.resolve(tool)
             if self._can_ask(outcome):
@@ -70,7 +81,7 @@ class Pkg:
                 continue
             s = outcome.selection
             if s.entry in nix_edits + mise_entries:
-                ui.out(f"{tool}: same entry as an earlier argument ({s.spec})")
+                ui.out(f"{_tool(tool)} same entry as an earlier argument ({s.spec})")
                 continue
             # An App Store app has no command to check.
             if s.entry.kind == "mas":
@@ -95,9 +106,9 @@ class Pkg:
                 continue
             commands.append(s.command)
             if tool == s.spec:
-                ui.out(f"{s.spec} -> {s.entry.file}")
+                ui.out(_arrow(s.spec, s.entry.file))
             else:
-                ui.out(f"{tool}: {s.spec} -> {s.entry.file} ({s.reason})")
+                ui.out(f"{_tool(tool)} {_arrow(s.spec, s.entry.file)} {ui.paint(f'({s.reason})', 'dim')}")
             print_candidates(outcome.candidates, s)
             (nix_edits if s.entry.nix else mise_entries).append(s.entry)
         if failed:
@@ -106,7 +117,7 @@ class Pkg:
         if planned == 0:
             return 0
         if self.dry_run:
-            ui.note("No change. Run the command without -n to add.")
+            ui.hint("No change. Run the command without -n to add.")
             return 0
         what = "tool" if planned == 1 else f"{planned} tools"
         if not ui.confirm(f"Add the {what}?", self.yes):
@@ -121,6 +132,7 @@ class Pkg:
         for e in mise_entries:
             if not proc.mise(self.env.home, ["use", "-g", e.text]).ok:
                 raise ui.die(f"mise could not add {e.text}. The tools before it in the list are added.")
+        ui.success(f"Added {what}." if planned > 1 else f"Added {(nix_edits + mise_entries)[0].text}.")
         return 0
 
     def _can_ask(self, outcome: Outcome) -> bool:
@@ -170,7 +182,7 @@ class Pkg:
                         f"under another name: {app_id} <name>")
                 return None
             entry = Entry("mas", f"{app_id} {label}")
-        ui.out(f"{s.spec} -> nix/mas.txt ({label})")
+        ui.out(f"{_arrow(s.spec, 'nix/mas.txt')} {ui.paint(f'({label})', 'dim')}")
         if label != s.reason:
             ui.out(f"nix/mas.txt has another app named {s.reason}; added as '{label}'.")
         return entry
@@ -208,14 +220,15 @@ class Pkg:
             kept = [d for d in base if d.entry == entry]
             if kept:
                 in_base.add(entry)
-                ui.out(f"{tool}: remove {entry.text} from {entry.file}; the dotkit base keeps it ({kept[0].label})")
+                ui.out(f"{_tool(tool)} remove {ui.paint(entry.text, 'removed')} from {ui.paint(entry.file, 'file')}; "
+                       f"the dotkit base keeps it ({kept[0].label})")
             else:
-                ui.out(f"{tool}: remove {entry.text} from {entry.file}")
+                ui.out(f"{_tool(tool)} remove {ui.paint(entry.text, 'removed')} from {ui.paint(entry.file, 'file')}")
             (nix_edits if entry.nix else mise_entries).append(entry)
         if failed:
             raise ui.die(FAILED)
         if self.dry_run:
-            ui.note("No change. Run the command without -n to remove.")
+            ui.hint("No change. Run the command without -n to remove.")
             return 0
         if not ui.confirm("Remove?", self.yes):
             raise ui.die("nothing changed.")
@@ -239,6 +252,8 @@ class Pkg:
             args = ["unuse", "-g", "--no-prune", e.text] if e in in_base else ["unuse", "-g", e.text]
             if not proc.mise(self.env.home, args).ok:
                 raise ui.die(f"mise could not remove {e.text}. The tools before it in the list are removed.")
+        removed = nix_edits + mise_entries
+        ui.success(f"Removed {removed[0].text}." if len(removed) == 1 else f"Removed {len(removed)} tools.")
         return 0
 
     def _brew_uninstall(self, kind: str, name: str) -> None:
@@ -258,27 +273,29 @@ class Pkg:
         status = 0
         for tool in tools:
             found_any = False
-            ui.out(tool)
+            ui.out(ui.paint(tool, "heading"))
             found = declared.find(self.env, tool)
             if found:
                 found_any = True
                 for d in found:
-                    ui.out(f"  {ui.pad('declared', 9)} {d.label} ({d.entry.text})")
+                    ui.out(f"  {ui.paint(ui.pad('declared', 9), 'dim')} {ui.paint(d.label, 'file')} ({d.entry.text})")
             else:
-                ui.out(f"  {ui.pad('declared', 9)} no")
+                ui.out(f"  {ui.paint(ui.pad('declared', 9), 'dim')} {ui.paint('no', 'changed')}")
             outcome = self.resolver.resolve(tool)
             if outcome.ok:
-                ui.out(f"  add picks {outcome.selection.spec} ({outcome.selection.reason})")
+                ui.out(f"  {ui.paint('add picks', 'dim')} {ui.paint(outcome.selection.spec, 'added')} "
+                       f"({outcome.selection.reason})")
             else:
-                ui.out(f"  add picks none: {outcome.reason}")
+                ui.out(f"  {ui.paint('add picks', 'dim')} {ui.paint('none', 'changed')}: {outcome.reason}")
             command = (outcome.selection.command if outcome.ok else "") or mise_toml.short(tool)
             path = declared.existing_command(self.env, command)
             if path is not None:
                 found_any = True
-                ui.out(f"  {ui.pad('command', 9)} {path} ({declared.origin(path, self.env.home)})")
+                ui.out(f"  {ui.paint(ui.pad('command', 9), 'dim')} {ui.paint(path, 'file')} "
+                       f"({declared.origin(path, self.env.home)})")
             if outcome.candidates.found:
                 found_any = True
-                ui.out("  sources")
+                ui.out("  " + ui.paint("sources", "dim"))
                 print_candidates(outcome.candidates, outcome.selection)
             if not found_any:
                 status = 1
@@ -289,18 +306,19 @@ class Pkg:
     def list(self, sources: Sequence[str]) -> int:
         for src in sources or ("nix", "brew", "mise"):
             # The dotkit base first, marked "(dotkit)".
-            for root, base in ((self.env.dotkit, " (dotkit)"), (self.env.repo, "")):
+            for root, base in ((self.env.dotkit, ui.paint(" (dotkit)", "dim")), (self.env.repo, "")):
                 if src == "nix":
                     for n in lists.names(root / "nix/packages.txt"):
-                        ui.out(f"nix   {n}{base}")
+                        ui.out(f"{ui.paint('nix', 'nix')}   {n}{base}")
                 elif src == "brew":
                     for n in lists.names(root / "nix/brews.txt"):
-                        ui.out(f"brew  {ui.pad(n, 36)} formula{base}")
+                        ui.out(f"{ui.paint('brew', 'brew')}  {ui.pad(n, 36)} {ui.paint('formula', 'dim')}{base}")
                     for n in lists.names(root / "nix/casks.txt"):
-                        ui.out(f"brew  {ui.pad(n, 36)} cask{base}")
+                        ui.out(f"{ui.paint('brew', 'brew')}  {ui.pad(n, 36)} {ui.paint('cask', 'dim')}{base}")
                 else:
                     for key, value in mise_toml.tools(root / "config/mise.toml").items():
-                        ui.out(f"mise  {ui.pad(key, 36)} {mise_toml.version_text(value)}{base}")
+                        ui.out(f"{ui.paint('mise', 'mise')}  {ui.pad(key, 36)} "
+                               f"{ui.paint(mise_toml.version_text(value), 'dim')}{base}")
             if src == "brew":
                 self._list_app_store()
         return 0
@@ -314,4 +332,4 @@ class Pkg:
         for name in sorted(apps):
             # The names in nix/mas.txt are escaped for the Brewfile: \\, \", and \#.
             name = re.sub(r'\\([\\"#])', r"\1", name)
-            ui.out(f"brew  {ui.pad(name, 36)} app store")
+            ui.out(f"{ui.paint('brew', 'brew')}  {ui.pad(name, 36)} {ui.paint('app store', 'dim')}")

@@ -44,5 +44,8 @@ def apply_nix(env: Env, edit: Callable[[], None], paths: Optional[Sequence[Path]
         restore()
         raise ui.Exit(130, "\ndotkit: stopped. The Nix files are restored.")
     copies.discard()
-    if n.activate() != 0 or not proc.mise(env.home, ["install"]).ok:
+    if n.activate() != 0:
+        raise ui.die(APPLY_FAILED)
+    ui.progress("Installing the mise tools...")
+    if not proc.mise(env.home, ["install"]).ok:
         raise ui.die(APPLY_FAILED)

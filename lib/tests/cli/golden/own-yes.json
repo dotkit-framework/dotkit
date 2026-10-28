@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "herdr: copy the base file to config/herdr.toml, and link it as ~/.config/herdr/config.toml (nix/home.nix)\n",
- "stderr": "Commit config/herdr.toml. After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nOwned config/herdr.toml.\nCommit config/herdr.toml. After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/config/herdr.toml": "# From the dotkit base (dotkit own). After a dotkit upgrade, dotkit doctor shows\n# how this file differs from the base file.\n\nonboarding = false\n",
