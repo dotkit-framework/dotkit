@@ -3,7 +3,7 @@
 
   inputs = {
     # `dotkit upgrade` updates it. dotkit pins Nixpkgs, nix-darwin, and Home Manager.
-    dotkit.url = "github:podkovyrin/dotkit";
+    dotkit.url = "github:dotkit-framework/dotkit";
     # For tools that look for the Nixpkgs of this flake, for example nixd.
     nixpkgs.follows = "dotkit/nixpkgs";
   };

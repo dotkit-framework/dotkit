@@ -1,6 +1,6 @@
 # My Mac
 
-A dotfiles repository on top of [dotkit](https://github.com/podkovyrin/dotkit).
+A dotfiles repository on top of [dotkit](https://github.com/dotkit-framework/dotkit).
 dotkit supplies the base: Nix, zsh, Git, Ghostty, herdr, Starship, and the
 common tools. This repository adds your own tools and settings.
 

@@ -29,7 +29,7 @@ LOCK_FILTER = r'''
 '''
 NIX_STDERR = ("warning: not writing modified lock file of flake 'path:/r/nix':\n"
               "• Updated input 'dotkit':\n"
-              "    'github:podkovyrin/dotkit/ccccccc' (2025-10-09)\n"
+              "    'github:dotkit-framework/dotkit/ccccccc' (2025-10-09)\n"
               "  → 'git+file:///c' (2025-10-10)\n"
               "warning: Git tree '/c' is dirty\n"
               "    indented after another line\n"

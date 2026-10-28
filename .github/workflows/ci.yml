@@ -142,7 +142,7 @@ jobs:
     timeout-minutes: 120
     env:
       # Build with this commit instead of the dotkit release that the new
-      # dotfiles repository would lock (github:podkovyrin/dotkit).
+      # dotfiles repository would lock (github:dotkit-framework/dotkit).
       DOTKIT_DIR: ${{ github.workspace }}
       # GitHub downloads of Nix and mise, without the anonymous rate limit.
       NIX_CONFIG: access-tokens = github.com=${{ github.token }}
