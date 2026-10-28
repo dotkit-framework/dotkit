@@ -159,7 +159,7 @@ the others are `keep`. Tidy never uninstalls a package with launch daemons,
 kernel or system extensions, or privileged helpers: only the vendor's
 uninstaller removes those. The packages of the App Store and of Homebrew
 casks are not in the plan. `dotkit tidy -n` prints the plan and changes
-nothing. `migrate/TIDY.md` has the details.
+nothing. `lib/dotkit/migrate/TIDY.md` has the details.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
 `dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
@@ -287,9 +287,9 @@ The `dotkit` command and the migration wizard are Python, in `lib/dotkit/`,
 and run with the macOS Python of the Xcode Command Line Tools. The command
 is in `commands/` (apply, upgrade, and the others), `pkg/` (add, remove,
 info, list), and `core/` (what they share); `lib/ARCHITECTURE.md` describes
-them, and `lib/tests/PARITY.md` lists the behavior, row by row, with the
-tests that cover each row. The wizard is in
-`lib/dotkit/migrate/`: `migrate/ARCHITECTURE.md` describes its parts, the
+them, and `lib/tests/BEHAVIOR.md` lists the behavior, row by row, with the
+tests that cover each row. The wizard is in `lib/dotkit/migrate/`; its
+`ARCHITECTURE.md` describes its parts, the
 rules for secrets, writes, and errors, and how to add a migration; the
 docstring of `lib/dotkit/migrate/__init__.py` has the short version and the
 Python 3.9 rules. Run the tests with the macOS Python:
@@ -304,9 +304,9 @@ it with `dotkit upgrade dotkit`.
 ## CI
 
 `.github/workflows/ci.yml` runs on each push and pull request, on macOS 26
-arm64 runners. The `check` job runs the two `nix` commands above, the tests of
-the migration wizard (`lib/tests`, with the macOS Python and with the
-Python of Nixpkgs), `tests/setup.sh` (functions of
+arm64 runners. The `check` job runs the two `nix` commands above, the Python
+tests of the `dotkit` command and the migration wizard (`lib/tests`, with
+the macOS Python and with the Python of Nixpkgs), `tests/setup.sh` (functions of
 setup in a temporary home directory), shellcheck, nixfmt, statix, and
 deadnix. The `e2e` job runs `scripts/setup --yes` on a
 fresh macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates

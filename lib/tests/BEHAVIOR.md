@@ -1,24 +1,24 @@
-# Parity inventory of the dotkit command
+# Behavior of the dotkit command
 
-The behavior of the Bash scripts (`dotkit`, `scripts/dotkit-pkg`, and
-`scripts/nix.sh`, deleted in steps 4 and 7 of CLI-PLAN.md; git history has
-them), one row per behavior. The Python code must keep each row,
-unless the row is a deviation or a Bash bug (the last two sections).
-CLI-PLAN.md, section 4, explains the method.
+What `dotkit` does, one row per behavior: the commands, their options, the
+messages and their streams, the exit codes, the commands that dotkit runs,
+and the edits of the files. A change of behavior changes a row here, its
+test, and its golden.
 
 The column "Covered by" says which test checks the row:
 
 - **scenarios**: one or more scenarios of `cli/scenarios.py`, compared
-  with the goldens in `cli/golden/`. `cli/test_parity.py` makes sure that each
-  of these rows has a scenario, and that each scenario names rows of this file.
+  with the goldens in `cli/golden/`. `cli/test_scenarios.py` makes sure that
+  each of these rows has a scenario, and that each scenario names rows of
+  this file.
+- **unit**: a unit test. The fake tools cannot reach the row, for example
+  because dotkit runs a command by its absolute path.
 - **e2e**: `tests/e2e/*.sh` on a real Mac, in the CI job e2e.
-- **unit (step N)**: a unit test of the Python code, written in step N of
-  CLI-PLAN.md. The fake tools cannot reach the row, for example because the
-  script runs a command by its absolute path.
 
 All messages of dotkit start with `dotkit: ` and go to stderr, unless a row
-says otherwise. "Usage error" means exit code 2 and the message, then
-` Use dotkit --help.`. "Die" means exit code 1 and the message.
+says otherwise. "Die" means the message and exit code 1. An error of the
+options prints the usage of the command, then "dotkit CMD: error: MESSAGE",
+exit code 2.
 
 ## G. Start
 
@@ -44,9 +44,7 @@ says otherwise. "Usage error" means exit code 2 and the message, then
 
 ## O. Options
 
-argparse reads the options of each command (DV9). An error of the options
-prints the usage of the command and "dotkit CMD: error: MESSAGE" on stderr,
-exit code 2.
+argparse reads the options of each command (dotkit/cli.py).
 
 | Row | Behavior | Covered by |
 |---|---|---|
@@ -69,7 +67,7 @@ exit code 2.
 | A5 | When `mise install` fails, apply stops with its exit code. | scenarios |
 | A6 | `apply -n` builds, prints "Nix package changes:" on stdout, runs `nix store diff-closures /run/current-system SYSTEM`, the Homebrew preview (A7), `mise install --dry-run` in `$HOME`, then "No change. Run dotkit apply to apply." on stderr (without `dotkit: `). | scenarios |
 | A7 | The Homebrew preview runs only when `/opt/homebrew/bin/brew` exists and `homebrew.onActivation.cleanup` of the configuration is not `none`. | scenarios |
-| A8 | The preview writes the Brewfile of the configuration to `REPO/.build/Brewfile` and runs `/opt/homebrew/bin/brew bundle cleanup --file=FILE` with `HOMEBREW_NO_AUTO_UPDATE=1` and stdin from /dev/null. Exit code 1 is accepted only after the complete report; the report loses its last line and the part from "Would \`brew cleanup\`:". A report that is left prints as "Homebrew removes:" and the lines. Another failure: die "the Homebrew cleanup preview failed with exit code N." | unit (step 6), e2e |
+| A8 | The preview writes the Brewfile of the configuration to `REPO/.build/Brewfile` and runs `/opt/homebrew/bin/brew bundle cleanup --file=FILE` with `HOMEBREW_NO_AUTO_UPDATE=1` and stdin from /dev/null. Exit code 1 is accepted only after the complete report; the report loses its last line and the part from "Would \`brew cleanup\`:". A report that is left prints as "Homebrew removes:" and the lines. Another failure: die "the Homebrew cleanup preview failed with exit code N." | unit, e2e |
 | A9 | With `DOTKIT_DIR`, the build evaluates `...system.drvPath` with the override (G4) and builds `DRV^*` without the flake, so nix keeps its progress bar. | scenarios |
 | A10 | With `DOTKIT_DIR`, the stderr of each nix command that reads the flake goes through a filter. The filter drops "warning: not writing (modified )lock file of flake ..." and the lines after it that start with `• `, `  →`, or four spaces. Other lines pass at once; stdout does not change. | scenarios |
 
@@ -77,7 +75,7 @@ exit code 2.
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| U1 | The arguments are sources (nix, brew, mise) or flake inputs. A name matches an input of nix/flake.lock, or `dotkit/NAME` of the checkout's lock. Another word: usage error "'X' is not a source or a flake input. Use nix, brew, mise, or: NAMES. Run dotkit upgrade --help." (NAMES as in C3, on one line). | scenarios |
+| U1 | The arguments are sources (nix, brew, mise) or flake inputs. A name matches an input of nix/flake.lock, or `dotkit/NAME` of the checkout's lock. Another word: exit code 2 and "'X' is not a source or a flake input. Use nix, brew, mise, or: NAMES. Run dotkit upgrade --help." (NAMES as in C3, on one line). | scenarios |
 | U2 | Without arguments: nix, brew, and mise. | scenarios |
 | U3 | `nix` with input names updates all inputs. | scenarios |
 | U4 | Nix: "Checking Nix..." on stderr (without `dotkit: `). For each lock file (nix/flake.lock; with `DOTKIT_DIR` also the checkout's flake.lock): a backup, then `nix flake update [INPUTS] --flake path:REPO/nix` (or `git+file://DIR`), with its output captured. A lock file without selected inputs is skipped when inputs are given. On failure: the output, then die "nix flake update failed for FILE. The lock files are restored." | scenarios |
@@ -91,7 +89,7 @@ exit code 2.
 | U12 | The question "Upgrade? [y/N] " (rows C-confirm). No: the lock files are restored, die "nothing changed." | scenarios |
 | U13 | Nix rows: a switch (A2 without mise); when it fails, die "the switch failed. The lock files are restored." brew rows: the Brewfile of the configuration goes to `brew bundle install --file=-` on stdin, with `HOMEBREW_NO_INSTALL_CLEANUP=1`. mise rows: `mise upgrade` in `$HOME`. | scenarios |
 | U14 | After an upgrade with nix rows: "Commit nix/flake.lock to keep the upgrade." and with `DOTKIT_DIR` "Commit flake.lock in DIR too, if it changed." on stderr (without `dotkit: `). | scenarios |
-| U15 | Any exit before the switch restores the lock files: an error, a refused question, and a signal. | scenarios (error, question); unit (step 6) for signals |
+| U15 | Any exit before the switch restores the lock files: an error, a refused question, and a signal. | scenarios (error, question); unit for signals |
 | U16 | When the build fails, upgrade stops with the exit code of nix, and the lock files are restored. | scenarios |
 
 ## Q. The question
@@ -115,7 +113,7 @@ exit code 2.
 | Row | Behavior | Covered by |
 |---|---|---|
 | H1 | `history` takes no arguments (O4). | scenarios |
-| H2 | `history` reads the link `/nix/var/nix/profiles/system` (`system-N-link`). Without `system-(N-1)-link`: die "there is no previous generation." Else it prints "system-(N-1)-link -> system-N-link" on stdout and runs `nix store diff-closures` of the two. | unit (step 6), e2e |
+| H2 | `history` reads the link `/nix/var/nix/profiles/system` (`system-N-link`). Without `system-(N-1)-link`: die "there is no previous generation." Else it prints "system-(N-1)-link -> system-N-link" on stdout and runs `nix store diff-closures` of the two. | unit, e2e |
 | H3 | `rollback` takes no arguments (O4). | scenarios |
 | H4 | `rollback` runs `sudo darwin-rebuild switch --rollback`; its exit code is the exit code of dotkit. | scenarios |
 
@@ -137,15 +135,15 @@ exit code 2.
 | L2 | Without sources: nix, brew, mise. With sources: in their order, also a source twice. | scenarios |
 | L3 | nix: `nix   NAME`, the base list first with ` (dotkit)` after the name. | scenarios |
 | L4 | brew: the formulae (`brew  %-36s formula`), then the casks, base first; then the App Store apps of the configuration (`homebrew.masApps`), sorted by name, with the escapes `\\`, `\"`, `\#` removed, as `brew  NAME` padded to 36, then ` app store`. | scenarios |
-| L5 | mise: the `[tools]` table of the base and the repository config/mise.toml, read as TOML (core/mise_toml.py), in the order of the file. The version is the string, the `version` of a table, the items of an array joined by ", ", or else the value as compact JSON. A file that is not valid TOML: "dotkit: FILE is not valid TOML: ERROR.", exit code 1 (DV7). | scenarios |
-| L6 | A list file has the names of nix/read-list.nix: the text of each line before `#`, without the whitespace at its ends (also `\r`); blank lines and comments give none (DV7). taps.txt: the first word of such a name. mas.txt: the lines `ID name` of nix/read-mas.nix. | scenarios; unit (tests/core/test_files.py, against the Nix code) |
+| L5 | mise: the `[tools]` table of the base and the repository config/mise.toml, read as TOML (core/mise_toml.py), in the order of the file. The version is the string, the `version` of a table, the items of an array joined by ", ", or else the value as compact JSON. A file that is not valid TOML: "dotkit: FILE is not valid TOML: ERROR.", exit code 1. | scenarios |
+| L6 | A list file has the names of nix/read-list.nix: the text of each line before `#`, without the whitespace at its ends (also `\r`); blank lines and comments give none. taps.txt: the first word of such a name. mas.txt: the lines `ID name` of nix/read-mas.nix. | scenarios; unit (tests/core/test_files.py, against the Nix code) |
 | L7 | When the evaluation of the App Store apps fails, list stops with exit code 1, after the rows before. | scenarios |
 
 ## N. Names for the completion
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| N1 | `user`: the names of the repository's packages.txt, brews.txt, casks.txt, mas.txt (as `mas:ID`), and the mise keys; sorted (deviation DV4), each once. | scenarios |
+| N1 | `user`: the names of the repository's packages.txt, brews.txt, casks.txt, mas.txt (as `mas:ID`), and the mise keys; sorted, each once. | scenarios |
 | N2 | `all`: the same with the base lists too. | scenarios |
 | N3 | Without nix/mas.txt, the other names. | scenarios |
 
@@ -186,7 +184,7 @@ exit code 2.
 | R14 | A formula, else a cask without an app: "not in Nixpkgs or mise". | scenarios |
 | R15 | Only npm or PyPI: "only npm or PyPI has this name. Anyone can publish there: check the package, then add it by the name in the list." | scenarios |
 | R16 | Nothing: "no source has this name. Check the name, or use a prefix (dotkit add --help)." | scenarios |
-| R17 | Versions compare with `builtins.compareVersions` of Nix, by `nix eval --expr '{ a, b }: builtins.compareVersions a b' --argstr a A --argstr b B`, without a leading `v` (DV8). When nix cannot compare them: die "nix could not compare the versions A and B." | scenarios |
+| R17 | Versions compare with `builtins.compareVersions` of Nix: `nix eval --impure --expr` with the two versions in `DOTKIT_VERSION_A` and `DOTKIT_VERSION_B`, without a leading `v`. When nix cannot compare them: die "nix could not compare the versions A and B." | scenarios; unit (the real nix) |
 | R18 | The command of a formula, a mise tool, a PyPI package, or a spec that is not npm is the `meta.mainProgram` of the Nixpkgs package with the same name (the last part of the name), when Nixpkgs has one. That can be one more nix evaluation. Else the command of the lookup, else the entry after its last `:` or `/`. | scenarios |
 | R19 | For an `npm:` spec, the command comes from the npm registry, else the package name after its last `/`. | scenarios |
 | R20 | The package of a spec has no backend and no version: `npm:@scope/pkg@1.0` is `@scope/pkg`. | scenarios |
@@ -196,7 +194,7 @@ exit code 2.
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| Pc1 | On stdout, in the order app, nix, mise, formula, cask, npm, pypi, spec: `  %s %-30s %-14s %s`, a check mark for the selection, the spec, the version or `?`, and the description. When stdout is a terminal, the description is cut to the width of the terminal minus 50 (at least 20), with `…`. | scenarios; unit (step 3) for the cut |
+| Pc1 | On stdout, in the order app, nix, mise, formula, cask, npm, pypi, spec: `  %s %-30s %-14s %s`, a check mark for the selection, the spec, the version or `?`, and the description. When stdout is a terminal, the description is cut to the width of the terminal minus 50 (at least 20), with `…`. | scenarios; unit for the cut |
 
 ## Ad. add
 
@@ -214,11 +212,11 @@ exit code 2.
 | Ad10 | Nothing to add: exit code 0 and no more output. | scenarios |
 | Ad11 | `-n`: "No change. Run the command without -n to add." on stderr. | scenarios |
 | Ad12 | The question "Add the tool?" or "Add the N tools?"; no: die "nothing changed." | scenarios |
-| Ad13 | List changes first: a backup of the Nix lists (packages.txt, brews.txt, casks.txt, mas.txt), the edits, the build. When an edit fails: restore, die "could not change the Nix files. They are restored."; when the build fails: restore, die "the build failed. The Nix files are restored."; on SIGINT, SIGTERM, SIGHUP, or SIGPIPE: restore, "\ndotkit: stopped. The Nix files are restored.", exit code 130. Then the activation of the built system and `mise install` (DV10); when either fails: die "dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply." | scenarios; unit (tests/pkg/test_pkg.py) for signals |
+| Ad13 | List changes first: a backup of the Nix lists (packages.txt, brews.txt, casks.txt, mas.txt), the edits, the build. When an edit fails: restore, die "could not change the Nix files. They are restored."; when the build fails: restore, die "the build failed. The Nix files are restored."; on SIGINT, SIGTERM, SIGHUP, or SIGPIPE: restore, "\ndotkit: stopped. The Nix files are restored.", exit code 130. Then the activation of the built system and `mise install`; when either fails: die "dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply." | scenarios; unit (tests/pkg/test_pkg.py) for signals |
 | Ad14 | Then mise: `mise use -g SPEC` in `$HOME` for each mise entry, in order; when one fails: die "mise could not add SPEC. The tools before it in the list are added." | scenarios |
 | Ad15 | The entries: Nixpkgs to packages.txt, casks to casks.txt, formulae to brews.txt, App Store apps to mas.txt as "ID LABEL"; mise entries are NAME, `npm:NAME`, `pipx:NAME`, or the spec. | scenarios |
 
-## Pk. The picker of add (DV2)
+## Pk. The picker of add
 
 New in the Python code. The goldens of these rows come from the Python code.
 
@@ -251,7 +249,7 @@ New in the Python code. The goldens of these rows come from the Python code.
 
 | Row | Behavior | Covered by |
 |---|---|---|
-| X1 | A global tool has a command when it is in `/etc/profiles/per-user/USER/bin`, `/run/current-system/sw/bin`, `~/.nix-profile/bin`, or `/opt/homebrew/bin`, else when `mise which BIN` in `$HOME` finds it. The PATH of the caller does not count. | scenarios (mise); unit (step 3) for the directories |
+| X1 | A global tool has a command when it is in `/etc/profiles/per-user/USER/bin`, `/run/current-system/sw/bin`, `~/.nix-profile/bin`, or `/opt/homebrew/bin`, else when `mise which BIN` in `$HOME` finds it. The PATH of the caller does not count. | scenarios (mise); unit for the directories |
 | X2 | The origin of a path, after `realpath`: `/nix/store/HASH-NAME/...` is "nix NAME"; `MISE_DATA_DIR/installs/TOOL/VERSION/...` (default `~/.local/share/mise`) is "mise TOOL VERSION"; `/opt/homebrew/Cellar/NAME/VERSION/...` is "brew NAME VERSION"; `/opt/homebrew/Caskroom/...` and `/Applications/...` are "brew (cask)"; else the path. | scenarios |
 
 ## F. List files
@@ -259,37 +257,5 @@ New in the Python code. The goldens of these rows come from the Python code.
 | Row | Behavior | Covered by |
 |---|---|---|
 | F1 | An append adds the missing final newline first, then "NAME\n". | scenarios |
-| F2 | A delete removes each line whose name (L6) is the name, and each line of mas.txt with the ID. The other lines stay as they are, also without a final newline (DV7). The file is written in place, so a link stays a link. | scenarios |
+| F2 | A delete removes each line whose name (L6) is the name, and each line of mas.txt with the ID. The other lines stay as they are, also without a final newline. The file is written in place, so a link stays a link. | scenarios |
 | F3 | The ID of an App Store app name: the first app of mas.txt (L6), or of the planned apps, whose name is the name exactly. | scenarios |
-
-## Deviations
-
-| Row | Deviation | Reason |
-|---|---|---|
-| DV1 | Python needs no jq, so "jq is not on PATH. Run dotkit apply first." goes away. | The Python standard library reads JSON. |
-| DV2 | `dotkit add` asks for the source of a bare name in a terminal (CLI-PLAN.md, section 7). | The new feature. |
-| DV3 | Bash prints its own errors with a line number: `cd` when `DOTFILES` or `DOTKIT_DIR` is not a directory, and "command not found". Python prints only the dotkit message ("DOTFILES is not a directory: X", "NAME: command not found"). The exit codes stay (1, 2, and 127). | Bash internals are not part of the interface. |
-| DV4 | `__complete tools-*` prints the names sorted by code point, not with `sort` in the locale of the user. | zsh sorts the completions itself. |
-| DV5 | A list file or config/mise.toml that does not exist reads as empty. In Bash, awk printed an error, and most commands stopped with exit code 2. | The template has all the files; an empty list is the safe reading. |
-| DV6 | Output that dotkit cannot use is a message, exit code 1: a lock file that is not a JSON object ("FILE is not valid JSON: ...", "FILE is not a JSON object."), output of brew, mise, or nix that is not a JSON object ("COMMAND did not print a JSON object."), and a file that dotkit cannot read or write ("dotkit: [Errno N] ..."). Bash printed the error of jq (exit code 5) or went on with no data, and "Everything is up to date." could be false. | Tracebacks and false reports are defects. |
-| DV7 | The readers of the lists and of config/mise.toml have the rules of the code that installs from them: nix/read-list.nix, nix/read-taps.nix, nix/read-mas.nix, and the TOML parser of mise. The awk of the Bash scripts took the first word of a line, kept `\r`, did not read indented mise keys, kept comments in mise values, and did not see `[tools.NAME]` tables, so dotkit could disagree with what Nix and mise install. A delete keeps the other lines as they are. The wizard uses the same readers. | One rule for each file, the rule of its real reader. |
-| DV8 | Versions compare with `builtins.compareVersions` of Nix, not with `sort -V` of macOS. | The question is whether Nixpkgs has the current release, and Nixpkgs orders its versions with this function. |
-| DV9 | argparse reads the options: its usage line, its error messages ("dotkit CMD: error: ..."), and the help of each command, made from COMMANDS of dotkit/cli.py. Each command accepts only its own options (the pkg commands accepted -n, -y, and -f all three; the others rejected an option of another command with their own message). `-h` after an unknown option prints the help. The rules stay: options anywhere, `--`, no abbreviations, exit code 2. | A standard parser, not one of our own; the text of an error is not an interface. |
-| DV10 | add and remove activate the system that they built, then run `mise install`, in the same process. Bash ran `dotkit apply`, which evaluated and built the system a second time. | One evaluation fewer; the steps are the same. |
-
-## Bash bugs
-
-The Python code does what the Bash code means to do. The scenarios of these
-rows ran with the Bash scripts only; their goldens keep the Bash behavior.
-The scenarios of the correct behavior are option-plan-missing-dir-fixed
-(B1) and upgrade-nix-switch-stops (B2); unit tests cover B3
-(tests/core/test_runtime.py), and B4 to B6 and DV6 (tests/commands/test_commands.py).
-
-| Row | Bug | Python |
-|---|---|---|
-| B1 | `--plan DIR/FILE` with a directory that does not exist: the `cd` error goes to stderr, and the wizard gets `--plan /FILE`. The usage error "'X' is not in a directory that exists." never shows. | The usage error, exit code 2. |
-| B2 | `upgrade` runs the switch in `switch \|\| ...`, where Bash does not stop at an error. When `nix-env --set` fails, `darwin-rebuild activate` runs anyway, and only the last exit code counts. | The switch stops at the first failure, as in `apply`. |
-| B3 | With `DOTKIT_DIR`, add and remove run the build in `if ! build_system`, where Bash does not stop at an error: when the evaluation of `drvPath` fails, `nix build` runs with the path `^*`. | The build stops with the exit code of the evaluation. |
-| B4 | `upgrade` pipes the evaluation of the Brewfile into `brew bundle install --file=-`. When the evaluation fails, `brew bundle` still runs, with no Brewfile. | upgrade stops with the exit code of the evaluation, before `brew bundle`. |
-| B5 | `dotkit upgrade -n \| head`: when the reader of the output goes away, SIGPIPE ends the script before its EXIT trap restores the lock files. | SIGPIPE is one of the signals of `backup.on_signals()`: the lock files are restored, exit code 141. |
-| B6 | (A defect of the first Python port, not of Bash.) SIGTERM during `nix flake update` restored the lock files while nix still ran, so nix could write them after the restore. Bash ran its trap after the command. | `proc.run` passes SIGTERM and SIGHUP on to the command and waits for it; the restore blocks the signals (`backup.shielded()`). |

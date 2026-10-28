@@ -3,7 +3,7 @@
 All text goes out as UTF-8 bytes and is flushed at once, so that it stays in
 order with the output of the commands that dotkit runs. Errors are
 exceptions: a command raises die(...) or usage_error(...), and the entry point
-prints the text and exits with the code (PARITY.md, the introduction).
+prints the text and exits with the code (BEHAVIOR.md, the introduction).
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ def cut(text: str, columns: int) -> str:
 
 
 def confirm(question: str, yes: bool) -> bool:
-    """True with yes. Else ask "QUESTION [y/N] " on stderr: only y and Y are yes (PARITY.md, Q1).
+    """True with yes. Else ask "QUESTION [y/N] " on stderr: only y and Y are yes (BEHAVIOR.md, Q1).
 
     Raises die(...) when stdin or stderr is not a terminal. The answer loses
     the spaces and tabs at its ends, as with `read -r`; the end of the input is no.

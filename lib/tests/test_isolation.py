@@ -1,4 +1,4 @@
-"""Crash isolation (ARCHITECTURE.md, section 7): a migrator that raises contributes nothing, and the run goes on.
+"""Crash isolation (ARCHITECTURE.md, section 6): a migrator that raises contributes nothing, and the run goes on.
 
 For every migrator M and every phase P, M.P raising gives the plan of the
 registry without M, plus one Failure (and a "skipped" one for each migrator

@@ -1,4 +1,4 @@
-"""Leftovers that can still take effect: report only (ARCHITECTURE.md, section 11).
+"""Leftovers that can still take effect: report only (ARCHITECTURE.md, section 10).
 
 The wizard removes nothing. Most leftovers are dead wood, but some still
 act: a carried PATH line in config/zsh/zshrc that adds a new directory comes

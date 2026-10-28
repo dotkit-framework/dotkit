@@ -207,7 +207,7 @@ BUILT_FROM_SOURCE = {"cargo": "cargo", "go": "Go"}
 
 # The commands of mise tools whose commands are not only their name: the runtimes, and uv. Another mise
 # tool has one command, its name (base.mise_short). For the leftovers that can shadow them
-# (ARCHITECTURE.md, section 11).
+# (ARCHITECTURE.md, section 10).
 MISE_COMMANDS = {
     "node": ("node", "npm", "npx"),
     "python": ("python3", "python", "pip3"),

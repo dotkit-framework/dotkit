@@ -1,4 +1,4 @@
-"""The lookups of a tool in each source (PARITY.md, R21).
+"""The lookups of a tool in each source (BEHAVIOR.md, R21).
 
 Each lookup returns a Found, or None when the source does not have the tool.
 nix() returns NIX_FAILED when the evaluation fails, so that an error in the
@@ -48,7 +48,7 @@ def spec_package(spec: str) -> str:
     return pkg[:1] + rest
 
 
-# The expression of the Nixpkgs lookup. The text is part of the command line, which the parity tests compare.
+# The expression of the Nixpkgs lookup. The text is part of the command line, which the scenario tests compare.
 NIX_EXPR = '''
     pkgs:
     let

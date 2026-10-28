@@ -1,4 +1,4 @@
-"""A fake external command for the parity tests: nix, brew, mise, mas, curl, sudo, and the others.
+"""A fake external command for the scenario tests: nix, brew, mise, mas, curl, sudo, and the others.
 
 The harness puts one small sh file per command name on PATH. Each one runs
 this file with the name of the command and its arguments:

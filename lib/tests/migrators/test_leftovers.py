@@ -1,4 +1,4 @@
-"""The leftovers migrator: what can still take effect after setup (ARCHITECTURE.md, section 11)."""
+"""The leftovers migrator: what can still take effect after setup (ARCHITECTURE.md, section 10)."""
 
 import os
 import unittest

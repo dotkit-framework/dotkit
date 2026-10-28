@@ -1,4 +1,4 @@
-"""Declared: what the base, the repository, and your mise config provide (ARCHITECTURE.md, section 4.5)."""
+"""Declared: what the base, the repository, and your mise config provide (ARCHITECTURE.md, section 3.5)."""
 
 import unittest
 

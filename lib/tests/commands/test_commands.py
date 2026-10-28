@@ -1,9 +1,9 @@
-"""The dotkit commands: the rows of PARITY.md that the parity scenarios cannot reach.
+"""The dotkit commands: the rows of BEHAVIOR.md that the scenarios cannot reach.
 
 apply runs /opt/homebrew/bin/brew and history reads /nix/var/nix/profiles by
 their absolute paths, so these tests point the module constants at a
 temporary directory (A8, H2). upgrade restores the lock files on a signal
-(U15), and --plan of a directory that does not exist is a usage error (B1).
+(U15), and --plan of a directory that does not exist is an error (O5).
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ ONLY_DOWNLOADS = ("Would `brew cleanup`:\n/Users/x/Library/Caches/Homebrew/a.tar
 
 
 class PreviewTests(Sandbox):
-    """PARITY.md, A7 and A8: the Homebrew cleanup preview of apply -n."""
+    """BEHAVIOR.md, A7 and A8: the Homebrew cleanup preview of apply -n."""
 
     def preview(self, cleanup, output, code):
         brew = self.dir / "brew"
@@ -111,7 +111,7 @@ class PreviewTests(Sandbox):
 
 
 class HistoryTests(Sandbox):
-    """PARITY.md, H2."""
+    """BEHAVIOR.md, H2."""
 
     def profiles(self, *links):
         d = self.dir / "profiles"
@@ -148,7 +148,7 @@ class HistoryTests(Sandbox):
 
 
 class UpgradeSignalTests(Sandbox):
-    """PARITY.md, U15: a signal after the lock files changed restores them."""
+    """BEHAVIOR.md, U15: a signal after the lock files changed restores them."""
 
     def test_signals(self):
         lock = self.dir / "repo/nix/flake.lock"
@@ -166,7 +166,7 @@ class UpgradeSignalTests(Sandbox):
 
 class UpgradeBrewfileTests(Sandbox):
     def test_a_failed_brewfile_stops_before_brew_bundle(self):
-        """PARITY.md, B4."""
+        """U13: a Brewfile that does not evaluate stops upgrade before brew bundle."""
         outdated = {"formulae": [{"name": "wget", "installed_versions": ["1"], "current_version": "2"}],
                     "casks": []}
         self.fakes([{"tool": "brew", "re": "^update"},
@@ -294,7 +294,7 @@ def _wait_for(path, timeout=30):
 
 
 class CompletionImportTests(unittest.TestCase):
-    """The completion runs on each Tab: it must not load the modules of the other commands (CLI-PLAN.md, 5.4)."""
+    """The completion runs on each Tab: it must not load the modules of the other commands (BEHAVIOR.md, C4)."""
 
     HEAVY = ("questionary", "prompt_toolkit", "wcwidth", "concurrent.futures", "dotkit.pkg.lookups",
              "dotkit.pkg.resolve", "dotkit.pkg.picker", "dotkit.migrate", "argparse")

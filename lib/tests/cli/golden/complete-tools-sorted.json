@@ -4,7 +4,7 @@
   "tools-user"
  ],
  "exit": 0,
- "stdout": "@x\nAa\nb_b\nb-b\nb.b\ngithub:modem-dev/dkt-hunk\nmas:409183694\nnpm:cowsay\nzz\n",
+ "stdout": "@x\nAa\nb-b\nb.b\nb_b\ngithub:modem-dev/dkt-hunk\nmas:409183694\nnpm:cowsay\nzz\n",
  "stderr": "",
  "files": {},
  "calls": [],

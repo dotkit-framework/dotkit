@@ -1,11 +1,7 @@
 # The dotkit command
 
-The `dotkit` command is Python, in `lib/dotkit/`. It replaced the Bash
-scripts `dotkit`, `scripts/dotkit-pkg`, and `scripts/nix.sh` with the same
-behavior, and added one feature: `dotkit add` asks for the source in a
-terminal. `CLI-PLAN.md` at the top of dotkit has the history of the port.
-The migration wizard is in `lib/dotkit/migrate/` and has its own
-`migrate/ARCHITECTURE.md`.
+The `dotkit` command is Python, in `lib/dotkit/`. The migration wizard is in
+`lib/dotkit/migrate/` and has its own `ARCHITECTURE.md` there.
 
 ## Contracts
 
@@ -22,7 +18,7 @@ one of them breaks a user who did not update.
   `scripts/setup`, `nix run .#migrate`, and `dotkit migrate` and `tidy` run
   it.
 - The messages, their streams, the exit codes, the commands that dotkit
-  runs, and the edits of the files: `lib/tests/PARITY.md`, row by row.
+  runs, and the edits of the files: `lib/tests/BEHAVIOR.md`, row by row.
 
 ## Runtime
 
@@ -68,7 +64,7 @@ lib/
       cli.py                the commands
     migrate/                the migration wizard
   tests/
-    PARITY.md               the behavior of the command, row by row
+    BEHAVIOR.md             the behavior of the command, row by row
     cli/                    the parity scenarios, the sandbox, the fake tools, the goldens
     core/, pkg/, commands/  unit tests
     (the other files)       the tests of the wizard
@@ -78,9 +74,9 @@ lib/
 
 - **Errors are exceptions.** A command raises `ui.die(msg)` (exit code 1)
   or `ui.usage_error(msg)` (exit code 2), or `ui.Exit(code, text)`;
-  `__main__.main()` prints the text and exits with the code. A command
-  returns the exit code of a command that it ran, as the Bash scripts did
-  with `set -e`.
+  `__main__.main()` prints the text and exits with the code. When a command
+  that dotkit runs fails, dotkit stops with its exit code; that command has
+  shown its error already.
 - **One place starts processes:** `core/proc.py`. It flushes the output of
   dotkit first, so the lines stay in order. On Ctrl-C it waits until the
   command ends, then raises `KeyboardInterrupt`, so that the caller can
@@ -109,27 +105,26 @@ lib/
 cd lib && /usr/bin/python3 -B -m unittest discover -s tests -t .
 ```
 
-- **The parity scenarios** (`tests/cli`) run the real launcher in a
-  sandbox: a dotkit, a dotfiles repository, a home, and fake `nix`,
-  `brew`, `mise`, `mas`, `curl`, and `sudo` (`fakebin.py`), which log each
-  call and reply from rules. A scenario compares the exit code, stdout,
-  stderr (or the text of a terminal), the changed files, and the calls with
-  its golden. The goldens came from the Bash scripts, so a change of a
-  golden is a change of behavior: it needs a deviation in `PARITY.md`.
-  `DOTKIT_CLI_REGOLD=1` writes the goldens again; review the diff. The
-  golden of a deviation (DV...) keeps the output of the Bash scripts.
-- **The inventory tests** check that each row of `PARITY.md` that says
+- **The scenarios** (`tests/cli`) run the real launcher in a sandbox: a
+  dotkit, a dotfiles repository, a home, and fake `nix`, `brew`, `mise`,
+  `mas`, `curl`, and `sudo` (`fakebin.py`), which log each call and reply
+  from rules. A scenario compares the exit code, stdout, stderr (or the
+  text of a terminal), the changed files, and the calls with its golden. A
+  change of a golden is a change of behavior: change the row of
+  `BEHAVIOR.md` with it. `DOTKIT_CLI_REGOLD=1` writes the goldens again;
+  review the diff.
+- **The inventory tests** check that each row of `BEHAVIOR.md` that says
   "scenarios" has one, and that each scenario names rows that exist.
 - **The unit tests** cover the rows that the scenarios cannot reach (an
-  absolute path such as `/opt/homebrew/bin/brew`, or a signal) and compare
-  the readers with the awk programs and `/usr/bin/sort` that they replace.
+  absolute path such as `/opt/homebrew/bin/brew`, a signal, or the real
+  `nix`), and compare the list readers with the Nix code.
 - CI runs them with the macOS Python and the Python of Nixpkgs. `nix flake
-  check` runs them too, without the parity scenarios (its sandbox has no
+  check` runs them too, without the scenarios (its sandbox has no
   launcher).
 
 ## Add a command
 
-1. Add the behavior to `PARITY.md`: new rows, with "scenarios" or the unit
+1. Add the behavior to `BEHAVIOR.md`: new rows, with "scenarios" or the unit
    test that covers each.
 2. Add an entry to `COMMANDS` in `cli.py`: its group, its summary, and a
    setup function that adds its options to the parser and returns how to

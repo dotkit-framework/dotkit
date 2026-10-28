@@ -1,6 +1,6 @@
 """The migration wizard of dotkit: scan a Mac, plan a dotfiles repository, write it.
 
-migrate/ARCHITECTURE.md at the top of dotkit is the reference: the contracts between the parts, the
+ARCHITECTURE.md in this directory is the reference: the contracts between the parts, the
 rules for secrets, writes, and errors, and how to add a migrator (section
 10). Read it before you change the structure.
 

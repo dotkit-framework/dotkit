@@ -88,7 +88,7 @@ def yes(p: Parser) -> None:
 
 
 def plan_path(value: str) -> str:
-    """The absolute path of --plan: the directory resolved, the file name kept (PARITY.md, O5)."""
+    """The absolute path of --plan: the directory resolved, the file name kept (BEHAVIOR.md, O5)."""
     trimmed = value.rstrip("/") or "/"
     directory = os.path.dirname(trimmed) or "."
     if not os.path.isdir(directory):
@@ -211,7 +211,7 @@ COMMANDS: Dict[str, Command] = {
                     "lists do not have, old copies of tools that dotkit has (npm, pipx, uv, cargo, Homebrew,\n"
                     "files), and .pkg installer packages. Opens the plan in your editor, asks once, then\n"
                     "installs the casks, adds them to the lists, and uninstalls what you chose. App data\n"
-                    "stays. See migrate/TIDY.md."),
+                    "stays. See lib/dotkit/migrate/TIDY.md."),
     "history": Command("Recovery", "The package changes of the last apply.", _history),
     "rollback": Command("Recovery", "Go back to the previous Nix generation.", _rollback,
                         "Homebrew and mise do not roll back."),

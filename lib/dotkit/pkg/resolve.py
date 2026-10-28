@@ -1,4 +1,4 @@
-"""Select the source of a tool (PARITY.md, rows R).
+"""Select the source of a tool (BEHAVIOR.md, rows R).
 
 resolve() looks up an argument and returns an Outcome: the Candidates that
 the sources gave, and a Selection, or the reason when it selects none.

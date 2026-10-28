@@ -1,4 +1,4 @@
-"""The extension points (ARCHITECTURE.md, section 10): a new catalog entry and a new migrator need no test list.
+"""The extension points (ARCHITECTURE.md, section 9): a new catalog entry and a new migrator need no test list.
 
 A fake version manager and a fake framework are added to the catalog, with
 the rcparse rules built again from it, and a fake tool migrator (gem tools,

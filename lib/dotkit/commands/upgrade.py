@@ -1,4 +1,4 @@
-"""dotkit upgrade: one plan for Nix, Homebrew, and mise, one question, then the upgrade (PARITY.md, rows U).
+"""dotkit upgrade: one plan for Nix, Homebrew, and mise, one question, then the upgrade (BEHAVIOR.md, rows U).
 
 The lock files that `upgrade nix` updates: nix/flake.lock of the dotfiles
 repository (the dotkit release), and with DOTKIT_DIR the flake.lock of the
@@ -172,7 +172,7 @@ class Upgrade:
                 raise ui.die("the switch failed. The lock files are restored.")
             self.keep_locks()
         if brew_rows:
-            # Read the Brewfile from the flake, so it matches the config (PARITY.md, B4).
+            # Read the Brewfile from the flake, so it matches the config.
             brewfile = self.nix.brewfile()
             if not brewfile.ok:
                 return brewfile.code

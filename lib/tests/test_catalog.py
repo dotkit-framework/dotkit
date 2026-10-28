@@ -4,7 +4,7 @@ The old entries (by name) give what the literals of the old rcparse matched,
 and nothing else. Every entry, old or new, is checked generically: its words
 and PATH markers compile and match an example built from them, its variables
 are names, a detected spec has dirs, and env_var values are unique. A new
-catalog entry needs no change here (ARCHITECTURE.md, section 10).
+catalog entry needs no change here (ARCHITECTURE.md, section 9).
 """
 
 import itertools

@@ -7,7 +7,7 @@ Core, not migrators: the identity scan, nix/user.nix, the keymap, the scan
 warnings, the "Login shell" to-do, the problems, the checks, and the writer.
 
 Each scan, pages, plan, and adopt of a migrator is isolated (ARCHITECTURE.md,
-section 7): an exception there is a Failure, the migrator contributes
+section 6): an exception there is a Failure, the migrator contributes
 nothing, and the rest of the run goes on. Strict mode re-raises instead.
 """
 
@@ -93,7 +93,7 @@ IDENTITY = IdentityScan()
 ADOPT_LISTS = (("nix/brews.txt", "Homebrew formulae"), ("nix/casks.txt", "Homebrew casks"),
                ("nix/taps.txt", "Homebrew taps"), ("nix/mas.txt", "App Store apps"))
 
-# --- Failure text: short, with the home as ~, and masked line by line (ARCHITECTURE.md, section 6)
+# --- Failure text: short, with the home as ~, and masked line by line (ARCHITECTURE.md, section 5)
 
 PACKAGE = Path(__file__).resolve().parent
 SECRET_LINE = "(this line has a secret; not shown)"
@@ -153,7 +153,7 @@ class Session:
         self._out: Set[str] = set()
         self._traces: Dict[Tuple[str, str], str] = {}
 
-    # --- Isolation (ARCHITECTURE.md, section 7)
+    # --- Isolation (ARCHITECTURE.md, section 6)
 
     def _fail(self, m, phase: str, e: Exception, failures: List[Failure]) -> None:
         """Records the failure of a migrator in failures. Called in an except block: strict mode re-raises."""

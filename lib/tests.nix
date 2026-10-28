@@ -1,6 +1,6 @@
-# The unit tests and the pseudo-terminal tests of lib/ (the migration wizard),
-# for `nix flake check`, with the Python of Nixpkgs: newer than the macOS
-# Python 3.9 that the wizard runs with. CI also runs them directly with both, for
+# The Python tests of lib/ (the dotkit command and the migration wizard) for
+# `nix flake check`, with the Python of Nixpkgs: newer than the macOS Python
+# 3.9 that dotkit runs with. The scenarios of the command skip here. CI also runs them directly with both, for
 # the log.
 {
   lib,

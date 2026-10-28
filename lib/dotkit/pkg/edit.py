@@ -1,4 +1,4 @@
-"""Change the Nix lists, build, and apply (PARITY.md, Ad13 and Rm9).
+"""Change the Nix lists, build, and apply (BEHAVIOR.md, Ad13 and Rm9).
 
 apply_nix() backs up the lists, runs the edit, and builds. When the edit or
 the build fails, or on a signal, it restores the lists. Then it activates the

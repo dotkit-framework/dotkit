@@ -1,5 +1,5 @@
-# check: evaluates and builds the example Mac, runs the tests of the
-# migration wizard, and lints the scripts and the Nix files. e2e: a real
+# check: evaluates and builds the example Mac, runs the Python tests of the
+# dotkit command and the migration wizard, and lints the scripts and the Nix files. e2e: a real
 # setup on a fresh macOS runner, which is a used Mac with Homebrew packages
 # and dotfiles, then tests/e2e/verify.sh and tests/e2e/migrated.sh.
 name: CI
@@ -59,15 +59,16 @@ jobs:
       - name: python
         run: nix shell --inputs-from . nixpkgs#python3 -c python3 -m py_compile scripts/herdr/git-status.py
 
-      # The scanner, the rc parser, the mapping, secret detection, and the
-      # wizard in a pseudo terminal. nix flake check runs them too; here the
-      # log shows each test, and nixfmt checks the generated Nix files.
       # Functions of scripts/setup, in a temporary home directory.
       - name: setup functions
         run: tests/setup.sh
 
-      # The wizard runs with the macOS Python (3.9 in the Command Line Tools);
-      # the Python of Nixpkgs checks a newer version.
+      # The dotkit command and the wizard: the scenarios of the command, the
+      # scan, the mapping, secret detection, and the wizard in a pseudo
+      # terminal. They run with the macOS Python (3.9 in the Command Line
+      # Tools); the Python of Nixpkgs checks a newer version. nix flake check
+      # runs them too; here the log shows each test, and nixfmt checks the
+      # generated Nix files.
       - name: Python tests, macOS Python
         working-directory: lib
         run: |
