@@ -1,11 +1,10 @@
-"""The sandbox of the parity tests: a dotkit, a dotfiles repository, a home, and fake tools.
+"""The sandbox of the scenario tests: a dotkit, a dotfiles repository, a home, and fake tools.
 
-run(impl, scenario) copies an implementation of the dotkit command into a new
-sandbox, runs one scenario in it, and returns the Result: the exit code,
-stdout, stderr (or the terminal text), the changed files, and the calls of
-the fake tools. Paths in the result start with @SB, the sandbox. The Bash
-scripts and the Python code must give the same Result for each scenario
-(CLI-PLAN.md, section 4.3); the goldens in golden/ are the reference.
+run(impl, scenario) copies the dotkit command into a new sandbox, runs one
+scenario in it, and returns the Result: the exit code, stdout, stderr (or
+the terminal text), the changed files, and the calls of the fake tools.
+Paths in the result start with @SB, the sandbox. test_scenarios.py compares
+the result with the golden of the scenario.
 """
 
 from __future__ import annotations
@@ -79,13 +78,10 @@ class Scenario:
     no_dotfiles: bool = False
     # The reason to skip the scenario on this Mac, or None.
     skip: Callable[[], Optional[str]] = lambda: None
-    # What the scenario checks: the rows of PARITY.md.
+    # What the scenario checks: the rows of BEHAVIOR.md.
     rows: List[str] = field(default_factory=list)
     # The text of the terminal is not compared: it has the redraws of prompt_toolkit, which depend on timing.
     no_terminal: bool = False
-    # A deviation (DV...) or a Bash bug (B...) of PARITY.md. test_parity.COMPARE says what the other
-    # implementations must match; a Bash bug runs with the Bash scripts only.
-    deviation: Optional[str] = None
 
 
 @dataclass

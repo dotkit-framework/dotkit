@@ -1,6 +1,6 @@
 """The paths of a run: the dotfiles repository, dotkit, the home, and the dotkit checkout of DOTKIT_DIR.
 
-load() checks the environment in the order of the Bash scripts (PARITY.md,
+load() checks the environment in this order (BEHAVIOR.md,
 rows G1 to G5): DOTFILES must be set and must be a directory, then DOTKIT_DIR
 must be a directory when it is set. It exports the resolved DOTFILES for the
 commands that dotkit runs.

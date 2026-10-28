@@ -1,4 +1,4 @@
-"""The source picker of `dotkit add` (PARITY.md, DV2 and rows Pk).
+"""The source picker of `dotkit add` (BEHAVIOR.md, rows Pk).
 
     lazygit
     nix   0.66.2  Simple terminal UI for git commands          <- the selected row: reverse video

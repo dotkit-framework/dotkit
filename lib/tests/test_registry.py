@@ -1,6 +1,6 @@
 """Invariants of the registry: what every migrator must hold to, checked over all of them.
 
-A new migrator is covered without new code here (ARCHITECTURE.md, section 10).
+A new migrator is covered without new code here (ARCHITECTURE.md, section 9).
 """
 
 from __future__ import annotations

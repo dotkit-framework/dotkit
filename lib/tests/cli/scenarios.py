@@ -1,4 +1,4 @@
-"""The parity scenarios: one run of the dotkit command each, with the rows of PARITY.md that it covers.
+"""The scenarios: one run of the dotkit command each, with the rows of BEHAVIOR.md that it covers.
 
 The names of tools that dotkit add must not find on this Mac start with dkt-:
 existing_command looks in the real Nix profile and /opt/homebrew/bin.
@@ -49,10 +49,9 @@ def start() -> List[S]:
     return [
         S("start-no-dotfiles", ["--help"], no_dotfiles=True, rows=["G1"]),
         S("start-no-dotfiles-add", ["add", "x"], no_dotfiles=True, rows=["G1"]),
-        S("start-dotfiles-missing", ["apply"], env={"DOTFILES": "@SB/nope"}, rows=["G2"], deviation="DV3"),
-        S("start-dotkit-dir-missing", ["apply"], env={"DOTKIT_DIR": "@SB/nope"}, rows=["G3"], deviation="DV3"),
-        S("start-dotkit-dir-missing-add", ["add", "x"], env={"DOTKIT_DIR": "@SB/nope"}, rows=["G3"],
-          deviation="DV3"),
+        S("start-dotfiles-missing", ["apply"], env={"DOTFILES": "@SB/nope"}, rows=["G2"]),
+        S("start-dotkit-dir-missing", ["apply"], env={"DOTKIT_DIR": "@SB/nope"}, rows=["G3"]),
+        S("start-dotkit-dir-missing-add", ["add", "x"], env={"DOTKIT_DIR": "@SB/nope"}, rows=["G3"]),
         S("start-dotfiles-resolved", ["rollback"], env={"DOTFILES": "@SB/repo/../repo"}, rules=fx.switch_ok(),
           rows=["G5", "H4"]),
     ]
@@ -67,11 +66,10 @@ def dispatch() -> List[S]:
         S("unknown-command", ["frobnicate"], rows=["C7"]),
         S("complete-inputs", ["__complete", "inputs"], rows=["C3"]),
         S("complete-inputs-dotkit-dir", ["__complete", "inputs"], dotkit_dir=True, rows=["C3"]),
-        S("complete-tools-user", ["__complete", "tools-user"], rows=["C4", "N1"], deviation="DV4"),
-        S("complete-tools-all", ["__complete", "tools-all"], rows=["C4", "N2"], deviation="DV4"),
-        S("complete-tools-no-mas", ["__complete", "tools-user"], files={"repo/nix/mas.txt": None}, rows=["N3"],
-          deviation="DV4"),
-        S("complete-tools-sorted", ["__complete", "tools-user"], rows=["N1"], deviation="DV4",
+        S("complete-tools-user", ["__complete", "tools-user"], rows=["C4", "N1"]),
+        S("complete-tools-all", ["__complete", "tools-all"], rows=["C4", "N2"]),
+        S("complete-tools-no-mas", ["__complete", "tools-user"], files={"repo/nix/mas.txt": None}, rows=["N3"]),
+        S("complete-tools-sorted", ["__complete", "tools-user"], rows=["N1"],
           files={"repo/nix/packages.txt": "zz\n# c\nAa\n\nb-b  # x\nb_b\n",
                  "repo/nix/brews.txt": "b.b\nAa\n", "repo/nix/casks.txt": "@x\n"}),
         S("complete-none", ["__complete"], rows=["C5"]),
@@ -91,9 +89,7 @@ def options() -> List[S]:
         S("option-unknown-long", ["apply", "--dry"], rows=["O4"]),
         S("option-double-dash", ["clean", "--", "-5d"], rows=["O3", "O7"]),
         S("option-plan-needs-file", ["tidy", "--plan"], rows=["O5"]),
-        S("option-plan-missing-dir", ["tidy", "-n", "--plan", "nope/plan.txt"],
-          rules=fx.declared_homebrew() + [{"tool": "dotkit-migrate", "re": ""}], rows=["O5"], deviation="B1"),
-        S("option-plan-missing-dir-fixed", ["tidy", "-n", "--plan", "nope/plan.txt", "-h"], rows=["O5"]),
+        S("option-plan-missing-dir", ["tidy", "-n", "--plan", "nope/plan.txt", "-h"], rows=["O5"]),
         S("option-plan-not-tidy", ["migrate", "--plan", "p.txt"], rows=["O6"]),
         S("option-all-not-migrate", ["tidy", "-a"], rows=["O6"]),
         S("option-all-long-not-migrate", ["apply", "--all"], rows=["O6"]),
@@ -149,8 +145,6 @@ def upgrade() -> List[S]:
           rows=["U12", "U13"]),
         S("upgrade-nix-update-fails", ["upgrade", "nix"], rules=fx.flake_update(REPO_LOCK, {}, fails=True),
           rows=["U4"]),
-        S("upgrade-nix-switch-fails", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_fails(),
-          rows=["U13"], deviation="B2"),
         S("upgrade-nix-switch-stops", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_fails() + fx.switch_ok(),
           rows=["U13"]),
         S("upgrade-nix-activate-fails", ["upgrade", "-y", "nix"], rows=["U13"],
@@ -468,7 +462,7 @@ def add_apply() -> List[S]:
 
 
 def picker() -> List[S]:
-    """The picker of add (PARITY.md, Pk and DV2): a bare name in a terminal. The first row is the source of the
+    """The picker of add (BEHAVIOR.md, Pk): a bare name in a terminal. The first row is the source of the
     rules; the arrow keys move, Enter selects, Esc cancels."""
     n = "dkt-tool"
     xterm = {"TERM": "xterm-256color"}

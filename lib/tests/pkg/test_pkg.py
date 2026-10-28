@@ -1,9 +1,9 @@
-"""The pkg commands: the rows of PARITY.md that the parity scenarios cannot reach, and the selection rules.
+"""The pkg commands: the rows of BEHAVIOR.md that the scenarios cannot reach, and the selection rules.
 
 The scenarios (tests/cli) cover the commands end to end. These tests cover
 the rules of resolve.choose as a table, the cut of the descriptions in a
 terminal (Pc1), the directories of global tools (X1), the restore on a
-signal (Ad13), and that no jq is needed (DV1).
+signal (Ad13), and that no jq is needed.
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ class Sandbox(unittest.TestCase):
 
 class NoJqTests(Sandbox):
     def test_list_without_jq(self):
-        """PARITY.md, DV1: the commands do not need jq."""
+        """The commands do not need jq."""
         self.fakes([{"tool": "nix", "re": "masApps", "stdout": '{"Keynote": 1}'}], path=str(self.dir / "bin"))
         out, _ = self.quiet()
         self.assertEqual(cli.Pkg(self.env).list(["brew"]), 0)
@@ -128,7 +128,7 @@ class NoJqTests(Sandbox):
 
 class ExistingCommandTests(Sandbox):
     def test_the_directories_come_before_mise(self):
-        """PARITY.md, X1: the global directories in order, then `mise which`."""
+        """BEHAVIOR.md, X1: the global directories in order, then `mise which`."""
         dirs = [self.dir / d for d in ("profile", "system", "user", "brew")]
         for d in dirs:
             d.mkdir()
@@ -151,7 +151,7 @@ class ExistingCommandTests(Sandbox):
 
 class SignalTests(Sandbox):
     def test_ctrl_c_in_the_build_restores_the_lists(self):
-        """PARITY.md, Ad13: SIGINT while the build runs."""
+        """BEHAVIOR.md, Ad13: SIGINT while the build runs."""
         self.fakes([{"tool": "nix", "re": "^build"}])
         self.quiet()
         packages = self.dir / "repo/nix/packages.txt"
@@ -196,7 +196,7 @@ class SignalTests(Sandbox):
 
 @unittest.skipUnless(shutil.which("nix"), "no nix")
 class RealNixTests(unittest.TestCase):
-    """The comparison with the real nix: the fake tools of the parity tests only answer it."""
+    """The comparison with the real nix: the fake tools of the scenario tests only answer it."""
 
     def test_version_ge(self):
         look = lookups.Lookups(env_mod.Env(repo=Path("/"), dotkit=Path("/"), home=Path("/")))

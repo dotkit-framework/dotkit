@@ -1,8 +1,8 @@
-"""dotkit migrate and tidy: the migration wizard (lib/dotkit/migrate) for an existing repository (PARITY.md, M).
+"""dotkit migrate and tidy: the migration wizard (lib/dotkit/migrate) for an existing repository (BEHAVIOR.md, M).
 
 Both run migrate/dotkit-migrate with the taps and the App Store apps of the
 configuration, which only Nix can evaluate: the wizard reads them from
---declared. migrate/TIDY.md describes tidy.
+--declared. lib/dotkit/migrate/TIDY.md describes tidy.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""The commands add, remove, info, and list (PARITY.md, rows L, I, Ad, and Rm). dotkit/cli.py parses them."""
+"""The commands add, remove, info, and list (BEHAVIOR.md, rows L, I, Ad, and Rm). dotkit/cli.py parses them."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ PICKED = "selected in the list"
 
 
 def print_candidates(c: Candidates, selected: Optional[Selection]) -> None:
-    """One line per candidate; the selected one has a check mark (PARITY.md, Pc1)."""
+    """One line per candidate; the selected one has a check mark (BEHAVIOR.md, Pc1)."""
     columns = ui.terminal_columns()
     width = None if columns is None else max(columns - 50, 20)
     for key in KEYS:
@@ -125,7 +125,7 @@ class Pkg:
 
     def _can_ask(self, outcome: Outcome) -> bool:
         """The picker asks for a bare name in a terminal, without -y and -n, when two sources or more have
-        the tool, or when the rules select none of them (PARITY.md, Pk1)."""
+        the tool, or when the rules select none of them (BEHAVIOR.md, Pk1)."""
         c = outcome.candidates
         if not outcome.bare or c.nix_failed or not c.found or self.yes or self.dry_run:
             return False
@@ -152,7 +152,7 @@ class Pkg:
         return Outcome(c, self.resolver.select(c, key, PICKED), bare=True)
 
     def _plan_mas(self, tool: str, s: Selection, nix_edits: List[Entry]) -> Optional[Entry]:
-        """The entry of an App Store app, or None after the warning (PARITY.md, Ad5)."""
+        """The entry of an App Store app, or None after the warning (BEHAVIOR.md, Ad5)."""
         if not (self.env.repo / KINDS["mas"].file).is_file():
             ui.warn(f"{tool}: nix/mas.txt does not exist. Create it, and list it in dotkit.lists.masApps in "
                     "nix/darwin.nix.")

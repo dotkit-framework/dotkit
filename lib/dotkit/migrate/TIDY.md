@@ -1,8 +1,8 @@
 # Design: `dotkit tidy`
 
-Status: all three phases are implemented in `lib/dotkit/migrate/tidy/`: apps
-(sections 3 to 6), command-line tools (section 8.1), and installer packages
-(section 8.2).
+`dotkit tidy` is in `lib/dotkit/migrate/tidy/`. It covers apps (sections 3
+to 6), command-line tools (section 8.1), and installer packages (section
+8.2).
 
 ## 1. The problem
 
@@ -360,11 +360,7 @@ Rules:
   one sentence: the package changes the Mac only in the tidy mode, through
   `tidy/actions.py`.
 
-## 8. Phases
-
-1. **Apps:** sections 3 to 6.
-2. **Command-line tools:** section 8.1.
-3. **Installer packages:** section 8.2.
+## 8. Beyond apps
 
 ### 8.1 Command-line tools
 
@@ -432,8 +428,8 @@ The check adds to section 5:
 
 The apply adds to section 6: `uninstall` runs the command of the table, with
 its output on the terminal. `trash` moves the file or the directory to the
-Trash. Before a line runs, tidy checks that its path still exists. Phase 2
-writes nothing to the lists.
+Trash. Before a line runs, tidy checks that its path still exists. A tool
+line writes nothing to the lists.
 
 ### 8.2 Installer packages
 
@@ -444,7 +440,7 @@ relative to the volume and the location. The third part of the plan has one
 line per receipt that is not Apple's (`com.apple.*`).
 
 The scan (`tidy/pkgs.py`, read-only, with the rules of section 7) reads all
-receipts once. The phase 1 scan also uses them: an app that a receipt lists
+receipts once. The scan of the apps also uses them: an app that a receipt lists
 has the source `pkg` and the system parts of that receipt. `pkgutil
 --file-info` missed apps that a receipt lists, such as Tailscale.app.
 
@@ -487,7 +483,7 @@ A receipt whose files are all gone is harmless, but it is noise in
 `pkgutil --pkgs`; forgetting it changes no file. Google's updater and the
 updater of ChatGPT Classic left such receipts on the Mac where this was
 written. A live package is `keep` by default, because its app usually has a
-line of its own in phase 1.
+line of its own among the apps.
 
 The plan line has the thing `pkg:<id>` and the path of the first present app,
 else the first present unit, else the first unit:
@@ -564,11 +560,11 @@ directory says where they were.
   adopted by `dotkit add cask:maccy`, through brew bundle, which passes
   `--adopt`. Both times the bundle must be the same directory (its inode),
   a setting in the preferences of the app must stay, and `nix/casks.txt`
-  must have the token. Then phase 2: the CI job installs pycowsay with pipx
+  must have the token. Then the command-line tools: the CI job installs pycowsay with pipx
   before setup, and the wizard moves it to mise. `dotkit tidy -n` must
   propose `uninstall pipx:pycowsay`, and `trash` for a copy of `jq` in
   `~/.local/bin`. After the plan runs, pipx does not have pycowsay, the
-  Trash has `jq`, and the `pycowsay` of mise runs. Then phase 3: it builds
+  Trash has `jq`, and the `pycowsay` of mise runs. Then the installer packages: it builds
   two packages with `pkgbuild` and installs them with `installer`, and
   deletes the file of the second one. `dotkit tidy -n` must propose `keep`
   for the first and `uninstall` for the second. After `uninstall` of both,
@@ -577,7 +573,7 @@ directory says where they were.
 
 ## 10. Decisions
 
-1. **No `ignore` verb in phase 1.** `keep` has no memory, so the next run
+1. **No `ignore` verb.** `keep` has no memory, so the next run
    proposes the same apps again.
 2. **Tidy does not run `dotkit apply`** (section 6), because an apply also
    builds Nix.

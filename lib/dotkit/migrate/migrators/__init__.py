@@ -5,7 +5,7 @@ catalog, model, docs (through the Txn it gets), declared, rcparse, secrets,
 base, _compat (for tomllib), report (only plural), and its own helpers. It
 never imports ui, writer, proc, subprocess, or curses, never writes a file,
 and never runs a command but through ctx.runner in its scan
-(ARCHITECTURE.md, sections 3, 4.1, and 6). The AST test of
+(ARCHITECTURE.md, sections 2, 3.1, and 5). The AST test of
 tests/test_registry.py enforces this.
 """
 
@@ -50,7 +50,7 @@ def and_list(names: List[str]) -> str:
 
 
 def before_removal(path: str, directory: bool = True) -> str:
-    """A removal command and its reference check (ARCHITECTURE.md, section 11), to follow "Before " or "before ".
+    """A removal command and its reference check (ARCHITECTURE.md, section 10), to follow "Before " or "before ".
 
     The path has the home as ~: "`rm -rf ~/.pyenv`, check that nothing points into it: ...".
     """

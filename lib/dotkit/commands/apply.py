@@ -1,4 +1,4 @@
-"""dotkit apply: Nix, Homebrew, and mise (PARITY.md, rows A)."""
+"""dotkit apply: Nix, Homebrew, and mise (BEHAVIOR.md, rows A)."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def apply(env: Env, dry_run: bool) -> int:
 
 def preview_brew_cleanup(env: Env, n: nix.Nix) -> int:
     """Shows what `brew bundle cleanup` removes for the built Brewfile, when activation uninstalls
-    (homebrew.onActivation.cleanup is not "none"). Returns an exit code (PARITY.md, A7 and A8)."""
+    (homebrew.onActivation.cleanup is not "none"). Returns an exit code (BEHAVIOR.md, A7 and A8)."""
     if not (os.path.isfile(BREW) and os.access(BREW, os.X_OK)):
         return 0
     # A failed evaluation gives no text, which is not "none": the next evaluation stops with its error.

@@ -20,6 +20,6 @@ An app cask and a formula with the same name stop with an error.
 
 The modules: lookups.py asks the sources, declared.py reads the lists and
 finds installed commands, resolve.py selects a source, and edit.py changes
-the lists and applies them. cli.py has the commands. lib/tests/PARITY.md has
+the lists and applies them. cli.py has the commands. lib/tests/BEHAVIOR.md has
 the behavior of each, row by row.
 """

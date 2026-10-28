@@ -3,7 +3,7 @@
 restore() writes each copy back into the file (a link stays a link), and
 both restore() and discard() remove the copies. Stopped is the exception for
 SIGTERM and SIGHUP; on_signals() turns them into it, so that a `finally` or
-an `except` can restore the files, as the traps of the Bash scripts did.
+an `except` can restore the files.
 """
 
 from __future__ import annotations

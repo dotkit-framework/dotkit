@@ -1,4 +1,4 @@
-"""dotkit history, rollback, and clean (PARITY.md, rows H and K)."""
+"""dotkit history, rollback, and clean (BEHAVIOR.md, rows H and K)."""
 
 from __future__ import annotations
 

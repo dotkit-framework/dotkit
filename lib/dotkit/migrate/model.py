@@ -132,7 +132,7 @@ PHASE_TEXT = {"scan": "scanning", "pages": "preparing its questions", "plan": "p
 
 @dataclass
 class Failure:
-    """A part of the migration that crashed, was skipped, or had a conflict (ARCHITECTURE.md, section 7)."""
+    """A part of the migration that crashed, was skipped, or had a conflict (ARCHITECTURE.md, section 6)."""
 
     migrator: str  # its key, or "identity"
     title: str

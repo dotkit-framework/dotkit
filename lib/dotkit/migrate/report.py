@@ -103,7 +103,7 @@ def adopt_lines(added: list[tuple[str, list[str]]], doc) -> list[str]:
 
 
 def problem_item(f: Failure) -> str:
-    """The item of a model.Failure under "Problems during the migration" (ARCHITECTURE.md, section 7.4)."""
+    """The item of a model.Failure under "Problems during the migration" (ARCHITECTURE.md, section 6.4)."""
     by_hand = f" By hand: {f.manual}" if f.manual else ""
     if f.phase == "conflict":
         return f"**{f.title}**: {conflict_text(f)} {f.error}. Please report it."

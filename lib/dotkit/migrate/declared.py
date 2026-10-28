@@ -1,6 +1,6 @@
 """Declared: what the base, the repository, and your mise config provide already.
 
-One rule for setup and for `dotkit migrate` (ARCHITECTURE.md, section 4.5):
+One rule for setup and for `dotkit migrate` (ARCHITECTURE.md, section 3.5):
 what is declared is not added again. A Homebrew formula is skipped when
 brew() names what provides it; an npm, pipx, cargo, or Go tool when tool()
 is true, or when your mise config has its key (yours_mise_key; in adopt

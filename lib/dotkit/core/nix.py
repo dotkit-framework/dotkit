@@ -2,7 +2,7 @@
 
 With DOTKIT_DIR, the commands that read the flake get the override of
 env.Env.override, and their stderr goes through LockWarning: it drops the
-warning that Nix prints for each command with --override-input (PARITY.md,
+warning that Nix prints for each command with --override-input (BEHAVIOR.md,
 rows A9 and A10).
 """
 
@@ -61,7 +61,7 @@ class Nix:
         return proc.run(["nix", "build", f"{drv.value}^*", "--out-link", str(self.env.result)]).code
 
     def switch(self) -> int:
-        """Builds as this user, then activates as root; the first failure stops it (PARITY.md, B2).
+        """Builds as this user, then activates as root; the first failure stops it.
 
         darwin-rebuild switch would evaluate the flake again as root, and root
         cannot read the Git repository of another user (a git+file input such

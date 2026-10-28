@@ -1,4 +1,4 @@
-"""Where a tool is declared (PARITY.md, D), and which global tool supplies a command (X)."""
+"""Where a tool is declared (BEHAVIOR.md, D), and which global tool supplies a command (X)."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def existing_command(env: Env, command: str) -> Optional[str]:
 
 
 def origin(path: str, home: Path) -> str:
-    """The source of a command path, for example "nix ripgrep-15.2.0" (PARITY.md, X2)."""
+    """The source of a command path, for example "nix ripgrep-15.2.0" (BEHAVIOR.md, X2)."""
     real = os.path.realpath(path) if os.path.exists(path) else path
     mise_dir = os.environ.get("MISE_DATA_DIR") or f"{home}/.local/share/mise"
 

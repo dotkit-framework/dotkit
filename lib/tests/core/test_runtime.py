@@ -1,8 +1,8 @@
 """core/env.py, args.py, ui.py, proc.py, nix.py, and backup.py.
 
-The Nix tests use the fake tools of the parity tests (tests/cli/fakebin.py).
-The lock warning filter is compared with the awk program of scripts/nix.sh
-(deleted in step 7 of CLI-PLAN.md), copied here.
+The Nix tests use the fake tools of the scenario tests (tests/cli/fakebin.py).
+The lock warning filter is compared with the awk program that it replaced,
+copied here.
 """
 
 from __future__ import annotations
@@ -203,7 +203,7 @@ class NixTests(unittest.TestCase):
         self.assertEqual(len(self.calls()), 1)
 
     def test_switch_stops_at_the_first_failure(self):
-        """PARITY.md, B2: a failed nix-env --set stops the switch."""
+        """A failed nix-env --set stops the switch."""
         link = [{"tool": "nix", "re": "^build", "actions": [{"link_after": "--out-link", "to": "/sys"}]}]
         n = self.nix(link + [{"tool": "sudo", "re": "nix-env", "exit": 5}, {"tool": "sudo", "re": ""}])
         self.assertEqual(n.switch(), 5)

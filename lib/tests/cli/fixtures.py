@@ -1,4 +1,4 @@
-"""Rules of the fake tools (fakebin.py) for the parity scenarios, with the output formats of the real tools.
+"""Rules of the fake tools (fakebin.py) for the scenarios, with the output formats of the real tools.
 
 Each function returns a list of rules. The JSON shapes come from real output:
 brew 5 (`brew info --json=v2`, `brew outdated --json=v2`), mise 2026.10
