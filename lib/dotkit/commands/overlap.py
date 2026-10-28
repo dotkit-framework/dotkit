@@ -279,19 +279,22 @@ def _remember(env: Env, found: List[Overlap]) -> None:
         ui.warn(f"cannot write {path}: {e}.")
 
 
-def _color(line: str) -> str:
-    if not sys.stderr.isatty() or os.environ.get("NO_COLOR") or line.startswith(("+++", "---")):
+def _color(line: str, stream) -> str:
+    """A line of a diff in colors, when stream is a terminal and NO_COLOR is not set."""
+    if not stream.isatty() or os.environ.get("NO_COLOR") or line.startswith(("+++", "---")):
         return line
     code = {"+": "32", "-": "31", "@": "36"}.get(line[:1])
     return f"\033[{code}m{line}\033[0m" if code else line
 
 
-def show(found: List[Overlap]) -> None:
+def show(found: List[Overlap], stdout: bool = False) -> None:
+    """The overlaps on stderr, or on stdout for doctor."""
+    write, stream = (ui.out, sys.stdout) if stdout else (ui.note, sys.stderr)
     width = max(ui.width(o.where) for o in found)
     for o in found:
-        ui.note(f"  {ui.pad(o.where, width)}  {o.text}")
+        write(f"  {ui.pad(o.where, width)}  {o.text}")
         for line in o.detail:
-            ui.note("      " + _color(line))
+            write("      " + _color(line, stream))
 
 
 def report(env: Env, system: Path, dry_run: bool) -> None:
@@ -320,9 +323,5 @@ def doctor(env: Env, system: Path = ACTIVE) -> int:
         ui.out("Your dotfiles do not repeat or replace any part of the dotkit base.")
         return 0
     ui.out("Your dotfiles repeat or replace these parts of the dotkit base:")
-    width = max(ui.width(o.where) for o in found)
-    for o in found:
-        ui.out(f"  {ui.pad(o.where, width)}  {o.text}")
-        for line in o.detail:
-            ui.out("      " + line)
+    show(found, stdout=True)
     return 0
