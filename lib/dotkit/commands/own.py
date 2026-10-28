@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Union
 
-from ..core import nix, ui
+from ..core import nix, paths, ui
+from ..core.nix_links import nix_string
 from ..core.env import Env
 from ..migrate.base import OWN_FILES
 from ..pkg import edit
@@ -102,10 +103,10 @@ def _insert_point(env: Env, target: str, source: str) -> Optional[tuple]:
         for i, line in enumerate(_read(path)):
             m = BLOCK.match(line)
             if m:
-                blocks.append((path, i, f'{m.group("indent")}  "{target}" = "{source}";'))
+                blocks.append((path, i, f'{m.group("indent")}  {nix_string(target)} = {nix_string(source)};'))
             m = DOTTED.match(line)
             if m:
-                dotted.append((path, i, f'{m.group("indent")}dotkit.links."{target}" = "{source}";'))
+                dotted.append((path, i, f'{m.group("indent")}dotkit.links.{nix_string(target)} = {nix_string(source)};'))
     if len(blocks) == 1:
         return blocks[0]
     if not blocks and dotted:
@@ -115,14 +116,12 @@ def _insert_point(env: Env, target: str, source: str) -> Optional[tuple]:
 
 def _link_lines(env: Env, target: str) -> List[tuple]:
     """(file, line index) of each line that sets the link of target."""
-    row = re.compile(r'^\s*(dotkit\.links\.)?"' + re.escape(target) + r'"\s*=\s*(null|"[^"]*")\s*;\s*(#.*)?$')
+    row = re.compile(r'^\s*(dotkit\.links\.)?' + re.escape(nix_string(target)) + r'\s*=\s*(null|"[^"]*")\s*;\s*(#.*)?$')
     return [(path, i) for path in _nix_files(env) for i, line in enumerate(_read(path)) if row.match(line)]
 
 
 def _yours(env: Env, source: Optional[str]) -> str:
-    if source is None:
-        return "null"
-    return source[len(str(env.repo)) + 1:] if source.startswith(f"{env.repo}/") else source
+    return "null" if source is None else paths.display(source, env.repo, env.dotkit, env.home)
 
 
 class Own:

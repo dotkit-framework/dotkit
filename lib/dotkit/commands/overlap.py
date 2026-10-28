@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ..core import lists, mise_toml, ui
+from ..core import lists, mise_toml, paths, ui
 from ..core.env import Env
 
 MANIFEST = "etc/dotkit/links.json"
@@ -55,18 +55,6 @@ def _hash(*parts: object) -> str:
     return h.hexdigest()[:16]
 
 
-def _tilde(path: str, home: Path) -> str:
-    return "~" + path[len(str(home)):] if path == str(home) or path.startswith(f"{home}/") else path
-
-
-def _short(path: str, env: Env, dotkit: Path) -> str:
-    """A source path for a message: relative in the repository, "dotkit FILE" in the base, else as it is."""
-    for root, label in ((env.repo, ""), (dotkit, "dotkit ")):
-        if path.startswith(f"{root}/"):
-            return label + path[len(str(root)) + 1:]
-    return _tilde(path, env.home)
-
-
 # --- tools
 
 
@@ -92,7 +80,7 @@ def tools(env: Env, dotkit: Path) -> List[Overlap]:
         if value == base_value:
             text = f"{key} is the same in the dotkit base. Remove yours: dotkit remove {key}"
         else:
-            text = (f"{key} = {mise_toml.inline(value)} replaces {mise_toml.inline(base_value)} of the dotkit base.")
+            text = (f"{key} = {mise_toml.toml_value(value)} replaces {mise_toml.toml_value(base_value)} of the dotkit base.")
         out.append(Overlap(f"mise:{key}", rel, text, fingerprint=_hash(value, base_value)))
     return out
 
@@ -184,8 +172,8 @@ def links(env: Env, manifest: dict, dotkit: Path) -> List[Overlap]:
                 text += f" Its tool reads ~/{layer} after the base file: put your settings there instead."
             out.append(Overlap(f"link:{target}", where, text, fingerprint=_hash(None)))
             continue
-        yours = _short(source, env, dotkit)
-        c = compare(base[target], source, _short(base[target], env, dotkit), yours)
+        yours = paths.display(source, env.repo, dotkit, env.home)
+        c = compare(base[target], source, paths.display(base[target], env.repo, dotkit, env.home), yours)
         if c.kind == "same":
             out.append(Overlap(f"link:{target}", where, f"your {yours} is the same as the base file. "
                                f"Give it back: dotkit own --release {where}", fingerprint=c.fingerprint))
@@ -211,14 +199,6 @@ def _content(path: Path) -> str:
         return ""
 
 
-def _managed(path: Path) -> bool:
-    """A link of Home Manager: it points into the Nix store."""
-    try:
-        return path.is_symlink() and os.readlink(path).startswith("/nix/store/")
-    except OSError:
-        return False
-
-
 def moved(env: Env, manifest: dict, dry_run: bool) -> List[Overlap]:
     """The files that an apply moved aside, and with dry_run the ones that the apply will move."""
     ext = manifest.get("backupFileExtension")
@@ -242,7 +222,7 @@ def moved(env: Env, manifest: dict, dry_run: bool) -> List[Overlap]:
                 text += f" Compare it with ~/{rel}, take what you need, then delete it."
             out.append(Overlap(f"moved:{rel}", f"~/{rel}.{ext}", text, fingerprint=_content(backup)))
         path = env.home / target
-        if dry_run and os.path.lexists(path) and not _managed(path):
+        if dry_run and os.path.lexists(path) and not paths.is_managed(path):
             text = f"apply moves your file to ~/{target}.{ext} and links the file of your configuration."
             if target in layers:
                 text += f" Move your settings to ~/{layers[target]} first."

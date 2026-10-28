@@ -29,6 +29,9 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional, Tuple
 
+from ..core.mise_toml import bare_or_quoted as _bare_or_quoted
+from ..core.mise_toml import toml_key, toml_value  # noqa: F401 - the migrators import them from here
+from ..core.nix_links import nix_string  # noqa: F401 - the migrators import it from here
 from . import base as base_mod
 from . import rcparse, secrets, secrets_file
 from ._compat import tomllib
@@ -36,37 +39,6 @@ from .context import tilde
 from .report import SECTIONS
 
 # --- Text helpers
-
-
-def nix_string(s: str) -> str:
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("${", "\\${") + '"'
-
-
-_TOML_ESCAPES = {"\b": "\\b", "\t": "\\t", "\n": "\\n", "\f": "\\f", "\r": "\\r", '"': '\\"', "\\": "\\\\"}
-
-
-def toml_key(s: str) -> str:
-    """A TOML basic string: a quoted key, or a string value."""
-    return '"' + "".join(_TOML_ESCAPES.get(c, c if c >= " " and c != "\x7f" else f"\\u{ord(c):04x}")
-                         for c in s) + '"'
-
-
-def _bare_or_quoted(key: str) -> str:
-    return key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else toml_key(key)
-
-
-def toml_value(v: object) -> str:
-    """A value that _check_value accepts, as TOML on one line."""
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, int):
-        return str(v)
-    if isinstance(v, str):
-        return toml_key(v)
-    if isinstance(v, list):
-        return "[" + ", ".join(toml_value(x) for x in v) + "]"
-    assert isinstance(v, dict)
-    return "{ " + ", ".join(f"{_bare_or_quoted(k)} = {toml_value(x)}" for k, x in v.items()) + " }"
 
 
 def insert_tools(text: str, lines: List[str]) -> str:

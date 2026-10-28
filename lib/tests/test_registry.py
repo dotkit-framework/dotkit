@@ -249,7 +249,7 @@ class NoWriteTests(unittest.TestCase):
 # The .todo(...) calls whose intro the static check cannot read, and why.
 NOT_STATIC = {
     # ReportView.todo hands its arguments on to ReportDoc.todo: the intro is whatever its caller gave.
-    "dotkit/migrate/docs.py:1059",
+    "dotkit/migrate/docs.py:1031",
     # rcparse.hint(...): test_rcparse_hints_have_no_secret checks every hint with both file names.
     "dotkit/migrate/migrators/shell.py:324",
 }

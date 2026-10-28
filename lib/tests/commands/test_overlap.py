@@ -145,14 +145,16 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(own.resolve("git-status", m, home), [])
 
 
-class InlineTests(unittest.TestCase):
+class TomlValueTests(unittest.TestCase):
     def test_values(self):
-        self.assertEqual(mise_toml.inline("lts"), '"lts"')
-        self.assertEqual(mise_toml.inline(["22", "20"]), '["22", "20"]')
-        self.assertEqual(mise_toml.inline({"version": "latest", "minimum_release_age": "1d"}),
+        self.assertEqual(mise_toml.toml_value("lts"), '"lts"')
+        self.assertEqual(mise_toml.toml_value(["22", "20"]), '["22", "20"]')
+        self.assertEqual(mise_toml.toml_value({"version": "latest", "minimum_release_age": "1d"}),
                          '{ version = "latest", minimum_release_age = "1d" }')
-        self.assertEqual(mise_toml.inline({"a.b": True, "n": 1}), '{ "a.b" = true, n = 1 }')
-        self.assertEqual(mise_toml.inline({}), "{}")
+        self.assertEqual(mise_toml.toml_value({"a.b": True, "n": 1}), '{ "a.b" = true, n = 1 }')
+        self.assertEqual(mise_toml.toml_value({}), "{}")
+        self.assertEqual(mise_toml.toml_value(1.5), "1.5")
+        self.assertEqual(mise_toml.toml_value(__import__("datetime").date(2026, 1, 2)), '"2026-01-02"')
 
 
 if __name__ == "__main__":

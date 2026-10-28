@@ -51,18 +51,32 @@ def short(key: str) -> str:
     return re.split(r"[:/]", key)[-1]
 
 
-def inline(value: object) -> str:
-    """A value as TOML on one line: "lts", { version = "latest", minimum_release_age = "1d" }, ["22", "20"]."""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, list):
-        return "[" + ", ".join(inline(v) for v in value) + "]"
-    if isinstance(value, dict):
-        def key(k: str) -> str:
-            return k if re.fullmatch(r"[A-Za-z0-9_-]+", k) else json.dumps(k, ensure_ascii=False)
-        return "{ " + ", ".join(f"{key(k)} = {inline(v)}" for k, v in value.items()) + " }" if value else "{}"
-    return json.dumps(value, default=str)
+_TOML_ESCAPES = {"\b": "\\b", "\t": "\\t", "\n": "\\n", "\f": "\\f", "\r": "\\r", '"': '\\"', "\\": "\\\\"}
+
+
+def toml_key(s: str) -> str:
+    """A TOML basic string: a quoted key, or a string value."""
+    return '"' + "".join(_TOML_ESCAPES.get(c, c if c >= " " and c != "\x7f" else f"\\u{ord(c):04x}")
+                         for c in s) + '"'
+
+
+def bare_or_quoted(key: str) -> str:
+    """A TOML key: bare when it can be, else quoted."""
+    return key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else toml_key(key)
+
+
+def toml_value(v: object) -> str:
+    """A value as TOML on one line: "lts", { version = "latest", minimum_release_age = "1d" }, ["22", "20"].
+    The migration writes the values that docs._check_value accepts; another value (a date of a TOML file)
+    becomes its text."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, str):
+        return toml_key(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(toml_value(x) for x in v) + "]"
+    if isinstance(v, dict):
+        return "{ " + ", ".join(f"{bare_or_quoted(k)} = {toml_value(x)}" for k, x in v.items()) + " }" if v else "{}"
+    return toml_key(str(v))
