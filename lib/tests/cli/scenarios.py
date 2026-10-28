@@ -95,6 +95,7 @@ def options() -> List[S]:
         S("option-all-long-not-migrate", ["apply", "--all"], rows=["O6"]),
         S("option-history-dry-run", ["history", "-n"], rows=["O6"]),
         S("option-rollback-yes", ["rollback", "--yes"], rows=["O6"]),
+        S("option-doctor-args", ["doctor", "-n", "x"], rows=["O4", "O6"]),
         S("option-apply-yes", ["apply", "-y"], rows=["O7"]),
         S("option-apply-dry-run-long", ["apply", "--dry-run", "x"], rows=["O1", "A1"]),
         S("option-checks-before-arguments", ["history", "x", "-n"], rows=["O4"]),
@@ -106,7 +107,12 @@ def options() -> List[S]:
 def apply() -> List[S]:
     return [
         S("apply-args", ["apply", "x"], rows=["A1"]),
-        S("apply", ["apply"], rules=fx.apply_ok(), rows=["A2"]),
+        S("apply", ["apply"], rules=fx.apply_ok(), rows=["A2", "C10"]),
+        S("color-apply", ["apply"], rules=fx.apply_ok(), tty="", color=True, rows=["C9", "C10"]),
+        S("color-errors", ["remove", "dkt-x", "nix:jq"], tty="n\n", color=True, rows=["C9"]),
+        S("color-no-color-flag", ["remove", "dkt-x", "--no-color"], tty="", color=True, rows=["C9"]),
+        S("color-no-color-env", ["remove", "dkt-x"], tty="", color=True, env={"DOTKIT_NO_COLOR": "1"}, rows=["C9"]),
+        S("color-option-error", ["apply", "--frob"], tty="", color=True, rows=["C9"]),
         S("apply-build-fails", ["apply"], rules=fx.build(fails=True), rows=["A3"]),
         S("apply-switch-fails", ["apply"], rules=fx.build() + fx.switch_fails() + fx.switch_ok(), rows=["A4"]),
         S("apply-mise-fails", ["apply"], rules=fx.build() + fx.switch_ok() + fx.mise_fails("install"),
@@ -138,7 +144,7 @@ def upgrade() -> List[S]:
           rows=["U4", "U5", "U9", "U10", "U11"]),
         S("upgrade-nix-up-to-date", ["upgrade", "nix"], rules=fx.flake_update(REPO_LOCK, SAME_REPO_LOCK),
           rows=["U5", "U8"]),
-        S("upgrade-nix-yes", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_ok(), rows=["U13", "U14"]),
+        S("upgrade-nix-yes", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_ok(), rows=["U13", "U14", "C10"]),
         S("upgrade-nix-no-terminal", ["upgrade", "nix"], rules=nix_rules, rows=["U12", "U15", "Q1"]),
         S("upgrade-nix-tty-no", ["upgrade", "nix"], rules=nix_rules, tty="n\n", rows=["U12"]),
         S("upgrade-nix-tty-yes", ["upgrade", "nix"], rules=nix_rules + fx.switch_ok(), tty="y\n",
@@ -181,6 +187,141 @@ def upgrade() -> List[S]:
     ]
 
 
+manifest = fx.manifest
+
+
+MANIFEST = "system-1/etc/dotkit/links.json"
+# The tools of the repository that the base of harness.BASE has too: a name of a list, a key with the same
+# value, and a key with another value.
+TOOL_OVERLAPS = {
+    "repo/nix/packages.txt": "jq\nfd\n",
+    "repo/nix/brews.txt": "wget\n",
+    "repo/config/mise.toml": '[tools]\nnode = "22"\n"npm:@dkt-ai/dkt-code" = "latest"\n'
+                             '"npm:cowsay" = { version = "1.6.0", minimum_release_age = "1d" }\n',
+}
+STARSHIP = "".join(f"line {i}\n" for i in range(1, 11))
+LINK_OVERLAPS = {
+    MANIFEST: manifest(
+        {".config/starship.toml": "dotkit/config/starship.toml", ".config/uv/uv.toml": "dotkit/config/uv.toml",
+         ".config/git/config": "dotkit/config/gitconfig", ".npmrc": "dotkit/config/npmrc",
+         ".gemrc": "dotkit/config/gemrc", ".editorconfig": "dotkit/config/editorconfig",
+         ".zshrc": "dotkit/config/zshrc"},
+        {".config/starship.toml": "repo/config/starship.toml", ".config/uv/uv.toml": "repo/config/uv.toml",
+         ".config/git/config": "repo/config/gitconfig", ".npmrc": "repo/config/npmrc", ".editorconfig": None,
+         ".config/nvim": "repo/config/nvim"},
+        {".config/git/config": ".gitconfig", ".zshrc": ".zshrc.local"}),
+    "dotkit/config/starship.toml": STARSHIP,
+    "repo/config/starship.toml": STARSHIP.replace("line 4\n", "line four\n") + "line 11\n",
+    "dotkit/config/uv.toml": "a = 1\nb = 2\nc = 3\n",
+    "repo/config/uv.toml": "x = 9\ny = 8\nz = 7\nw = 6\n",
+    "dotkit/config/gitconfig": "[core]\n  pager = delta\n[include]\n  path = ~/.gitconfig\n",
+    "repo/config/gitconfig": "[core]\n  pager = less\n[include]\n  path = ~/.gitconfig\n",
+    "dotkit/config/npmrc": "min-release-age=7\n",
+    "repo/config/npmrc": "min-release-age=7  \n\n",
+    "dotkit/config/gemrc": "", "dotkit/config/editorconfig": "", "dotkit/config/zshrc": "",
+    "home/.zshrc.before-dotkit": "export OLD=1\n",
+    "home/.config/nvim.before-dotkit": "old\n",
+}
+
+
+def overlap() -> List[S]:
+    dry = fx.build() + fx.diff_closures() + fx.cleanup_mode("none") + fx.mise_ok("install --dry-run")
+    known = json.dumps({"version": 1, "seen": {"nix:fd": "", "formula:wget": "", "mise:node": "stale"}})
+    nix_rules = fx.flake_update(REPO_LOCK, NEW_REPO_LOCK) + fx.build() + fx.diff_closures()
+    return [
+        S("overlap-none", ["apply"], rules=fx.apply_ok(), rows=["Ov3", "Ov7"]),
+        S("overlap-tools", ["apply"], rules=fx.apply_ok(), files=TOOL_OVERLAPS, rows=["A2", "Ov1", "Ov2", "Ov7"]),
+        S("overlap-known", ["apply"], rules=fx.apply_ok(),
+          files={**TOOL_OVERLAPS, "home/.local/state/dotkit/overlaps.json": known}, rows=["Ov7"]),
+        S("overlap-all-known", ["apply"], rules=fx.apply_ok(), rows=["Ov7"],
+          files={"repo/nix/packages.txt": "fd\n", "home/.local/state/dotkit/overlaps.json": known}),
+        S("overlap-xdg-state", ["apply"], rules=fx.apply_ok(), env={"XDG_STATE_HOME": "@SB/home/state"},
+          files={"repo/nix/packages.txt": "fd\n"}, rows=["Ov7"]),
+        S("overlap-bad-toml", ["apply"], rules=fx.apply_ok(), files={"repo/config/mise.toml": "[tools\n"},
+          rows=["Ov2"]),
+        S("overlap-links", ["apply"], rules=fx.apply_ok(), files=LINK_OVERLAPS, rows=["Ov3", "Ov4", "Ov5", "Ov7"]),
+        S("overlap-links-dry-run", ["apply", "-n"], rules=dry, skip=real_brew(True), rows=["A6", "Ov6", "Ov7"],
+          files={**LINK_OVERLAPS, "home/.config/starship.toml": "mine\n", "home/.zshrc": "mine\n"}),
+        S("overlap-bad-manifest", ["apply"], rules=fx.apply_ok(), files={MANIFEST: "{"}, rows=["Ov3"]),
+        S("overlap-new-manifest", ["apply"], rules=fx.apply_ok(), files={MANIFEST: manifest({}, {}, version=2)},
+          rows=["Ov3"]),
+        S("overlap-upgrade", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_ok(), files=TOOL_OVERLAPS,
+          rows=["U14", "Ov7"]),
+        S("overlap-upgrade-dry-run", ["upgrade", "-n", "nix"], rules=nix_rules, files=TOOL_OVERLAPS,
+          rows=["U11", "Ov7"]),
+    ]
+
+
+OWN_HOME_NIX = ('{\n  imports = [ ./shell.nix ];\n\n  dotkit.links = {\n    ".zshrc.local" = "config/zsh/zshrc";\n'
+                '    ".config/starship.toml" = "config/my-starship.toml";\n  };\n}\n')
+OWN_FILES = {
+    "repo/nix/home.nix": OWN_HOME_NIX,
+    "repo/config/my-starship.toml": "mine\n",
+    "dotkit/config/herdr.toml": "# dotkit base. herdr reads one\n# config file.\n\nonboarding = false\n",
+    "dotkit/config/starship.toml": "# starship base\n",
+    "dotkit/config/gemrc": "gem: --no-document\n",
+    "dotkit/config/zsh/zshrc": "",
+    "dotkit/config/gitconfig": "",
+    "dotkit/config/gitignore": "",
+    "dotkit/scripts/herdr/git-status.sh": "",
+}
+
+
+def own_manifest(links: Optional[dict] = None) -> str:
+    """The manifest of the configuration, as `nix eval` prints it."""
+    base = {".config/herdr/config.toml": "dotkit/config/herdr.toml", ".config/starship.toml": "dotkit/config/starship.toml",
+            ".gemrc": "dotkit/config/gemrc", ".zshrc": "dotkit/config/zsh/zshrc",
+            ".config/git/config": "dotkit/config/gitconfig", ".config/git/ignore": "dotkit/config/gitignore",
+            ".config/herdr/git-status.sh": "dotkit/scripts/herdr/git-status.sh"}
+    mine = {".zshrc.local": "repo/config/zsh/zshrc", ".config/starship.toml": "repo/config/my-starship.toml",
+            **(links or {})}
+    return manifest(base, mine, {".zshrc": ".zshrc.local", ".config/git/config": ".gitconfig"})
+
+
+def eval_manifest(links: Optional[dict] = None, text: Optional[str] = None) -> List[dict]:
+    return [{"tool": "nix", "re": r"^eval --raw \S+links\.json", "stdout": own_manifest(links) if text is None else text}]
+
+
+def own() -> List[S]:
+    ok = eval_manifest() + fx.build_once() + fx.apply_ok()
+    dotted = {**OWN_FILES, "repo/nix/home.nix": '{\n  dotkit.links.".zshrc.local" = "config/zsh/zshrc";\n'
+                                                 '  dotkit.links.".config/starship.toml" = "config/my-starship.toml";\n'
+                                                 '  home.stateVersion = "26.05";\n}\n'}
+    return [
+        S("own-dry-run", ["own", "-n", "herdr", "~/.gemrc", ".config/herdr/config.toml"], rules=eval_manifest(),
+          files=OWN_FILES, rows=["Ow1", "Ow2", "Ow3", "Ow8"]),
+        S("own-yes", ["own", "-y", "herdr"], rules=ok, files=OWN_FILES, rows=["Ow3", "Ow4", "Ow9"]),
+        S("own-two", ["own", "-y", "herdr", "gemrc"], rules=ok, files=OWN_FILES, rows=["Ow8", "Ow9"]),
+        S("own-acknowledged", ["own", "-y", "herdr"], rules=ok, rows=["Ow9", "Ov7"],
+          files={**OWN_FILES, MANIFEST: manifest({".config/herdr/config.toml": "dotkit/config/herdr.toml"},
+                                                 {".config/herdr/config.toml": "repo/config/herdr.toml"})}),
+        S("own-null", ["own", "gemrc"], rules=eval_manifest({".gemrc": None}), files=OWN_FILES, rows=["Ow5"]),
+        S("own-dotted", ["own", "-y", "~/.gemrc"], rules=ok, files=dotted, rows=["Ow2", "Ow4"]),
+        S("own-no-links", ["own", "herdr"], rules=eval_manifest(), rows=["Ow4", "Ow8"],
+          files={**OWN_FILES, "repo/nix/home.nix": "{ }\n"}),
+        S("own-refused", ["own", "-n", ".zshrc", "~/.config/git/config", "~/.config/herdr/git-status.sh", "~/.npmrc",
+                          "~/.vimrc", "zsh", "git"], rules=eval_manifest(), files=OWN_FILES,
+          rows=["Ow2", "Ow5", "Ow8"]),
+        S("own-already", ["own", "starship", "~/.zshrc.local"], rules=eval_manifest(), files=OWN_FILES, rows=["Ow6"]),
+        S("own-copy-exists", ["own", "herdr"], rules=eval_manifest(),
+          files={**OWN_FILES, "repo/config/herdr.toml": "x\n"}, rows=["Ow3"]),
+        S("own-no-terminal", ["own", "herdr"], rules=eval_manifest(), files=OWN_FILES, rows=["Ow8", "Q1"]),
+        S("own-tty-no", ["own", "herdr"], rules=eval_manifest(), files=OWN_FILES, tty="n\n", rows=["Ow8"]),
+        S("own-build-fails", ["own", "-y", "herdr"], rules=eval_manifest() + fx.build(fails=True), files=OWN_FILES,
+          rows=["Ow9"]),
+        S("own-eval-fails", ["own", "herdr"], rules=fx.nix_eval_fails(), files=OWN_FILES, rows=["Ow1"]),
+        S("own-bad-manifest", ["own", "herdr"], rules=eval_manifest(text="{}"), files=OWN_FILES, rows=["Ow1"]),
+        S("own-release", ["own", "-y", "--release", "starship"], rules=ok, files=OWN_FILES, rows=["Ow7", "Ow9"]),
+        S("own-release-dotted-null", ["own", "-y", "--release", "~/.gemrc"], rules=eval_manifest({".gemrc": None})
+          + fx.build_once() + fx.apply_ok(), rows=["Ow7"],
+          files={**OWN_FILES, "repo/nix/home.nix": '{\n  dotkit.links.".gemrc" = null; # off\n}\n'}),
+        S("own-release-not-owned", ["own", "--release", "herdr", "~/.vimrc"], rules=eval_manifest(), files=OWN_FILES,
+          rows=["Ow7"]),
+        S("own-release-no-line", ["own", "--release", "starship"], rules=eval_manifest(), rows=["Ow7"],
+          files={**OWN_FILES, "repo/nix/home.nix": "{ }\n"}),
+    ]
+
+
 def clean() -> List[S]:
     dry = [{"tool": "sudo", "re": "^nix-collect-garbage"}] + fx.brew(r"^cleanup --dry-run$",
                                                                      "Would remove: x (1MB)\n") \
@@ -195,7 +336,7 @@ def clean() -> List[S]:
         S("clean-tty-no", ["clean", "7d"], rules=wet, tty="n\n", rows=["K4", "Q1"]),
         S("clean-tty-yes-upper", ["clean"], rules=wet, tty="Y\n", rows=["K5", "Q1"]),
         S("clean-tty-yes-word", ["clean"], rules=wet, tty="yes\n", rows=["Q1"]),
-        S("clean-yes", ["clean", "-y"], rules=wet, rows=["K5"]),
+        S("clean-yes", ["clean", "-y"], rules=wet, rows=["K5", "C10"]),
     ]
 
 
@@ -514,10 +655,17 @@ def picker() -> List[S]:
 def remove() -> List[S]:
     ok = fx.build_once() + fx.apply_ok()
     return [
-        S("remove-nix", ["remove", "-y", "jq"], rules=ok, rows=["Rm9", "F2"]),
+        S("remove-nix", ["remove", "-y", "jq"], rules=ok, rows=["Rm9", "F2", "C10"]),
         S("remove-dry-run", ["remove", "-n", "jq", "zed"], rows=["Rm5", "Rm7"]),
         S("remove-base", ["remove", "ripgrep"], rows=["Rm2", "Rm6"]),
-        S("remove-base-and-repo", ["remove", "fd"], files={"repo/nix/packages.txt": "jq\nfd\n"}, rows=["Rm2"]),
+        S("remove-base-and-repo", ["remove", "-y", "fd"], files={"repo/nix/packages.txt": "jq\nfd\n"}, rules=ok,
+          rows=["Rm11"]),
+        S("remove-base-and-repo-formula", ["remove", "-y", "wget"], files={"repo/nix/brews.txt": "wget\n"}, rules=ok,
+          rows=["Rm11"]),
+        S("remove-base-and-repo-mise", ["remove", "-y", "node"], files=TOOL_OVERLAPS,
+          rules=fx.mise_ok("unuse -g --no-prune node$"), rows=["Rm11"]),
+        S("remove-base-and-repo-dry-run", ["remove", "-n", "fd", "npm:@dkt-ai/dkt-code"], files=TOOL_OVERLAPS,
+          rows=["Rm11"]),
         S("remove-missing", ["remove", "dkt-x"], rows=["Rm3"]),
         S("remove-prefix-other-list", ["remove", "nix:zed"], rows=["Rm1", "Rm3"]),
         S("remove-prefix-files", ["remove", "brew:dkt-x", "cask:dkt-x", "mas:1", "npm:dkt-x"], rows=["Rm1", "Rm3"]),
@@ -545,10 +693,158 @@ def remove() -> List[S]:
     ]
 
 
+AUDIT_PACKAGES = [
+    {"name": "ripgrep", "version": "15.2.0", "tag": "15.2.0",
+     "url": "https://github.com/BurntSushi/ripgrep/archive/refs/tags/15.2.0.tar.gz"},
+    {"name": "jq", "version": "1.8.1", "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-1.8.1.tar.gz",
+     "patches": ["CVE-2025-48060.patch"]},
+    {"name": "gnupg", "version": "2.4.9", "url": "mirror://gnupg/gnupg/gnupg-2.4.9.tar.bz2"},
+    {"name": "poppler-utils", "version": "26.10.0", "url": "https://poppler.freedesktop.org/poppler-26.10.0.tar.xz"},
+    {"name": "darwin-rebuild"},
+]
+# One package of dotkit, so that the queries do not change with the real lib/dotkit/_vendor.
+AUDIT_FILES = {"dotkit/lib/dotkit/_vendor/vendor.txt": "tomli==2.3.2 --hash=sha256:0\n"}
+# The queries: ripgrep, jq, gnupg, node, npm:@dkt-ai/dkt-code, npm:cowsay, tomli. github:modem-dev/dkt-hunk has no
+# version: mise latest has no rule.
+AUDIT_FOUND = [[], ["CVE-2025-48060", "GHSA-jq-1"], [], ["CVE-2026-1"], ["MAL-2026-1"], ["GHSA-cow-1", "GHSA-cow-2"], []]
+AUDIT_RECORDS = [
+    {"id": "CVE-2025-48060", "summary": "jq heap overflow"},
+    {"id": "GHSA-jq-1", "aliases": ["CVE-2026-3"], "summary": "jq crash on a long key",
+     "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"}]},
+    {"id": "CVE-2026-1", "details": "Node.js reads past a buffer.\nMore text.",
+     "severity": [{"type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"}]},
+    {"id": "MAL-2026-1", "summary": "Malicious code in @dkt-ai/dkt-code (npm)"},
+    {"id": "GHSA-cow-1", "summary": "cowsay prototype pollution", "database_specific": {"severity": "HIGH"}},
+    {"id": "GHSA-cow-2", "summary": "cowsay reads any file", "database_specific": {"severity": "MODERATE"},
+     "affected": [{"package": {"ecosystem": "npm", "name": "cowsay"},
+                   "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "1.6.1"}]}]}]},
+]
+AUDIT_TOML = ('[[ignore]]\nid = "GHSA-cow-1"\ntool = "npm:cowsay"\nreason = "Only in the tests."\n\n'
+              '[[ignore]]\nid = "CVE-2020-1"\nreason = "Old."\nuntil = 2026-01-01\n')
+
+
+def audit_rules(found: Optional[List[List[str]]] = None, brew: Optional[List[dict]] = None) -> List[dict]:
+    """The tools of the sandbox, and OSV. Without found: no advisories."""
+    rules = (fx.audit_nix(AUDIT_PACKAGES) + fx.brewfile('brew "wget"\nbrew "owner/tap/dkt-tool"\ncask "ghostty"\n')
+             + (fx.brew_vulns() if brew is None else brew)
+             + fx.mise_ls({"node": "24.1.0", "npm:cowsay": "1.6.0"})
+             + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
+             + fx.osv_batch(found or [[]] * 7, once=bool(found)))
+    return rules + (fx.osv_vulns(AUDIT_RECORDS) if found else [])
+
+
+def audit_findings_rules() -> List[dict]:
+    """With the upgrades: jq 1.8.2 of nixpkgs-unstable is fixed, node has no newer release (no fix), cowsay
+    1.6.1 is fixed, and Homebrew has wget 1.25.1. CVE-2026-3, an alias of GHSA-jq-1, is known exploited."""
+    return (audit_rules(AUDIT_FOUND, fx.brew_vulns([("wget", "1.25.0", [("CVE-2026-2", "MODERATE", "wget overflow")])]))
+            + fx.kev(["CVE-2026-3", "CVE-1999-1"])
+            + fx.nix_unstable([{"name": "jq", "version": "1.8.2",
+                                "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-1.8.2.tar.gz"}])
+            + fx.brew(r"^info --json=v2 --formula wget$",
+                      json.dumps({"formulae": [{"name": "wget", "versions": {"stable": "1.25.1"}}]}))
+            + fx.mise_ok(r"latest node@lts$", "24.1.0\n") + fx.mise_ok(r"latest npm:cowsay@1\.6\.0$", "1.6.1\n")
+            # jq 1.8.2, node 24.1.0, npm:@dkt-ai/dkt-code 2.0.0, npm:cowsay 1.6.1
+            + fx.osv_batch([[], ["CVE-2026-1"], ["MAL-2026-1"], []]))
+
+
+NODE = "@SB/home/.local/share/mise/installs/node/24.1.0"
+AUDIT_SOURCE_FILES = {
+    "repo/config/mise.toml": ('[tools]\n"github:modem-dev/dkt-hunk" = "latest"\n"npm:cowsay" = { version = "1.6.0" }\n'
+                              'ruby = "3.4"\n'),
+    # The npm of Node, with a dependency that has an advisory.
+    "home/.local/share/mise/installs/node/24.1.0/lib/node_modules/npm/package.json":
+        json.dumps({"name": "npm", "version": "11.0.0"}),
+    "home/.local/share/mise/installs/node/24.1.0/lib/node_modules/npm/node_modules/undici/package.json":
+        json.dumps({"name": "undici", "version": "6.28.0"}),
+    "repo/.github/workflows/ci.yml": ("jobs:\n  a:\n    steps:\n"
+                                      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
+                                      "      - uses: tj-actions/changed-files@v45.0.7\n      - uses: owner/x@main\n"),
+}
+
+
+def audit_sources_rules() -> List[dict]:
+    """Ruby from Bitnami, the packages of Node, and the GitHub Actions of the repository."""
+    found = [[], [], [], ["BIT-node-1"], [], [], ["BIT-ruby-1", "BIT-ruby-2"], [], ["GHSA-undici-1"], [],
+             ["GHSA-tj-1", "GHSA-tj-2"], []]
+    records = [
+        {"id": "BIT-node-1", "summary": "Node bug"},
+        {"id": "BIT-ruby-1", "summary": "Ruby regex heap read",
+         "affected": [{"package": {"ecosystem": "Bitnami", "name": "ruby"},
+                       "ranges": [{"type": "SEMVER", "events": [{"introduced": "3.4.0"}, {"fixed": "3.4.13"}]}]}]},
+        # No fixed version: left out.
+        {"id": "BIT-ruby-2", "summary": "Ruby, every version",
+         "affected": [{"package": {"ecosystem": "Bitnami", "name": "ruby"},
+                       "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}]}]}]},
+        {"id": "GHSA-undici-1", "summary": "undici TLS bypass", "database_specific": {"severity": "HIGH"}},
+        {"id": "GHSA-tj-1", "summary": "changed-files leaks secrets",
+         "affected": [{"package": {"ecosystem": "GitHub Actions", "name": "tj-actions/changed-files"},
+                       "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "46.0.1"}]}]}]},
+        # Fixed before the version of the workflow: left out.
+        {"id": "GHSA-tj-2", "summary": "changed-files old bug",
+         "affected": [{"package": {"ecosystem": "GitHub Actions", "name": "tj-actions/changed-files"},
+                       "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "41.0.0"}]}]}]},
+    ]
+    return (fx.audit_nix(AUDIT_PACKAGES) + fx.brewfile() + fx.brew_vulns()
+            + fx.mise_ls({"node": "24.1.0", "npm:cowsay": "1.6.0", "ruby": "3.4.12"}, {"node": NODE})
+            + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
+            + fx.osv_batch(found, once=True) + fx.osv_vulns(records) + fx.kev(["CVE-1999-1"])
+            # The upgrades: node 24.1.0 is the newest (no fix), ruby 3.4.13 is fixed, and changed-files v46.0.1.
+            + fx.mise_ok(r"latest node@lts$", "24.1.0\n") + fx.mise_ok(r"latest ruby@3\.4$", "3.4.13\n")
+            + [{"tool": "git", "re": r"^ls-remote --tags https://github\.com/tj-actions/changed-files$",
+                "stdout": "a\trefs/tags/v45.0.7\nb\trefs/tags/v46.0.1\nc\trefs/tags/v46.0.1^{}\n"}]
+            + fx.osv_batch([["BIT-node-1"], [], ["GHSA-tj-1", "GHSA-tj-2"]]))
+
+
+def audit_config_only_rules() -> List[dict]:
+    """As audit_sources_rules, but mise resolves each version with mise latest, and the packages of Node are
+    not read."""
+    found = [[], [], [], [], [], [], [], [], [], []]
+    return (fx.audit_nix(AUDIT_PACKAGES) + fx.brewfile() + fx.brew_vulns()
+            + fx.mise_ls({"node": "24.1.0", "ruby": "3.4.12"}, {"node": NODE})
+            + fx.mise_ok(r"latest node@lts$", "24.2.0\n") + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
+            + fx.mise_ok(r"latest npm:cowsay@1\.6\.0$", "1.6.0\n") + fx.mise_ok(r"latest ruby@3\.4$", "3.4.13\n")
+            + fx.osv_batch(found))
+
+
+def audit() -> List[S]:
+    issue = {"number": 7, "state": "CLOSED", "title": "old", "body": "<!-- dotkit-audit: mise/npm:cowsay/GHSA-cow-2 -->\nold\n"}
+    gone = {"number": 3, "state": "OPEN", "title": "fzf", "body": "<!-- dotkit-audit: nix/fzf/CVE-2026-9 -->\n"}
+    gh = [{"tool": "gh", "re": "^label create dotkit-audit "},
+          {"tool": "gh", "re": "^issue list ", "stdout": json.dumps([issue, gone])},
+          {"tool": "gh", "re": "^issue (create|edit) ", "stdin": True},
+          {"tool": "gh", "re": "^issue (reopen|close) "}]
+    return [
+        S("audit-clean", ["audit"], audit_rules(), files=AUDIT_FILES, rows=["Au2", "Au3", "Au4", "Au5", "Au6", "Au8"]),
+        S("audit-findings", ["audit"], audit_findings_rules(), files={**AUDIT_FILES, "repo/audit.toml": AUDIT_TOML},
+          rows=["Au1", "Au3", "Au6", "Au7", "Au8", "Au16"]),
+        S("audit-json", ["audit", "--json"], audit_findings_rules(),
+          files={**AUDIT_FILES, "repo/audit.toml": AUDIT_TOML}, rows=["Au9", "O6"]),
+        S("audit-issues", ["audit", "--issues"], audit_findings_rules() + gh, files=AUDIT_FILES, rows=["Au11"]),
+        S("audit-dotkit-dir", ["audit"], audit_rules(), files=AUDIT_FILES, dotkit_dir=True, rows=["Au2", "G4"]),
+        S("audit-parts-fail", ["audit"], fx.nix_eval_fails() + fx.mise_fails("ls --global --json") + fx.osv_batch([[]]),
+          files=AUDIT_FILES, rows=["Au2", "Au3", "Au4", "Au8"]),
+        S("audit-brew-old", ["audit"],
+          audit_rules(brew=fx.brew("^vulns ", stderr="Error: Unknown command: vulns\n", exit=1)),
+          files=AUDIT_FILES, rows=["Au3"]),
+        S("audit-osv-fails", ["audit"],
+          audit_rules()[:-1] + [{"tool": "curl", "re": "querybatch$", "exit": 22,
+                                 "stderr": "curl: (22) The requested URL returned error: 503\n"}],
+          files=AUDIT_FILES, rows=["Au6"]),
+        S("audit-sources", ["audit"], audit_sources_rules(), files={**AUDIT_FILES, **AUDIT_SOURCE_FILES},
+          rows=["Au4", "Au12", "Au14", "Au15", "Au16"]),
+        S("audit-config-only", ["audit", "--config-only"], audit_config_only_rules(),
+          files={**AUDIT_FILES, **AUDIT_SOURCE_FILES}, rows=["Au15", "O6"]),
+        S("audit-all", ["audit", "--all", "--min-severity", "medium"], audit_findings_rules(),
+          files={**AUDIT_FILES, "repo/audit.toml": AUDIT_TOML}, rows=["Au16", "O6"]),
+        S("audit-toml-invalid", ["audit"], files={"repo/audit.toml": '[[ignore]]\nid = "X"\n'}, rows=["Au1"]),
+        S("audit-toml-broken", ["audit"], files={"dotkit/audit.toml": "[[ignore]\n"}, rows=["Au1"]),
+    ]
+
+
 def all_scenarios() -> List[S]:
-    out = (start() + dispatch() + options() + apply() + upgrade() + clean() + recovery() + wizard()
+    out = (start() + dispatch() + options() + apply() + upgrade() + overlap() + own() + clean() + recovery() + wizard()
            + pkg_parse() + listing() + info() + add_prefix() + add_mas() + add_bare() + add_checks() + add_apply()
-           + picker() + remove())
+           + picker() + remove() + audit())
     names = [s.name for s in out]
     dup = sorted({n for n in names if names.count(n) > 1})
     if dup:

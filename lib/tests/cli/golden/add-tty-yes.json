@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "nix:dkt-a -> nix/packages.txt\n  ✓ nix:dkt-a                      1.0            A\nbrew:dkt-f -> nix/brews.txt\n  ✓ brew:dkt-f                     1.0            \n",
- "terminal": "Add the 2 tools? [y/N] ",
+ "terminal": "Add the 2 tools? [y/N] Building the system...\nActivating the system...\nInstalling the mise tools...\nAdded 2 tools.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/brews.txt": "dkt-f\n",

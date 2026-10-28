@@ -1,0 +1,32 @@
+{
+ "argv": [
+  "own",
+  "-n",
+  ".zshrc",
+  "~/.config/git/config",
+  "~/.config/herdr/git-status.sh",
+  "~/.npmrc",
+  "~/.vimrc",
+  "zsh",
+  "git"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: .zshrc: ~/.zshrc cannot be owned. Its tool reads ~/.zshrc.local after it, so set what you need in your config/zsh/zshrc.\ndotkit: ~/.config/git/config: ~/.config/git/config cannot be owned. Its tool reads ~/.gitconfig after it, so set what you need in it: link a file of yours there in dotkit.links.\ndotkit: ~/.config/herdr/git-status.sh: ~/.config/herdr/git-status.sh is a script of the dotkit base, and cannot be owned.\ndotkit: ~/.npmrc: ~/.npmrc is not a config file of the dotkit base. Its tool reads it after the dotkit settings, which are in the global config of npm: create it.\ndotkit: ~/.vimrc: ~/.vimrc is not a config file of the dotkit base.\ndotkit: zsh: no config file of the dotkit base has this name. Use its path, for example ~/.config/starship.toml.\ndotkit: git: more than one base file has this name: ~/.config/git/config, ~/.config/git/ignore. Use the path.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

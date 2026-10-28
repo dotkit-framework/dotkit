@@ -1,0 +1,64 @@
+{
+ "argv": [
+  "apply",
+  "-n"
+ ],
+ "exit": 0,
+ "stdout": "Nix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
+ "stderr": "Building the system...\ndotkit: your dotfiles repeat or replace parts of the dotkit base:\n  ~/.config/git/config          your config/gitconfig replaces the base file; 2 lines differ. Its tool reads ~/.gitconfig after the base file: move your changes there, and remove your link of ~/.config/git/config.\n      --- dotkit config/gitconfig\n      +++ config/gitconfig\n      @@ -1,3 +1,3 @@\n       [core]\n      -  pager = delta\n      +  pager = less\n       [include]\n  ~/.config/starship.toml       your config/starship.toml replaces the base file; 3 lines differ.\n      --- dotkit config/starship.toml\n      +++ config/starship.toml\n      @@ -3,3 +3,3 @@\n       line 3\n      -line 4\n      +line four\n       line 5\n      @@ -10 +10,2 @@\n       line 10\n      +line 11\n  ~/.config/uv/uv.toml          your config/uv.toml replaces the base file, and differs from it a lot.\n      0% of the lines are the same. Compare them: diff -u @SB/dotkit/config/uv.toml @SB/repo/config/uv.toml\n  ~/.editorconfig               has no link: your configuration sets it to null, so the base file is off.\n  ~/.npmrc                      your config/npmrc is the same as the base file. Give it back: dotkit own --release ~/.npmrc\n  ~/.config/nvim.before-dotkit  an apply moved your file aside for the link ~/.config/nvim. Compare it with ~/.config/nvim, take what you need, then delete it.\n  ~/.config/starship.toml       apply moves your file to ~/.config/starship.toml.before-dotkit and links the file of your configuration.\n  ~/.zshrc.before-dotkit        an apply moved your file aside for the link ~/.zshrc. Move the settings that you need to ~/.zshrc.local, then delete it.\n  ~/.zshrc                      apply moves your file to ~/.zshrc.before-dotkit and links the file of your configuration. Move your settings to ~/.zshrc.local first.\nNo change. Run dotkit apply to apply.\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "store",
+    "diff-closures",
+    "/run/current-system",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew.onActivation.cleanup"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install",
+    "--dry-run"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

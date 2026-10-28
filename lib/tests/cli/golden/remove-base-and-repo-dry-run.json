@@ -1,0 +1,14 @@
+{
+ "argv": [
+  "remove",
+  "-n",
+  "fd",
+  "npm:@dkt-ai/dkt-code"
+ ],
+ "exit": 0,
+ "stdout": "fd: remove fd from nix/packages.txt; the dotkit base keeps it (dotkit:nix/packages.txt)\nnpm:@dkt-ai/dkt-code: remove npm:@dkt-ai/dkt-code from config/mise.toml; the dotkit base keeps it (dotkit:config/mise.toml)\n",
+ "stderr": "No change. Run the command without -n to remove.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

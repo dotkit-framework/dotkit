@@ -1,0 +1,83 @@
+{
+ "argv": [
+  "own",
+  "-y",
+  "herdr",
+  "gemrc"
+ ],
+ "exit": 0,
+ "stdout": "herdr: copy the base file to config/herdr.toml, and link it as ~/.config/herdr/config.toml (nix/home.nix)\ngemrc: copy the base file to config/gemrc, and link it as ~/.gemrc (nix/home.nix)\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nOwned config/herdr.toml, config/gemrc.\nCommit config/herdr.toml, config/gemrc. After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1",
+  "repo/config/gemrc": "gem: --no-document\n",
+  "repo/config/herdr.toml": "# From the dotkit base (dotkit own). After a dotkit upgrade, dotkit doctor shows\n# how this file differs from the base file.\n\nonboarding = false\n",
+  "repo/nix/home.nix": "{\n  imports = [ ./shell.nix ];\n\n  dotkit.links = {\n    \".config/herdr/config.toml\" = \"config/herdr.toml\";\n    \".gemrc\" = \"config/gemrc\";\n    \".zshrc.local\" = \"config/zsh/zshrc\";\n    \".config/starship.toml\" = \"config/my-starship.toml\";\n  };\n}\n"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,12 +1,20 @@
-# check: evaluates and builds the example Mac, runs the Python tests of the
-# dotkit command and the migration wizard, and lints the scripts and the Nix files. e2e: a real
-# setup on a fresh macOS runner, which is a used Mac with Homebrew packages
-# and dotfiles, then tests/e2e/verify.sh and tests/e2e/migrated.sh.
+# check: lints the scripts, the Nix files, and the workflows, then evaluates
+# and builds the example Mac (nix flake check, with the Python tests of
+# lib/tests.nix).
+# python: the Python tests of the dotkit command and the migration wizard with
+# the macOS Python. e2e: a real setup on a fresh macOS runner, which is a used
+# Mac with Homebrew packages and dotfiles, then tests/e2e/verify.sh and
+# tests/e2e/migrated.sh. The jobs run in parallel.
 name: CI
 
+# A pull request runs CI once, for its merge commit; a push runs it only on
+# main. workflow_dispatch runs it for another branch. GitHub Free runs five
+# macOS jobs at a time: a second run per push would wait in the queue.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,21 +30,22 @@ jobs:
     env:
       # --inputs-from uses the locked inputs below; no global registry is needed.
       NIX_CONFIG: flake-registry =
+    # Each action is pinned to the commit of its release, because a tag can
+    # move. The comment is the tag. Dependabot updates both
+    # (.github/dependabot.yml). No step pushes, so checkout keeps no token in
+    # .git/config.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Upstream Nix from the official installer.
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
         with:
           github_access_token: ${{ github.token }}
 
-      - name: nix flake check
-        run: nix flake check --print-build-logs
-
-      - name: Build the example Mac
-        run: nix build .#checks.aarch64-darwin.example --no-link --print-build-logs
-
-      # The linters come from the Nixpkgs in flake.lock.
+      # The linters come from the Nixpkgs in flake.lock. They are fast, so they
+      # run first.
       - name: shellcheck
         run: |
           nix shell --inputs-from . nixpkgs#shellcheck -c shellcheck -x \
@@ -59,26 +68,6 @@ jobs:
       - name: python
         run: nix shell --inputs-from . nixpkgs#python3 -c python3 -m py_compile scripts/herdr/git-status.py
 
-      # Functions of scripts/setup, in a temporary home directory.
-      - name: setup functions
-        run: tests/setup.sh
-
-      # The dotkit command and the wizard: the scenarios of the command, the
-      # scan, the mapping, secret detection, and the wizard in a pseudo
-      # terminal. They run with the macOS Python (3.9 in the Command Line
-      # Tools); the Python of Nixpkgs checks a newer version. nix flake check
-      # runs them too; here the log shows each test, and nixfmt checks the
-      # generated Nix files.
-      - name: Python tests, macOS Python
-        working-directory: lib
-        run: |
-          /usr/bin/python3 --version
-          nix shell --inputs-from .. nixpkgs#nixfmt -c /usr/bin/python3 -m unittest discover -s tests -t . -v
-
-      - name: Python tests, Nixpkgs Python
-        working-directory: lib
-        run: nix shell --inputs-from .. nixpkgs#python3 nixpkgs#nixfmt -c python3 -m unittest discover -s tests -t . -v
-
       - name: nixfmt
         run: git ls-files -z '*.nix' | xargs -0 nix shell --inputs-from . nixpkgs#nixfmt -c nixfmt --check
 
@@ -88,8 +77,60 @@ jobs:
       - name: deadnix
         run: nix shell --inputs-from . nixpkgs#deadnix -c deadnix --fail .
 
+      # The workflows of dotkit, and the one that the template gives each dotfiles repository.
       - name: actionlint
-        run: nix shell --inputs-from . nixpkgs#actionlint -c actionlint
+        run: |
+          nix shell --inputs-from . nixpkgs#actionlint -c actionlint \
+            .github/workflows/*.yml templates/default/.github/workflows/*.yml
+
+      # Security checks of the workflows and of .github/dependabot.yml:
+      # unpinned actions, template injection, credentials, and permissions.
+      # --offline: no GitHub API, so the result depends only on the files.
+      - name: zizmor
+        run: nix shell --inputs-from . nixpkgs#zizmor -c zizmor --offline --no-progress --collect=workflows,dependabot .
+
+      # Evaluates the configurations and builds the checks: the example Mac
+      # from the template, and the Python tests of lib/tests.nix with the
+      # Python of Nixpkgs (the scenarios of the command skip there).
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+
+      # Functions of scripts/setup, in a temporary home directory.
+      - name: setup functions
+        run: tests/setup.sh
+
+  python:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      NIX_CONFIG: flake-registry =
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          github_access_token: ${{ github.token }}
+
+      # The dotkit command and the wizard: the scenarios of the command, the
+      # scan, the mapping, secret detection, and the wizard in a pseudo
+      # terminal. All of them run with the macOS Python (3.9 in the Command
+      # Line Tools), which dotkit runs with. nixfmt checks the generated Nix
+      # files.
+      - name: Python tests, macOS Python
+        working-directory: lib
+        run: |
+          /usr/bin/python3 --version
+          nix shell --inputs-from .. nixpkgs#nixfmt -c /usr/bin/python3 -m unittest discover -s tests -t . -v
+
+      # nix flake check runs the other tests with the Python of Nixpkgs. These
+      # skip in its sandbox: the scenarios need the launcher, the others nix.
+      - name: Python tests, Nixpkgs Python
+        working-directory: lib
+        run: |
+          nix shell --inputs-from .. nixpkgs#python3 nixpkgs#nixfmt -c python3 -m unittest -v \
+            tests.cli.test_scenarios tests.test_nix_lists tests.core.test_files tests.test_session tests.pkg.test_pkg
 
   e2e:
     # setup supports macOS 14 and newer. CI covers macOS 26.
@@ -110,10 +151,11 @@ jobs:
       # parts, instead of leaving the part out (tests and CI only).
       DOTKIT_MIGRATE_STRICT: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Nix reads DOTKIT_DIR as a Git repository and refuses a shallow one.
           fetch-depth: 0
+          persist-credentials: false
 
       # The runner image has Homebrew and some dotfiles. Setup must cope.
       - name: Show the runner before setup
@@ -141,8 +183,9 @@ jobs:
       # the lines from the Homebrew installer. Home Manager must rename them.
       # The wizard carries the export and the alias, moves the secret to
       # ~/.secrets, and reports the other lines; tests/e2e/migrated.sh checks it.
+      # The global npm and pipx tools of a used Mac have no lockfile.
       - name: Add the dotfiles of a used Mac
-        run: |
+        run: | # zizmor: ignore[adhoc-packages]
           # shellcheck disable=SC2016 # The line for the file, not to expand.
           echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >~/.zprofile
           # shellcheck disable=SC2016
@@ -232,9 +275,10 @@ jobs:
       NIX_CONFIG: access-tokens = github.com=${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # Nix is on the Mac before setup, so the /etc files from before setup
       # have the lines of the Nix installer. The ensure_nix function of setup

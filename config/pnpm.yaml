@@ -1,5 +1,6 @@
-# pnpm 11 reads global settings only from this file, not from rc files.
-# Registry auth still comes from ~/.npmrc.
+# dotkit base. pnpm 11 reads global settings only from this file, not from rc
+# files, and `pnpm config set --global` writes it: run `dotkit own pnpm` to
+# change it. Registry auth still comes from ~/.npmrc.
 
 # Delay newly published packages for 7 days (in minutes).
 minimumReleaseAge: 10080

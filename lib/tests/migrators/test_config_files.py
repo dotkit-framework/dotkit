@@ -42,8 +42,10 @@ class ConfigFilesTests(unittest.TestCase):
         self.assertEqual(facts.warnings, [])
         s = config_files.facts_of(facts)
         cfg = {c.target: (bool(c.secrets), c.same_as_base, c.layer_exists) for c in s.files}
-        self.assertEqual(cfg, {".config/ghostty/config": (False, False, True), ".npmrc": (True, False, False),
+        self.assertEqual(cfg, {".config/ghostty/config": (False, False, True),
                                ".editorconfig": (False, True, False), ".config/starship.toml": (False, False, False)})
+        # ~/.npmrc is yours: npm reads it after the dotkit settings (base.OWN_FILES).
+        self.assertEqual([(c.target, bool(c.secrets), bool(c.npm)) for c in s.own], [(".npmrc", True, True)])
         self.assertEqual(s.gitconfig.path, h.home / ".gitconfig")
         # The scan checks your mise config for secrets, as every config file.
         self.assertEqual(s.mise_config.path, h.home / ".config/mise/config.toml")
@@ -154,11 +156,11 @@ class ConfigFilesTests(unittest.TestCase):
     def test_a_file_with_a_secret_cannot_go_into_the_repository(self):
         files = next(page for page in self.p.pages() if page.key == "files")
         npmrc = next(i for i in files.items if i.id == "file:.npmrc")
-        self.assertEqual(npmrc.options, ("tokens", "dotkit", "keep"))
+        self.assertEqual(npmrc.options, ("tokens", "keep"))
         self.assertEqual(npmrc.default_option, "tokens")
         # Also when a choice says so: the build keeps the file in place.
-        p = self.build(options={"file:.npmrc": "replace"})
-        self.assertIsNone(p.links[".npmrc"])
+        p = self.build(options={"file:.npmrc": "adopt"})
+        self.assertNotIn(".npmrc", p.links)
         self.assertNotIn("config/npmrc", p.copies)
         self.assertNotIn("config/npmrc", p.files)
 
@@ -170,7 +172,7 @@ class ConfigFilesTests(unittest.TestCase):
         return h, fake.session(h, fake.brew_runner())
 
     def test_npmrc_tokens(self):
-        """The dotkit settings, with the registries; each token is a variable of ~/.secrets, also for GUI apps."""
+        """Your file, with a variable of ~/.secrets for each token, also for GUI apps."""
         gh, npm = fake.TOKENS["@GH@"], fake.TOKENS["@NPM@"]
         h, p = self.session(**{".npmrc": "; mine\nregistry=https://npm.acme.dev/\n"
                                           f"//npm.acme.dev/:_authToken={npm}\n@acme:registry=https://npm.pkg.github.com\n"
@@ -181,40 +183,39 @@ class ConfigFilesTests(unittest.TestCase):
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
         self.assertEqual(result.links[".npmrc"], "config/npmrc")
         self.assertEqual(result.files["config/npmrc"],
-                         "# Your registries and tokens, from ~/.npmrc. npm reads the tokens from ~/.secrets.\n"
+                         "# From ~/.npmrc. npm reads the tokens from ~/.secrets, and this file after the dotkit "
+                         "settings.\n; mine\n"
                          "registry=https://npm.acme.dev/\n//npm.acme.dev/:_authToken=${NPM_ACME_DEV_NPM_TOKEN}\n"
                          "@acme:registry=https://npm.pkg.github.com\n"
                          "//npm.pkg.github.com/:_authToken=${GITHUB_NPM_TOKEN_2}\n"
-                         "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n\n"
-                         "# Delay newly published packages for 7 days.\nmin-release-age=7\n\n"
-                         "# Global packages stay outside the read-only Nix store. ~/.local/bin is on PATH.\n"
-                         "prefix=${HOME}/.local\n")
+                         "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\nsave-exact=true\ninit-author-name=Jane\n")
         self.assertEqual(result.secrets, "# Added by the dotkit migration. See MIGRATION.md.\n# From ~/.npmrc.\n"
                                          f"export NPM_ACME_DEV_NPM_TOKEN='{npm}'\n"
                                          f"export GITHUB_NPM_TOKEN_2='{gh}'\n")
-        self.assertIn("- ~/.npmrc: these settings are not carried: `save-exact`, `init-author-name`. The first apply "
-                      "renames it to ~/.npmrc.before-dotkit. Copy the ones you need to config/npmrc.\n", result.report)
+        self.assertNotIn("not carried", result.report)
         for text in [result.report, *result.summary, *result.files.values()]:
             self.assertNotIn(gh, text)
             self.assertNotIn(npm, text)
 
     def test_npmrc_without_tokens(self):
-        """Registries without a token: "tokens" is the default too, and nothing goes to ~/.secrets."""
+        """Registries without a token: the file is adopted as it is, and nothing goes to ~/.secrets."""
         h, p = self.session(**{".npmrc": "@acme:registry=https://npm.pkg.github.com\n"})
         files = next(page for page in p.pages() if page.key == "files")
-        self.assertEqual(next(i for i in files.items if i.id == "file:.npmrc").options,
-                         ("tokens", "replace", "dotkit", "keep"))
+        self.assertEqual(next(i for i in files.items if i.id == "file:.npmrc").options, ("adopt", "keep"))
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
-        self.assertIn("\n@acme:registry=https://npm.pkg.github.com\n\n# Delay", result.files["config/npmrc"])
+        self.assertEqual(result.copies["config/npmrc"], h.home / ".npmrc")
+        self.assertEqual(result.links[".npmrc"], "config/npmrc")
+        self.assertIn("| ~/.npmrc | config/npmrc (read after the dotkit settings) |", result.report)
         self.assertEqual(result.secrets, "")
 
     def test_npmrc_with_a_secret_elsewhere(self):
         """A secret outside the registry settings: the file stays in place, as before."""
         h, p = self.session(**{".npmrc": fake.fill("//registry.npmjs.org/:_authToken=@NPM@\nproxy=http://u:pw1234567@proxy:8080\n")})
         files = next(page for page in p.pages() if page.key == "files")
-        self.assertEqual(next(i for i in files.items if i.id == "file:.npmrc").options, ("keep", "dotkit"))
+        self.assertEqual(next(i for i in files.items if i.id == "file:.npmrc").options, ("keep",))
         result = p.build(p.defaults(str(h.home / ".dotfiles")))
-        self.assertIsNone(result.links[".npmrc"])
+        self.assertNotIn(".npmrc", result.links)
+        self.assertIn("~/.npmrc stays in place and outside the repository, because it has secrets", result.report)
         self.assertEqual(result.secrets, "")
 
     GITCONFIG = ("[user]\n\tname = Jane\n[url \"https://x-access-token:@GH@@github.com/\"]\n"

@@ -1,0 +1,41 @@
+# Dependabot opens pull requests with new versions of the actions of the
+# workflows and of the inputs of flake.lock. These are version updates only.
+# CI checks each pull request as any other.
+version: 2
+
+updates:
+  # The actions are pinned to a commit, with the tag in a comment
+  # (.github/workflows/ci.yml). Dependabot updates both.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # New releases wait 7 days, as the tools in config/mise.toml do.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Nixpkgs, nix-darwin, and Home Manager follow a branch. nix-darwin and
+  # Home Manager follow the Nixpkgs of dotkit, so they update together, as
+  # with `nix flake update`.
+  - package-ecosystem: nix
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      flake-inputs:
+        patterns: ["*"]
+    # The zsh plugins are pinned to a commit in flake.nix on purpose: a person
+    # reviews the new commits first (see the comment in flake.nix). Dependabot
+    # skips inputs with a commit in the URL. The ignore keeps it so.
+    ignore:
+      - dependency-name: zsh-completions
+      - dependency-name: zsh-history-substring-search
+      - dependency-name: zsh-syntax-highlighting
+      - dependency-name: zsh-autosuggestions
+      - dependency-name: zsh-abbr
+      - dependency-name: zsh-autosuggestions-abbreviations-strategy

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 
-from ..core import nix, proc, ui
+from ..core import change, nix, proc, ui
 from ..core.env import Env
+from . import overlap
 
 # The Homebrew of the Mac. The preview runs it by this path, as nix-darwin does.
 BREW = "/opt/homebrew/bin/brew"
@@ -19,7 +20,7 @@ def apply(env: Env, dry_run: bool) -> int:
         code = n.build_system()
         if code:
             return code
-        ui.out("Nix package changes:")
+        ui.out(ui.paint("Nix package changes:", "heading"))
         code = proc.run(["nix", "store", "diff-closures", "/run/current-system", str(env.result)]).code
         if code:
             return code
@@ -29,12 +30,15 @@ def apply(env: Env, dry_run: bool) -> int:
         code = proc.mise(env.home, ["install", "--dry-run"]).code
         if code:
             return code
-        ui.note("No change. Run dotkit apply to apply.")
+        overlap.report(env, env.result, dry_run=True)
+        ui.hint("No change. Run dotkit apply to apply.")
         return 0
-    code = n.switch()
+    code = n.build_system() or change.activate_and_install(env)
     if code:
         return code
-    return proc.mise(env.home, ["install"]).code
+    overlap.report(env, env.result, dry_run=False)
+    ui.success("Applied the config.")
+    return 0
 
 
 def preview_brew_cleanup(env: Env, n: nix.Nix) -> int:
@@ -68,7 +72,7 @@ def preview_brew_cleanup(env: Env, n: nix.Nix) -> int:
         elif "\n" + DOWNLOADS in output:
             output = output[:output.index("\n" + DOWNLOADS)]
     if output:
-        ui.out("Homebrew removes:\n" + (output[:-1] if output.endswith("\n") else output))
+        ui.out(ui.paint("Homebrew removes:", "heading") + "\n" + (output[:-1] if output.endswith("\n") else output))
     if status:
         raise ui.die(f"the Homebrew cleanup preview failed with exit code {status}.")
     return 0

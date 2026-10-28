@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..core.paths import is_managed, tilde  # noqa: F401 - the migrators import them from here
 from . import base as base_mod
 from .proc import Runner
 
@@ -35,14 +36,6 @@ def this_mac(home: Path, base: base_mod.Base) -> Context:
 
 
 # --- Files, read-only
-
-
-def is_managed(p: Path) -> bool:
-    """A link that Home Manager made: it points into the Nix store."""
-    try:
-        return p.is_symlink() and os.readlink(p).startswith("/nix/store/")
-    except OSError:
-        return False
 
 
 def read_text(p: Path, limit: int = 4_000_000) -> str:
@@ -82,13 +75,6 @@ def version_key(v: str) -> list:
 
 
 # --- Paths
-
-
-def tilde(path: str | Path, home: str) -> str:
-    p = str(path)
-    if p == home:
-        return "~"
-    return "~/" + p[len(home) + 1:] if p.startswith(home + "/") else p
 
 
 def shell_path(path: str) -> str:

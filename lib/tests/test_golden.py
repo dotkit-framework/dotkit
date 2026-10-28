@@ -273,7 +273,7 @@ def kitchen_sink_choices(p: registry.Session, repo: str) -> Choices:
     c = p.defaults(repo)
     c.keymap = "vi"
     c.picked = {page.key: {i.id for i in page.items} for page in p.pages() if page.kind == "checklist"}
-    c.options.update({"file:.config/uv/uv.toml": "dotkit", "file:.gemrc": "keep"})
+    c.options.update({"file:.config/uv/uv.toml": "keep", "file:.gemrc": "keep"})
     return c
 
 

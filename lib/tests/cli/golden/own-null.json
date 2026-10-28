@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "own",
+  "gemrc"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: gemrc: ~/.gemrc has no link: your configuration sets it to null. Remove that line, or run dotkit own --release ~/.gemrc first.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

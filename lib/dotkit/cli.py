@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import sys
 from dataclasses import dataclass
 from typing import Callable, Dict, List, NoReturn, Optional, Sequence
 
@@ -59,6 +61,46 @@ OLD_NAMES = {
 }
 
 
+HEADING_LINE = re.compile(r"[A-Za-z][A-Za-z ]*:")
+# The first column of a list: a command, an option, a prefix (nix:ATTR).
+FIRST_COLUMN = re.compile(r"(  )([^\s,]+(?:, [^\s,]+)*)(.*)")
+# An example: the command, two spaces or more, and what it does.
+EXAMPLE = re.compile(r"(  )(\S.*?)(\s{2,}\S.*)?")
+
+
+def style(text: str) -> str:
+    """The help in colors (the roles of ui.STYLES): headings, the commands and options, the examples, and
+    `code`. The caller checks ui.colors()."""
+    out, section = [], ""
+    for line in text.split("\n"):
+        if HEADING_LINE.fullmatch(line):
+            section = line
+            line = ui.sgr(line, "section")
+        elif line.startswith("usage: "):
+            words = line[len("usage: "):].split(" ", 2)
+            cmd = " ".join(words[:2]) if len(words) > 1 and not words[1].startswith(("<", "[")) else words[0]
+            line = f"{ui.sgr('usage:', 'section')} {ui.sgr(cmd, 'heading')}{line[len('usage: ') + len(cmd):]}"
+        elif line and not line[0].isspace():
+            section = ""
+        elif section == "Examples:":
+            if line.startswith("   "):
+                line = ui.sgr(line, "dim")
+            else:
+                m = EXAMPLE.fullmatch(line)
+                if m:
+                    line = f"{m[1]}{ui.sgr(m[2], 'command')}" + (ui.sgr(m[3], "dim") if m[3] else "")
+        else:
+            m = FIRST_COLUMN.fullmatch(line)
+            if m and (section or ":" in m[2]):
+                line = f"{m[1]}{ui.sgr(m[2], 'option')}{m[3]}"
+        out.append(ui.code(line))
+    return "\n".join(out)
+
+
+def show_help(text: str) -> None:
+    ui.out(style(text) if ui.colors(sys.stdout) else text)
+
+
 class Parser(argparse.ArgumentParser):
     """argparse with the errors of dotkit: an exception that main() prints, not sys.exit."""
 
@@ -71,6 +113,9 @@ class Parser(argparse.ArgumentParser):
         """Options can come anywhere. parse_intermixed_args does not handle `--`: after it, the words are
         arguments, and the options must come before it."""
         return self.parse_args(args) if "--" in args else self.parse_intermixed_args(args)
+
+    def print_help(self, file=None) -> None:
+        show_help(self.format_help().rstrip())
 
     def error(self, message: str) -> NoReturn:
         raise ui.Exit(2, f"{self.format_usage().rstrip()}\n{self.prog}: error: {message}")
@@ -151,6 +196,20 @@ def _list(p: Parser):
     return lambda env, a: _mod("pkg.cli").Pkg(env).list(a.sources)
 
 
+def _own(p: Parser):
+    dry_run(p)
+    yes(p)
+    p.add_argument("--release", action="store_true",
+                   help="Give the files back to the base: remove your link. Your copy stays in the repository.")
+    p.add_argument("files", nargs="+", metavar="file",
+                   help="A base config file: its path (~/.config/starship.toml) or its name (starship, herdr).")
+    return lambda env, a: _mod("commands.own").own(env, a.files, a.release, a.dry_run, a.yes)
+
+
+def _doctor(p: Parser):
+    return lambda env, a: _mod("commands.overlap").doctor(env)
+
+
 def _migrate(p: Parser):
     dry_run(p)
     yes(p)
@@ -181,9 +240,38 @@ def _clean(p: Parser):
     return lambda env, a: _mod("commands.recovery").clean(env, a.age, a.dry_run, a.yes)
 
 
+def _audit(p: Parser):
+    p.add_argument("--json", action="store_true", help="Print the report as JSON on stdout.")
+    p.add_argument("--issues", action="store_true",
+                   help="Open a GitHub issue for each finding, and close the ones that are gone (gh, for CI).")
+    p.add_argument("--notify", action="store_true",
+                   help="Show a macOS notification for the new findings (the launchd agent).")
+    p.add_argument("--config-only", action="store_true",
+                   help="Check what the configuration declares, not the tools installed here (for CI).")
+    p.add_argument("--all", action="store_true", dest="all_",
+                   help="List every finding: also the ones that no upgrade fixes yet, and the ones in the packages "
+                        "inside the tools (gems, npm dependencies, Go modules, Rust crates).")
+    p.add_argument("--min-severity", choices=("low", "medium", "high", "critical"), metavar="LEVEL",
+                   help="Show only findings of LEVEL or higher: low, medium, high, or critical. An unknown severity "
+                        "counts as low. A malicious release always shows.")
+    return lambda env, a: _mod("audit.cli").audit(env, a.json, a.issues, a.notify, a.config_only, a.all_,
+                                                  a.min_severity or "")
+
+
 def _mod(name: str):
     import importlib
     return importlib.import_module(f"dotkit.{name}")
+
+
+# The groups of the usage, in order: the key in COMMANDS, and the title.
+GROUPS = (
+    ("Config", "Apply and update the config"),
+    ("Tools", "Tools in the lists"),
+    ("Files", "Your config files"),
+    ("Security", "Security"),
+    ("Mac", "Bring this Mac under dotkit"),
+    ("Recovery", "Recovery and cleanup"),
+)
 
 
 @dataclass
@@ -196,23 +284,54 @@ class Command:
 
 
 COMMANDS: Dict[str, Command] = {
-    "apply": Command("Daily", "Apply the config: Nix, Homebrew, and mise.", _apply),
-    "upgrade": Command("Daily", "Get new releases. Shows one plan, asks once, then applies.", _upgrade),
-    "add": Command("Daily", "Select the source for a tool, add it, and apply.", _add, epilog=EPILOG_ADD),
-    "remove": Command("Daily", "Remove a tool from the config that declares it, and apply.", _remove,
+    "apply": Command("Config", "Apply the config: Nix, Homebrew, and mise.", _apply),
+    "upgrade": Command("Config", "Get new releases. Shows one plan, asks once, then applies.", _upgrade),
+    "add": Command("Tools", "Select the source for a tool, add it, and apply.", _add, epilog=EPILOG_ADD),
+    "remove": Command("Tools", "Remove a tool from the config that declares it, and apply.", _remove,
                       "Homebrew packages that you remove are uninstalled. Tools of the dotkit base stay."),
-    "info": Command("Daily", "Where a tool is declared, its command, and its sources.", _info),
-    "list": Command("Daily", "The declared tools.", _list),
-    "migrate": Command("Daily", "Add the tools that were installed by hand to the lists.", _migrate,
+    "info": Command("Tools", "Where a tool is declared, its command, and its sources.", _info),
+    "list": Command("Tools", "The declared tools.", _list),
+    "own": Command("Files", "Make a base config file yours, so you and its app can change it.", _own,
+                   "Copies the base file to config/ of the repository and links it there, for the tools\n"
+                   "that read one config file: herdr, Starship, pnpm, RubyGems, bun, EditorConfig, and\n"
+                   "the Git ignore file. An app that saves its settings, such as the theme of herdr,\n"
+                   "can then write them. A base file that its tool reads before a file of yours (zsh,\n"
+                   "bash, Git config, Ghostty, mise) cannot be owned: set what you need in your file.\n"
+                   "After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.",
+                   epilog="Examples:\n  dotkit own herdr                 the theme menu of herdr can save\n"
+                          "  dotkit own ~/.config/starship.toml\n"
+                          "  dotkit own --release starship    back to the base file"),
+    "doctor": Command("Files", "What your dotfiles repeat or replace of the dotkit base.", _doctor,
+                      "Compares the active system with the base: tools in the lists and config/mise.toml of\n"
+                      "both, your links that replace base config files (with a diff when the files are\n"
+                      "similar), and the files that an apply moved aside (*.before-dotkit). apply and\n"
+                      "upgrade show the new ones."),
+    "audit": Command("Security", "Check the tools for known vulnerabilities and malicious releases.", _audit,
+                     "Asks OSV.dev (https://osv.dev) about the tools that dotkit installs: the Nix packages, the\n"
+                     "Homebrew formulae (brew vulns), the mise tools, and the Python packages of dotkit. The\n"
+                     "findings go to stdout. Exit code 1 when there are findings, unless --issues or --notify\n"
+                     "reported them. audit.toml in the repository ignores an advisory: see the README.\n\n"
+                     "The report lists what you can act on: a malicious release, a known exploited vulnerability\n"
+                     "(CISA KEV), and a finding of a tool whose fix an upgrade installs. It counts the findings\n"
+                     "that no upgrade fixes yet, and the ones in the packages inside the tools: --all lists them.\n"
+                     "--min-severity hides the findings below a level. The notification and the issues follow the\n"
+                     "same list.",
+                     epilog="Examples:\n  dotkit audit                 the findings, and what was not checked\n"
+                            "  dotkit audit --all --min-severity high\n"
+                            "                               every finding that is high or critical\n"
+                            "  dotkit audit --json          the report for a script\n"
+                            "  dotkit audit --config-only --issues\n"
+                            "                               the daily workflow of the template"),
+    "history": Command("Recovery", "The package changes of the last apply.", _history),
+    "migrate": Command("Mac", "Add the tools that were installed by hand to the lists.", _migrate,
                        "Finds Homebrew packages and taps, App Store apps, and global npm and pipx tools that\n"
                        "were installed by hand and that the lists do not have. Asks, then adds them."),
-    "tidy": Command("Daily", "Give the apps of this Mac a clean source, and remove old copies.", _tidy,
+    "tidy": Command("Mac", "Give the apps of this Mac a clean source, and remove old copies.", _tidy,
                     "Finds the apps from a DMG or an installer that have a cask, the App Store apps that the\n"
                     "lists do not have, old copies of tools that dotkit has (npm, pipx, uv, cargo, Homebrew,\n"
                     "files), and .pkg installer packages. Opens the plan in your editor, asks once, then\n"
                     "installs the casks, adds them to the lists, and uninstalls what you chose. App data\n"
                     "stays. See lib/dotkit/migrate/TIDY.md."),
-    "history": Command("Recovery", "The package changes of the last apply.", _history),
     "rollback": Command("Recovery", "Go back to the previous Nix generation.", _rollback,
                         "Homebrew and mise do not roll back."),
     "clean": Command("Recovery", "Delete old Nix generations, Homebrew downloads, and mise versions.", _clean,
@@ -224,10 +343,11 @@ COMMANDS: Dict[str, Command] = {
 def usage() -> str:
     lines = ["usage: dotkit <command> [options]", "",
              "Day-to-day commands for a Mac with dotkit. Run them from any directory."]
-    for group in ("Daily", "Recovery"):
-        lines += ["", f"{group}:"]
+    for group, title in GROUPS:
+        lines += ["", f"{title}:"]
         lines += [f"  {name:<10} {c.summary}" for name, c in COMMANDS.items() if c.group == group]
-    lines += ["", "Run `dotkit <command> --help` for the options of a command.", "", EXAMPLES]
+    lines += ["", "Run `dotkit <command> --help` for the options of a command. --no-color, NO_COLOR, or",
+              "DOTKIT_NO_COLOR turns the colors off.", "", EXAMPLES]
     return "\n".join(lines)
 
 
@@ -242,13 +362,13 @@ def parser(name: str) -> Parser:
 def main(env: Env, argv: Sequence[str]) -> int:
     cmd, rest = (argv[0], list(argv[1:])) if argv else ("", [])
     if cmd in ("", "-h", "--help"):
-        ui.out(usage())
+        show_help(usage())
         return 0
     if cmd == "help":
         if rest and rest[0] in COMMANDS:
-            ui.out(parser(rest[0]).format_help().rstrip())
+            show_help(parser(rest[0]).format_help().rstrip())
         else:
-            ui.out(usage())
+            show_help(usage())
         return 0
     if cmd in OLD_NAMES:
         raise ui.Exit(2, f"dotkit: '{cmd}' is now '{OLD_NAMES[cmd]}'. Run dotkit --help.")

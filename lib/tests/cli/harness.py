@@ -28,7 +28,7 @@ from tests import fake
 
 ROOT = fake.ROOT
 HERE = Path(__file__).resolve().parent
-TOOLS = ("nix", "brew", "mise", "mas", "curl", "sudo", "darwin-rebuild")
+TOOLS = ("nix", "brew", "mise", "mas", "curl", "sudo", "darwin-rebuild", "gh", "git")
 
 # The dotkit base of the sandbox: small lists, so that the goldens do not
 # change when the real base lists change.
@@ -82,6 +82,8 @@ class Scenario:
     rows: List[str] = field(default_factory=list)
     # The text of the terminal is not compared: it has the redraws of prompt_toolkit, which depend on timing.
     no_terminal: bool = False
+    # Colors on the terminal: without NO_COLOR, which the other scenarios set.
+    color: bool = False
 
 
 @dataclass
@@ -128,7 +130,10 @@ def setup(sb: Path, impl: Impl, s: Scenario) -> None:
         dst = sb / "dotkit" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.is_dir():
-            shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "tests"))
+            # The vendored packages are two thirds of the files and never change: a link instead of a copy.
+            shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "tests", "_vendor"))
+            if (src / "_vendor").is_dir():
+                (dst / "_vendor").symlink_to(src / "_vendor")
         else:
             shutil.copy2(src, dst)
     launcher = sb / "dotkit/dotkit"
@@ -142,6 +147,13 @@ def setup(sb: Path, impl: Impl, s: Scenario) -> None:
         _write(sb / "checkout/flake.lock", BASE["dotkit/flake.lock"])
     for rel, text in s.files.items():
         p = sb / rel
+        # A file inside a linked directory (_vendor): copy the directory first, so that the write stays in the
+        # sandbox.
+        for parent in reversed(p.parents):
+            if parent.is_symlink() and parent.is_relative_to(sb):
+                target = parent.resolve()
+                parent.unlink()
+                shutil.copytree(target, parent, ignore=shutil.ignore_patterns("__pycache__"))
         if text is None:
             if p.is_symlink() or p.exists():
                 p.unlink()
@@ -235,7 +247,11 @@ def run(impl: Impl, s: Scenario) -> dict:
         # PROMPT_TOOLKIT_NO_CPR: the test terminal does not answer the cursor position requests of prompt_toolkit.
         env = {"HOME": str(sb / "home"), "TMPDIR": str(sb / "tmp"), "LC_ALL": "en_US.UTF-8", "PROMPT_TOOLKIT_NO_CPR": "1",
                "PATH": f"{sb / 'bin'}:/usr/bin:/bin:/usr/sbin:/sbin", "FAKE_DIR": str(sb / "fake"),
-               "USER": os.environ.get("USER", "")}
+               "USER": os.environ.get("USER", ""),
+               # dotkit audit reads the executables of the system (/run/current-system, /Applications) under it.
+               "DOTKIT_AUDIT_ROOT": str(sb / "root")}
+        if not s.color:
+            env["NO_COLOR"] = "1"
         if not s.no_dotfiles:
             env["DOTFILES"] = str(sb / "repo")
         if s.dotkit_dir:

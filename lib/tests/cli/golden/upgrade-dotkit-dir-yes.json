@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n  nix   dotkit/nixpkgs                       2025-10-09 aaaaaaa     -> 2025-10-22 eeeeeee\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
- "stderr": "Checking Nix...\nwarning: Git tree '@SB/checkout' is dirty\nwarning: Git tree '@SB/checkout' is dirty\nCommit nix/flake.lock to keep the upgrade.\nCommit flake.lock in @SB/checkout too, if it changed.\n",
+ "stderr": "Checking Nix...\nBuilding the system...\nwarning: Git tree '@SB/checkout' is dirty\nwarning: Git tree '@SB/checkout' is dirty\nActivating the system...\nUpgraded.\nCommit nix/flake.lock to keep the upgrade.\nCommit flake.lock in @SB/checkout too, if it changed.\n",
  "files": {
   "checkout/flake.lock": "{\n  \"nodes\": {\n    \"root\": {\n      \"inputs\": {\n        \"nixpkgs\": \"nixpkgs\",\n        \"nix-darwin\": \"nix-darwin\"\n      }\n    },\n    \"nixpkgs\": {\n      \"locked\": {\n        \"lastModified\": 1761100000,\n        \"rev\": \"eeeeeee5555555\"\n      }\n    },\n    \"nix-darwin\": {\n      \"locked\": {\n        \"lastModified\": 1760000000,\n        \"rev\": \"bbbbbbb2222222\"\n      }\n    }\n  },\n  \"root\": \"root\",\n  \"version\": 7\n}\n",
   "repo/.build/system": "-> @SB/system-1",

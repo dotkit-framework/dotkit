@@ -91,7 +91,7 @@ CONFIRM = ("import sys; sys.path.insert(0, sys.argv[1]); from dotkit.core import
 class ConfirmTests(unittest.TestCase):
     def ask(self, typed):
         argv = [sys.executable, "-I", "-B", "-c", CONFIRM, str(LIB)]
-        return harness.run_tty(argv, dict(os.environ), LIB, typed)
+        return harness.run_tty(argv, {**os.environ, "NO_COLOR": "1"}, LIB, typed)
 
     def test_answers(self):
         cases = [("y\n", "True"), ("Y\n", "True"), ("  y \t\n", "True"), ("yes\n", "False"), ("n\n", "False"),
@@ -101,6 +101,14 @@ class ConfirmTests(unittest.TestCase):
                 code, out, terminal = self.ask(typed)
                 self.assertEqual((code, out.strip()), (0, want))
                 self.assertEqual(terminal, "Go? [y/N] ")
+
+    def test_colors(self):
+        """On a terminal with colors: ? and the question in bold, [y/N] dim (C9)."""
+        argv = [sys.executable, "-I", "-B", "-c", CONFIRM, str(LIB)]
+        env = {k: v for k, v in os.environ.items() if k not in ("NO_COLOR", "DOTKIT_NO_COLOR")}
+        code, out, terminal = harness.run_tty(argv, {**env, "TERM": "xterm"}, LIB, "y\n")
+        self.assertEqual((code, out.strip()), (0, "True"))
+        self.assertEqual(terminal, "\033[1;33m?\033[0m \033[1mGo?\033[0m \033[2m[y/N]\033[0m ")
 
     def test_yes_does_not_ask(self):
         self.assertTrue(ui.confirm("Go?", True))

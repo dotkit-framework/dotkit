@@ -5,11 +5,45 @@
 # the global tool directories first in PATH. An interactive shell then reads
 # ~/.bashrc. It must work with the macOS Bash 3.2.
 
-# The Home Manager variables, among them DOTKIT_TOOL_PATH. config/zsh/zshenv
-# loads them for zsh. A shell that a dotkit shell started has them already.
+# The Home Manager variables, among them DOTKIT_TOOL_PATH and
+# NPM_CONFIG_GLOBALCONFIG. config/zsh/zshenv loads them for zsh, with the same
+# rules: refresh them also when a long-running parent (a tmux or herdr server,
+# an editor) started before the last apply, but keep the SDK selections that
+# the caller set, for example JAVA_HOME of a project.
 if [[ -r /etc/profiles/per-user/$USER/etc/profile.d/hm-session-vars.sh ]]; then
+  _dotkit_java_home=${JAVA_HOME-} _dotkit_java_home_set=${JAVA_HOME+1}
+  _dotkit_android_home=${ANDROID_HOME-} _dotkit_android_home_set=${ANDROID_HOME+1}
+  unset __HM_SESS_VARS_SOURCED
   # shellcheck source=/dev/null
   . "/etc/profiles/per-user/$USER/etc/profile.d/hm-session-vars.sh"
+  if [[ -n $_dotkit_java_home_set ]]; then
+    if [[ -z $_dotkit_java_home || -d $_dotkit_java_home ]]; then
+      export JAVA_HOME=$_dotkit_java_home
+    elif [[ $_dotkit_java_home != "$JAVA_HOME" ]]; then
+      printf 'JAVA_HOME is not a directory: %s. Using Home Manager default: %s.\n' "$_dotkit_java_home" "$JAVA_HOME" >&2
+    fi
+  fi
+  if [[ -n $_dotkit_android_home_set ]]; then
+    if [[ -z $_dotkit_android_home || -d $_dotkit_android_home ]]; then
+      export ANDROID_HOME=$_dotkit_android_home
+    elif [[ $_dotkit_android_home != "$ANDROID_HOME" ]]; then
+      printf 'ANDROID_HOME is not a directory: %s. Using Home Manager default: %s.\n' "$_dotkit_android_home" \
+        "$ANDROID_HOME" >&2
+    fi
+  fi
+  # The file adds its directories to TERMINFO_DIRS each time. Keep the first of
+  # each entry, also of an empty one, which selects the system database.
+  _dotkit_terminfo='' _dotkit_seen='|' _dotkit_count=0
+  IFS=: read -r -a _dotkit_dirs <<<"${TERMINFO_DIRS-}"
+  for _dotkit_dir in "${_dotkit_dirs[@]}"; do
+    case $_dotkit_seen in *"|$_dotkit_dir|"*) continue ;; esac
+    _dotkit_seen=$_dotkit_seen$_dotkit_dir'|'
+    if ((_dotkit_count)); then _dotkit_terminfo=$_dotkit_terminfo:$_dotkit_dir; else _dotkit_terminfo=$_dotkit_dir; fi
+    _dotkit_count=1
+  done
+  [[ -z ${TERMINFO_DIRS-} ]] || export TERMINFO_DIRS=$_dotkit_terminfo
+  unset _dotkit_java_home _dotkit_java_home_set _dotkit_android_home _dotkit_android_home_set \
+    _dotkit_terminfo _dotkit_seen _dotkit_count _dotkit_dirs _dotkit_dir
 fi
 
 # A login shell that a dotkit shell started keeps the directories that were

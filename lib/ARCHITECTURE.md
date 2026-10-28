@@ -50,9 +50,15 @@ lib/
       proc.py               the only place that starts processes
       nix.py                the flake commands: the override of DOTKIT_DIR, the build, the switch
       lists.py              the list files: read (the rules of nix/read-*.nix), append, delete
-      mise_toml.py          the [tools] table of a mise config, read as TOML
+      mise_toml.py          the [tools] table of a mise config, read as TOML; a TOML value on one line
+      paths.py              paths for messages (~, the repository, the base), the links of Home Manager
+      manifest.py           the manifest of the links (etc/dotkit/links.json): from a system, or by nix eval
+      nix_links.py          the link lines of dotkit.links in nix/: plan, check, and edit them
+      change.py             change files of the repository, build, activate; restore them on a failure
       backup.py             copies of files to restore on a failure or a signal
-    commands/               apply, upgrade, clean, history, rollback, migrate, tidy
+    commands/               apply, upgrade, own, doctor, clean, history, rollback, migrate, tidy
+      overlap.py            what the repository repeats or replaces of the base: the report, doctor
+      own.py                own: copy a base file into the repository and link it, or give it back
     pkg/                    add, remove, info, list
       names.py              the declared names for the completion (imports only the readers)
       entries.py            KINDS (kind -> file), Entry, Declaration, and the prefixes of arguments
@@ -60,8 +66,19 @@ lib/
       declared.py           where a tool is declared, and which global tool has a command
       resolve.py            select the source; choose() has the rules and runs no command
       picker.py             the source picker of add (prompt_toolkit)
-      edit.py               change the lists, build, activate; restore the lists on a failure
       cli.py                the commands
+    audit/                  audit: known vulnerabilities and malicious releases, from OSV.dev
+      model.py              Item, Part, Advisory, Finding: what the sources make and the core reads
+      sources/              one module per source: nix, brew, mise, packages, binaries, actions, dotkit;
+                            each collect(ctx) returns a Part, with its decisions in pure functions
+      macho.py              the Mach-O sections of an executable: Go build info and function names, Rust crates
+      match.py              the advisories, notices, ranges, severity, and ignore rules; runs no command
+      triage.py             what the report lists: malicious, known exploited, a fix that an upgrade installs
+      kev.py                the catalog of known exploited vulnerabilities of CISA, cached for a day
+      cvss4.py              the CVSS 4.0 base score, ported from the reference calculator of FIRST
+      osv.py                the OSV API with curl, and the cache of the advisories
+      issues.py             one GitHub issue per finding, with gh
+      cli.py                the command: asks OSV once for all sources, the report, --json, --notify
     migrate/                the migration wizard
   tests/
     BEHAVIOR.md             the behavior of the command, row by row
@@ -81,10 +98,15 @@ lib/
   dotkit first, so the lines stay in order. On Ctrl-C it waits until the
   command ends, then raises `KeyboardInterrupt`, so that the caller can
   restore files.
-- **Only `core/lists.py` and `core/backup.py` change the config files**
-  (and `mise use`/`unuse`, which mise does). A change that must not stay
-  half done goes inside `backup.Backup` and `backup.on_signals()`:
-  `pkg/edit.py` and `commands/upgrade.py` show how.
+- **Only a few modules change the files of the repository:**
+  `core/lists.py` (the lists), `core/nix_links.py` (the link lines of
+  nix/), and `core/backup.py` (the restores). `commands/own.py` writes its
+  copies of base files in config/ only inside `core/change.apply_nix()`,
+  which deletes them on a failure. `mise use`/`unuse` change
+  config/mise.toml, and the overlap report writes its state file outside
+  the repository. A change that must not stay half done goes inside
+  `backup.Backup` and `backup.on_signals()`: `core/change.py` and
+  `commands/upgrade.py` show how.
 - **The lookups are apart from the decisions.** `pkg/lookups.py` talks to
   the tools and returns data; `pkg/resolve.choose()` decides and runs no
   command, so its tests are a table.
@@ -134,3 +156,26 @@ cd lib && /usr/bin/python3 -B -m unittest discover -s tests -t .
 3. Add scenarios to `tests/cli/scenarios.py` with the rows, and write their
    goldens with `DOTKIT_CLI_REGOLD=1`. Read each new golden before you
    commit it.
+
+## Add an audit source
+
+1. Add a module to `dotkit/audit/sources/` with `NAME` (the key of its findings
+   and issues: keep it once it is released), `LABEL`, `NOUNS`, and
+   `collect(ctx) -> model.Part`. Keep the decisions (the items, their
+   queries, an `accept` check) in pure functions, and run commands only
+   through `core/proc.py`. `ctx.mise_ls()` runs `mise ls` once for all
+   sources; `ctx.system(path)` gives a path of the system, which the
+   scenarios move into the sandbox.
+2. When the source knows what an upgrade installs, add `upgrades(ctx, items)`:
+   for each item, the same tool at that version with its queries, or None.
+   triage.py asks OSV about them, so a finding with a fix is listed and one
+   without is counted. A source whose items are packages inside a tool sets
+   `DEPENDENCY = True`: the report counts its findings.
+3. A failure is `Part(error=...)`: the audit is not complete, and a daily
+   workflow fails. A source that does not apply here, for example tools that
+   CI does not install, is `Part(skipped=...)`: not checked, not a failure.
+4. Add it to `SOURCES` in `sources/__init__.py`, in the order of the report.
+   The core asks OSV once for the queries of all sources, and match.py
+   decides for all of them.
+5. Add its row to `tests/BEHAVIOR.md`, unit tests for its pure functions, and
+   a scenario when it runs a command.

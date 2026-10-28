@@ -117,7 +117,9 @@ class SecretTests(unittest.TestCase):
             self.assertIsNotNone(secrets.line_secret(line + fake.fill(' # @GH@')), line)
         for url in ('git+https://github.com/x/tool#@HEX40@',
                     'https://github.com/x/tool.git@XX',
-                    'https://github.com/x/tool?rev=@HEX40@&branch=main'):
+                    'https://github.com/x/tool?rev=@HEX40@&branch=main',
+                    '      - uses: actions/checkout@@HEX40@ # v7.0.1',
+                    'uses: "owner/repo/path@@HEX40@"'):
             line = fake.fill(url.replace('XX', '@HEX40@'))
             self.assertIsNone(secrets.line_secret(line), line)
             self.assertIsNotNone(secrets.line_secret(line + fake.fill(' token=@HEX40@')), line)

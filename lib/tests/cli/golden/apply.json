@@ -4,7 +4,7 @@
  ],
  "exit": 0,
  "stdout": "",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nApplied the config.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1"
  },

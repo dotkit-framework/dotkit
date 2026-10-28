@@ -1,7 +1,8 @@
 # The Python tests of lib/ (the dotkit command and the migration wizard) for
 # `nix flake check`, with the Python of Nixpkgs: newer than the macOS Python
-# 3.9 that dotkit runs with. The scenarios of the command skip here. CI also runs them directly with both, for
-# the log.
+# 3.9 that dotkit runs with. The scenarios of the command and the tests that
+# need nix skip here; the python job of CI runs them with the Python of
+# Nixpkgs, and all tests with the macOS Python.
 {
   lib,
   runCommand,

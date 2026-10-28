@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "audit"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: @SB/dotkit/audit.toml is not valid TOML: Expected ']]' at the end of an array declaration (at line 1, column 9).\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

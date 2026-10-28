@@ -142,7 +142,7 @@ class OtherConfigTests(unittest.TestCase):
         """A copy goes only to a free repository path; the other file stays in place, with a to-do."""
         cases = {
             "an earlier copy": ({".npmrc": "prefix=${HOME}/.local\n", ".config/npmrc": "color=false\n"},
-                                {"file:.npmrc": "replace"}, ".config/npmrc", "config/npmrc", "~/.npmrc"),
+                                {}, ".config/npmrc", "config/npmrc", "~/.npmrc"),
             "a merged file": ({".config/git/config": "[pull]\n\trebase = true\n", ".gitconfig": "[core]\n",
                                ".config/gitconfig": "[x]\n"},
                               {}, ".config/gitconfig", "config/gitconfig", "~/.config/git/config and ~/.gitconfig"),

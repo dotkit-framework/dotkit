@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "doctor",
+  "-n",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit doctor [-h]\ndotkit doctor: error: unrecognized arguments: -n x\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

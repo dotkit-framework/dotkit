@@ -57,10 +57,15 @@ def _drive(tmp, keys, term, rows, cols, timeout, env):
             os._exit(127)
     screen = bytearray()
 
-    def drain(seconds: float) -> None:
+    def drain(seconds: float, quiet: float = 0.1) -> None:
+        """Reads the output for at most seconds; returns earlier when the output stopped for quiet seconds.
+        A key that comes early waits in the terminal, so the wizard reads the keys in order."""
         end = time.time() + seconds
+        last = None
         while time.time() < end:
-            r, _, _ = select.select([fd], [], [], 0.02)
+            if last is not None and time.time() - last > quiet:
+                return
+            r, _, _ = select.select([fd], [], [], 0.01)
             if r:
                 try:
                     data = os.read(fd, 65536)
@@ -69,10 +74,11 @@ def _drive(tmp, keys, term, rows, cols, timeout, env):
                 if not data:
                     return
                 screen.extend(data)
+                last = time.time()
 
     done = 0
     try:
-        drain(1.5)  # the scan and curses start
+        drain(5.0, quiet=0.3)  # the scan and curses start
         for key in keys:
             if isinstance(key, tuple):
                 _size(fd, key[1], key[2])
@@ -82,7 +88,7 @@ def _drive(tmp, keys, term, rows, cols, timeout, env):
                     os.write(fd, key.encode())
                 except OSError:
                     break  # the child has quit
-            drain(0.12)
+            drain(1.0)
         deadline = time.time() + timeout
         status = None
         while time.time() < deadline:

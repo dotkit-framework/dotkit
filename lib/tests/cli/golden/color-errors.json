@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "remove",
+  "dkt-x",
+  "nix:jq"
+ ],
+ "exit": 1,
+ "stdout": "nix:jq: remove jq from nix/packages.txt\n",
+ "terminal": "\u001b[1;33mdotkit:\u001b[0m dkt-x: not in nix/packages.txt, nix/brews.txt, nix/casks.txt, or config/mise.toml. See \u001b[36mdotkit info dkt-x\u001b[0m.\n\u001b[1;31mdotkit:\u001b[0m nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

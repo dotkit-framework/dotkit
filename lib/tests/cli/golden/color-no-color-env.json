@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "remove",
+  "dkt-x"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "terminal": "dotkit: dkt-x: not in nix/packages.txt, nix/brews.txt, nix/casks.txt, or config/mise.toml. See dotkit info dkt-x.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

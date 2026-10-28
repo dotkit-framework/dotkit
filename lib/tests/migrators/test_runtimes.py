@@ -122,8 +122,10 @@ class RuntimesTests(unittest.TestCase):
         self.assertIn("The base has Node 22 and Python 3.13. A project pins its own versions with `mise use` or a "
                       ".nvmrc, .python-version, .ruby-version, or .tool-versions file.", report)
         base = fake.context_of(self.h, fake.brew_runner()).base
-        self.assertEqual(runtimes.base_runtimes(base), "Node {node}, Python {python}, and Ruby {ruby}".format(
-            **tomllib.loads((fake.ROOT / "config/mise.toml").read_text())["tools"]))
+        tools = tomllib.loads((fake.ROOT / "config/mise.toml").read_text())["tools"]
+        # A value is a version, or a table with one: { version = "24", minimum_release_age = "1d" }.
+        versions = {k: v["version"] if isinstance(v, dict) else v for k, v in tools.items()}
+        self.assertEqual(runtimes.base_runtimes(base), "Node {node}, Python {python}, and Ruby {ruby}".format(**versions))
 
     def test_the_variable_of_a_version_manager_is_its_directory(self):
         """NVM_DIR, VOLTA_HOME, ...: the directory, even outside the home; the usual one is not tried then."""

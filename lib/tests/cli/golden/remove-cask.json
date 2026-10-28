@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "zed: remove zed from nix/casks.txt\n",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nRemoved zed.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/casks.txt": ""

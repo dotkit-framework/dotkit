@@ -85,6 +85,27 @@ in
       '';
     };
 
+    audit = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Run `dotkit audit --notify` each day: a macOS notification when
+          a tool has a new known vulnerability or a malicious release. A run
+          asks OSV.dev once, with a few kilobytes. The log is
+          ~/Library/Logs/dotkit-audit.log.
+        '';
+      };
+      hour = mkOption {
+        type = types.ints.between 0 23;
+        default = 10;
+        description = ''
+          The hour of the daily audit. When the Mac sleeps at that time, the
+          audit runs when it wakes.
+        '';
+      };
+    };
+
     guiSecrets.enable = mkOption {
       type = types.bool;
       default = true;
@@ -107,10 +128,27 @@ in
         brews = [ ./brews.txt ];
         casks = [ ./casks.txt ];
       };
-      guiVariables = [ "JAVA_HOME" ];
+      guiVariables = [
+        "JAVA_HOME"
+        "NPM_CONFIG_GLOBALCONFIG"
+      ];
     };
 
     home-manager.users.${user.name}.home.packages = map package (names cfg.lists.packages);
+
+    environment.etc = {
+      # uv reads this system config first, then ~/.config/uv/uv.toml, which is
+      # yours and wins.
+      "uv/uv.toml".source = ../config/uv.toml;
+
+      # The links of nix/links.nix, for the report of `dotkit apply` and `dotkit doctor`.
+      "dotkit/links.json".text = builtins.toJSON (
+        config.home-manager.users.${user.name}.dotkit.manifest
+        // {
+          inherit (config.home-manager) backupFileExtension;
+        }
+      );
+    };
 
     system = {
       primaryUser = user.name;
@@ -173,36 +211,60 @@ in
       fi
     '';
 
-    # launchd.user.envVariables sets these only during activation, and a reboot clears
-    # them. This agent sets them again at each login.
-    launchd.user.agents.gui-environment = {
-      script = lib.concatLines (
-        lib.mapAttrsToList (
-          name: value: "/bin/launchctl setenv ${name} ${lib.escapeShellArg value}"
-        ) guiEnvironment
-      );
-      serviceConfig.RunAtLoad = true;
-    };
+    launchd.user.agents = {
+      # launchd.user.envVariables sets these only during activation, and a reboot clears
+      # them. This agent sets them again at each login.
+      gui-environment = {
+        script = lib.concatLines (
+          lib.mapAttrsToList (
+            name: value: "/bin/launchctl setenv ${name} ${lib.escapeShellArg value}"
+          ) guiEnvironment
+        );
+        serviceConfig.RunAtLoad = true;
+      };
 
-    # The same for the variables that ~/.secrets exports. launchd runs the
-    # agent again when the file changes. Apps that run already keep their old
-    # values until a restart. A variable removed from ~/.secrets stays until
-    # the next login.
-    launchd.user.agents.gui-secrets = lib.mkIf cfg.guiSecrets.enable {
-      script = ''
-        secrets=${lib.escapeShellArg "${user.home}/.secrets"}
-        [ -r "$secrets" ] || exit 0
-        # A clean environment: only what the file exports, and what sh sets itself.
-        /usr/bin/env -i HOME=${lib.escapeShellArg user.home} /bin/sh -c '. "$1" >/dev/null 2>&1; /usr/bin/env -0' sh "$secrets" |
-          while IFS= read -r -d "" entry; do
-            name=''${entry%%=*}
-            case $name in PWD | SHLVL | HOME | _) continue ;; esac
-            /bin/launchctl setenv "$name" "''${entry#*=}"
-          done
-      '';
-      serviceConfig = {
-        RunAtLoad = true;
-        WatchPaths = [ "${user.home}/.secrets" ];
+      # The same for the variables that ~/.secrets exports. launchd runs the
+      # agent again when the file changes. Apps that run already keep their old
+      # values until a restart. A variable removed from ~/.secrets stays until
+      # the next login.
+      gui-secrets = lib.mkIf cfg.guiSecrets.enable {
+        script = ''
+          secrets=${lib.escapeShellArg "${user.home}/.secrets"}
+          [ -r "$secrets" ] || exit 0
+          # A clean environment: only what the file exports, and what sh sets itself.
+          /usr/bin/env -i HOME=${lib.escapeShellArg user.home} /bin/sh -c '. "$1" >/dev/null 2>&1; /usr/bin/env -0' sh "$secrets" |
+            while IFS= read -r -d "" entry; do
+              name=''${entry%%=*}
+              case $name in PWD | SHLVL | HOME | _) continue ;; esac
+              /bin/launchctl setenv "$name" "''${entry#*=}"
+            done
+        '';
+        serviceConfig = {
+          RunAtLoad = true;
+          WatchPaths = [ "${user.home}/.secrets" ];
+        };
+      };
+
+      # The daily audit, with the PATH of GUI apps: nix, mise, and brew.
+      dotkit-audit = lib.mkIf cfg.audit.enable {
+        serviceConfig = {
+          ProgramArguments = [
+            "${user.dotfiles}/dotkit"
+            "audit"
+            "--notify"
+          ];
+          EnvironmentVariables.PATH = guiEnvironment.PATH;
+          StartCalendarInterval = [
+            {
+              Hour = cfg.audit.hour;
+              Minute = 0;
+            }
+          ];
+          ProcessType = "Background";
+          LowPriorityIO = true;
+          StandardOutPath = "${user.home}/Library/Logs/dotkit-audit.log";
+          StandardErrorPath = "${user.home}/Library/Logs/dotkit-audit.log";
+        };
       };
     };
 

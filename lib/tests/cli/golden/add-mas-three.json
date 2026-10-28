@@ -8,7 +8,7 @@
  ],
  "exit": 0,
  "stdout": "mas:361285480 -> nix/mas.txt (Keynote)\nmas:1234 -> nix/mas.txt (Keynote (1234))\nnix/mas.txt has another app named Keynote; added as 'Keynote (1234)'.\nmas:55 -> nix/mas.txt (Back\\slash)\n",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nAdded 3 tools.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/mas.txt": "361285480 Keynote\n1234 Keynote (1234)\n55 Back\\slash\n"

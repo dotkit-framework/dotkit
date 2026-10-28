@@ -10,9 +10,6 @@
 
 let
   cfg = config.dotkit;
-  # Base links point into the dotkit directory, at mkDefault priority, so the
-  # dotfiles repository can replace each one (see nix/links.nix).
-  base = lib.mapAttrs (_target: file: lib.mkDefault "${cfg.source}/${file}");
 in
 {
   imports = [
@@ -68,6 +65,10 @@ in
         JAVA_HOME = pkgs.zulu17.home;
         DOTKIT_TOOL_PATH = lib.concatStringsSep ":" cfg.toolPath;
 
+        # npm reads the dotkit settings as its global config, then ~/.npmrc,
+        # which is yours and wins.
+        NPM_CONFIG_GLOBALCONFIG = "${cfg.source}/config/npmrc";
+
         # New releases wait 7 days, as in config/npmrc, pnpm.yaml, uv.toml,
         # bunfig.toml, and mise.toml. pip 26.1 or newer reads the duration.
         PIP_UPLOADED_PRIOR_TO = "P7D";
@@ -115,48 +116,59 @@ in
         };
       };
 
-      links =
-        base {
-          ".bunfig.toml" = "config/bunfig.toml";
-          ".editorconfig" = "config/editorconfig";
-          ".gemrc" = "config/gemrc";
-          ".npmrc" = "config/npmrc";
+      # The base config files, in the dotkit directory (nix/links.nix links them).
+      baseLinks = {
+        ".bunfig.toml" = "config/bunfig.toml";
+        ".editorconfig" = "config/editorconfig";
+        ".gemrc" = "config/gemrc";
 
-          ".zshenv" = "config/zsh/zshenv";
-          ".zprofile" = "config/zsh/zprofile";
-          ".zshrc" = "config/zsh/zshrc";
-          # For `bash -l`, for example scripts with #!/bin/bash -l.
-          ".bash_profile" = "config/bash/bash_profile";
+        ".zshenv" = "config/zsh/zshenv";
+        ".zprofile" = "config/zsh/zprofile";
+        ".zshrc" = "config/zsh/zshrc";
+        # For `bash -l`, for example scripts with #!/bin/bash -l.
+        ".bash_profile" = "config/bash/bash_profile";
 
-          # Git reads this file first and ~/.gitconfig after it, so ~/.gitconfig wins.
-          ".config/git/config" = "config/gitconfig";
-          # Git reads this file when core.excludesFile is not set.
-          ".config/git/ignore" = "config/gitignore";
-          # Ghostty then reads ~/.config/ghostty/config.local, which wins.
-          ".config/ghostty/config" = "config/ghostty.conf";
-          ".config/herdr/config.toml" = "config/herdr.toml";
-          ".config/herdr/git-status.py" = "scripts/herdr/git-status.py";
-          ".config/herdr/git-status.sh" = "scripts/herdr/git-status.sh";
-          ".config/herdr/process-name.bash" = "scripts/herdr/process-name.bash";
-          ".config/herdr/process-name.sh" = "scripts/herdr/process-name.sh";
-          ".config/herdr/process-name.zsh" = "scripts/herdr/process-name.zsh";
-          # mise reads conf.d and ~/.config/mise/config.toml. `mise use -g` writes the latter.
-          ".config/mise/conf.d/dotkit.toml" = "config/mise.toml";
-          ".config/starship.toml" = "config/starship.toml";
-          ".config/uv/uv.toml" = "config/uv.toml";
+        # Git reads this file first and ~/.gitconfig after it, so ~/.gitconfig wins.
+        ".config/git/config" = "config/gitconfig";
+        # Git reads this file when core.excludesFile is not set.
+        ".config/git/ignore" = "config/gitignore";
+        # Ghostty then reads ~/.config/ghostty/config.local, which wins.
+        ".config/ghostty/config" = "config/ghostty.conf";
+        ".config/herdr/config.toml" = "config/herdr.toml";
+        ".config/herdr/git-status.py" = "scripts/herdr/git-status.py";
+        ".config/herdr/git-status.sh" = "scripts/herdr/git-status.sh";
+        ".config/herdr/process-name.bash" = "scripts/herdr/process-name.bash";
+        ".config/herdr/process-name.sh" = "scripts/herdr/process-name.sh";
+        ".config/herdr/process-name.zsh" = "scripts/herdr/process-name.zsh";
+        # mise reads conf.d and ~/.config/mise/config.toml. `mise use -g` writes the latter.
+        ".config/mise/conf.d/dotkit.toml" = "config/mise.toml";
+        ".config/starship.toml" = "config/starship.toml";
 
-          # pnpm reads its global config here on macOS unless XDG_CONFIG_HOME is set.
-          "Library/Preferences/pnpm/config.yaml" = "config/pnpm.yaml";
-        }
-        // {
-          # The dotkit command and ./dotkit of the dotfiles repository run the
-          # dotkit script of this directory.
-          ".local/share/dotkit" = lib.mkDefault cfg.source;
+        # pnpm reads its global config here on macOS unless XDG_CONFIG_HOME is set.
+        "Library/Preferences/pnpm/config.yaml" = "config/pnpm.yaml";
+      };
 
-          # Files of the dotfiles repository that `dotkit add` edits. `mise use -g` writes
-          # through this link.
-          ".config/mise/config.toml" = lib.mkDefault "config/mise.toml";
-        };
+      # The file of yours that a tool reads after a base file, so your settings win.
+      # The other base files are the only file of their tool: yours replaces them.
+      layers = {
+        ".zshenv" = ".zshenv.local";
+        ".zprofile" = ".zprofile.local";
+        ".zshrc" = ".zshrc.local";
+        ".bash_profile" = ".bash_profile.local";
+        ".config/git/config" = ".gitconfig";
+        ".config/ghostty/config" = ".config/ghostty/config.local";
+        ".config/mise/conf.d/dotkit.toml" = ".config/mise/config.toml";
+      };
+
+      links = {
+        # The dotkit command and ./dotkit of the dotfiles repository run the
+        # dotkit script of this directory.
+        ".local/share/dotkit" = lib.mkDefault cfg.source;
+
+        # Files of the dotfiles repository that `dotkit add` edits. `mise use -g` writes
+        # through this link.
+        ".config/mise/config.toml" = lib.mkDefault "config/mise.toml";
+      };
     };
 
     # Native GUI apps are managed by nix-darwin and Homebrew.

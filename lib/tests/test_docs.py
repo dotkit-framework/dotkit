@@ -490,7 +490,7 @@ class LinksAndFilesTests(unittest.TestCase):
             "config/bash": ("contains", "config/bash/bash_profile"),
             "config/merged": ("contains", "config/merged/gitconfig"),
             "nix": ("contains", "nix/brews.txt"),
-            ".": ("contains", ".gitignore"),
+            ".": ("contains", ".github/dependabot.yml"),
         }
         for rel, why in cases.items():
             with self.subTest(rel=rel):

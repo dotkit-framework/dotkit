@@ -6,7 +6,7 @@
  ],
  "exit": 1,
  "stdout": "nix:dkt-a -> nix/packages.txt\n  ✓ nix:dkt-a                      1.0            A\n",
- "stderr": "sudo: a password is required\ndotkit: dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply.\n",
+ "stderr": "Building the system...\nActivating the system...\nsudo: a password is required\ndotkit: dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/packages.txt": "jq\ndkt-a\n"

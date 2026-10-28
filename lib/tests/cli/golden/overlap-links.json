@@ -1,0 +1,66 @@
+{
+ "argv": [
+  "apply"
+ ],
+ "exit": 0,
+ "stdout": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\ndotkit: your dotfiles repeat or replace parts of the dotkit base:\n  ~/.config/git/config          your config/gitconfig replaces the base file; 2 lines differ. Its tool reads ~/.gitconfig after the base file: move your changes there, and remove your link of ~/.config/git/config.\n      --- dotkit config/gitconfig\n      +++ config/gitconfig\n      @@ -1,3 +1,3 @@\n       [core]\n      -  pager = delta\n      +  pager = less\n       [include]\n  ~/.config/starship.toml       your config/starship.toml replaces the base file; 3 lines differ.\n      --- dotkit config/starship.toml\n      +++ config/starship.toml\n      @@ -3,3 +3,3 @@\n       line 3\n      -line 4\n      +line four\n       line 5\n      @@ -10 +10,2 @@\n       line 10\n      +line 11\n  ~/.config/uv/uv.toml          your config/uv.toml replaces the base file, and differs from it a lot.\n      0% of the lines are the same. Compare them: diff -u @SB/dotkit/config/uv.toml @SB/repo/config/uv.toml\n  ~/.editorconfig               has no link: your configuration sets it to null, so the base file is off.\n  ~/.npmrc                      your config/npmrc is the same as the base file. Give it back: dotkit own --release ~/.npmrc\n  ~/.config/nvim.before-dotkit  an apply moved your file aside for the link ~/.config/nvim. Compare it with ~/.config/nvim, take what you need, then delete it.\n  ~/.zshrc.before-dotkit        an apply moved your file aside for the link ~/.zshrc. Move the settings that you need to ~/.zshrc.local, then delete it.\nApplied the config.\n",
+ "files": {
+  "home/.local/state/dotkit/overlaps.json": "{\n \"version\": 1,\n \"seen\": {\n  \"link:.config/git/config\": \"13e2f888fb1bb53f\",\n  \"link:.config/starship.toml\": \"b1806e40888ef14c\",\n  \"link:.config/uv/uv.toml\": \"0fa54a1196f5bf61\",\n  \"link:.editorconfig\": \"97cccb1b1197f11c\",\n  \"link:.npmrc\": \"1af67161b1dd56e2\",\n  \"moved:.config/nvim\": \"e5f485fb4c006b88\",\n  \"moved:.zshrc\": \"2ae5b905610bbb77\"\n }\n}\n",
+  "repo/.build/system": "-> @SB/system-1"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

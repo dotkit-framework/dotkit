@@ -126,7 +126,7 @@ class FlowTests(unittest.TestCase):
         p = self.session()
         ok, c, ui = self.run_flow(p, answers={"files": {"file:.npmrc": "replace"}})
         self.assertTrue(ok)
-        self.assertEqual(ui.errors["file:.npmrc"], "replace is not one of: tokens, dotkit, keep")
+        self.assertEqual(ui.errors["file:.npmrc"], "replace is not one of: tokens, keep")
         self.assertEqual(c.option("file:.npmrc"), "tokens")
 
     def test_a_repository_outside_the_home_directory(self):
@@ -178,14 +178,15 @@ class FlowTests(unittest.TestCase):
         runtimes = by_id["runtimes"]
         self.assertEqual((runtimes.kind, runtimes.title, runtimes.dest),
                          ("checklist", "Runtime versions of version managers", "config/mise.toml"))
-        self.assertEqual(runtimes.note, "off: mise installs them; the base has Node 24, Python 3.14, and Ruby 3.4")
+        self.assertEqual(runtimes.note,
+                         "off: mise installs them; the base has Node 24.22.1, Python 3.14.10, and Ruby 3.4.12")
         self.assertEqual(runtimes.detail("runtime:node"), "From nvm")
         self.assertNotIn("cargo", by_id, "dotkit has bat already: no cargo page")
         files = by_id["files"]
         self.assertEqual(files.kind, "choices")
         npmrc = next(r for r in files.rows if r.id == "file:.npmrc")
-        self.assertEqual(npmrc.options, ("tokens", "dotkit", "keep"))
-        self.assertEqual(set(npmrc.option_text), {"tokens", "dotkit", "keep"})
+        self.assertEqual(npmrc.options, ("tokens", "keep"))
+        self.assertEqual(set(npmrc.option_text), {"tokens", "keep"})
         self.assertEqual(files.get("file:.npmrc"), "tokens")
 
 

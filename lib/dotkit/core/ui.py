@@ -9,6 +9,7 @@ prints the text and exits with the code (BEHAVIOR.md, the introduction).
 from __future__ import annotations
 
 import os
+import re
 import sys
 from typing import Optional
 
@@ -26,6 +27,10 @@ def die(msg: str) -> Exit:
     return Exit(1, f"dotkit: {msg}")
 
 
+# The end of a command that checked all its arguments first, when one of them failed.
+FAILED = "nothing changed. Fix the errors above, then run the command again."
+
+
 def usage_error(msg: str, hint: str = "Run dotkit --help.") -> Exit:
     return Exit(2, f"dotkit: {msg} {hint}")
 
@@ -34,6 +39,83 @@ def _write(stream, text: str) -> None:
     stream.flush()
     stream.buffer.write(text.encode("utf-8", "surrogateescape"))
     stream.buffer.flush()
+
+
+# --- Colors. The text is the same with and without them: colors and symbols are only for a terminal.
+
+# --no-color of the command line (__main__), for this run.
+_no_color = False
+
+# The roles of the text, and their SGR codes. The help (cli.style) uses them too.
+STYLES = {
+    "error": "1;31", "warn": "1;33", "ok": "1;32", "heading": "1", "name": "1", "file": "36", "command": "36",
+    "added": "32", "removed": "31", "changed": "33", "dim": "2", "nix": "34", "brew": "33", "mise": "35",
+    # The help: the headings of its sections, and the first column of its lists (commands, options).
+    "section": "1;33", "option": "32",
+}
+# The commands of dotkit (cli.COMMANDS and help; tests/commands/test_commands.py compares them). Only
+# "dotkit COMMAND" is a command in a message, with the words after it that look like options or arguments:
+# a word that starts with - or ~, or that has : / @ . or - in it. Other commands are highlighted in backticks.
+COMMANDS = ("apply", "upgrade", "add", "remove", "info", "list", "own", "doctor", "audit", "history", "migrate",
+            "tidy", "rollback", "clean", "help")
+_ARG = r"(?:-[\w-]+|~(?:[\w:@./~-]*[\w/])?|[\w@~-]*[:/@.-][\w:@./~-]*[\w/])"
+_COMMAND = re.compile(r"\bdotkit (?:(?:" + "|".join(COMMANDS) + r")\b|-[\w-]+)(?: " + _ARG + ")*")
+_CODE = re.compile(r"`([^`]+)`")
+
+
+def no_color() -> None:
+    global _no_color
+    _no_color = True
+
+
+def color_allowed() -> bool:
+    """Colors are not turned off: no --no-color, NO_COLOR and DOTKIT_NO_COLOR empty or not set, TERM not dumb.
+    The picker and the curses wizard use this; for a stream, colors()."""
+    return (not _no_color and not os.environ.get("NO_COLOR") and not os.environ.get("DOTKIT_NO_COLOR")
+            and os.environ.get("TERM") != "dumb")
+
+
+def colors(stream=None) -> bool:
+    """Colors for a stream (stdout by default): color_allowed(), and the stream is a terminal."""
+    stream = sys.stdout if stream is None else stream
+    return color_allowed() and stream.isatty()
+
+
+def sgr(text: str, role: str) -> str:
+    """text in the color of role, always: for the callers that checked colors() already."""
+    return f"\033[{STYLES[role]}m{text}\033[0m" if text else text
+
+
+def paint(text: str, role: str, err: bool = False) -> str:
+    """text in the color of role, when the stream (stderr with err) gets colors."""
+    return sgr(text, role) if colors(sys.stderr if err else sys.stdout) else text
+
+
+def mark(symbol: str, role: str, err: bool = False) -> str:
+    """A symbol and a space before a line, only with colors: ✓, !, ▸."""
+    return paint(symbol, role, err) + " " if colors(sys.stderr if err else sys.stdout) else ""
+
+
+def commands(text: str, err: bool = False) -> str:
+    """The commands in text (dotkit apply, `code`) in the command color. The backticks go away only with
+    colors."""
+    if not colors(sys.stderr if err else sys.stdout):
+        return text
+    # The backticks first: a command in them is then colored once.
+    return _COMMAND.sub(lambda m: sgr(m[0], "command"), code(text))
+
+
+def code(text: str) -> str:
+    """The text in backticks in the command color, without the backticks."""
+    return _CODE.sub(lambda m: sgr(m[1], "command"), text)
+
+
+def diff_line(line: str, err: bool = False) -> str:
+    """A line of a unified diff in colors on a terminal: the headers dim, + green, - red, @@ cyan."""
+    if line.startswith(("+++", "---")):
+        return paint(line, "dim", err)
+    role = {"+": "added", "-": "removed", "@": "command"}.get(line[:1])
+    return paint(line, role, err) if role else line
 
 
 def out(text: str = "") -> None:
@@ -48,7 +130,31 @@ def note(text: str) -> None:
 
 def warn(msg: str) -> None:
     """dotkit: MSG on stderr; the command goes on."""
-    note(f"dotkit: {msg}")
+    note(paint("dotkit:", "warn", True) + " " + commands(msg, True))
+
+
+def progress(text: str) -> None:
+    """A step that takes a while, on stderr: "Checking Nix..."."""
+    note(mark("▸", "command", True) + paint(text, "dim", True))
+
+
+def hint(text: str) -> None:
+    """What to do next, on stderr: "No change. Run dotkit apply to apply."."""
+    note(mark("›", "dim", True) + commands(text, True))
+
+
+def success(text: str) -> None:
+    """The end of a command that changed something, on stderr."""
+    note(mark("✓", "ok", True) + paint(text, "ok", True))
+
+
+def error_text(text: str) -> str:
+    """The text of an Exit for stderr: "dotkit:" and "error:" in red."""
+    if not colors(sys.stderr):
+        return text
+    text = re.sub(r"^dotkit:", paint("dotkit:", "error", True), text, flags=re.M)
+    text = re.sub(r"^(dotkit [a-z]+: )error:", lambda m: m[1] + paint("error:", "error", True), text, flags=re.M)
+    return commands(text, True)
 
 
 def raw_err(text: str) -> None:
@@ -105,8 +211,14 @@ def confirm(question: str, yes: bool) -> bool:
         return True
     if not (os.isatty(0) and os.isatty(2)):
         raise die("confirmation needs a terminal. Use -y to continue without one.")
-    _write(sys.stderr, f"{question} [y/N] ")
+    _write(sys.stderr, f"{mark('?', 'warn', True)}{paint(question, 'heading', True)} {paint('[y/N]', 'dim', True)} ")
     return (read_line() or "").strip(" \t") in ("y", "Y")
+
+
+def confirm_or_stop(question: str, yes: bool) -> None:
+    """confirm(), and the answer no stops the command with "nothing changed."."""
+    if not confirm(question, yes):
+        raise die("nothing changed.")
 
 
 def read_line() -> Optional[str]:

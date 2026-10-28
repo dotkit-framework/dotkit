@@ -12,7 +12,7 @@ upgrade is one command and a rollback is one command.
 | Nix | nix-darwin, Home Manager, weekly garbage collection |
 | Shell | zsh from Nix with completion, suggestions, syntax colors, history search; fzf, zoxide, Starship, mise, direnv. `ls` is eza; `diff` and `grep` have colors; `dk` expands to `dotkit`, which has zsh completion |
 | Tools | `nix/packages.txt`: bat, eza, fd, ripgrep, jq, yq, tree, hyperfine, tealdeer, git, git-lfs, git-secret, gh, gnupg, the Zulu 17 JDK, and more; `timeout`, `nproc`, `tac`, `shuf`, and `numfmt` from GNU coreutils |
-| Runtimes | Node.js 24, Python 3.14, Ruby 3.4, and uv from mise (`config/mise.toml`), as defaults outside projects |
+| Runtimes | Node.js 24.22.1, Python 3.14.10, and Ruby 3.4.12, pinned so that each Mac has the same versions, and uv, from mise (`config/mise.toml`), as defaults outside projects |
 | Apps | Ghostty (`nix/casks.txt`), the JetBrains Mono Nerd Font, herdr (`config/mise.toml`) |
 | Config | Git, Ghostty, herdr with its Git status plugin, Starship, mise, npm, pnpm, uv, bun, RubyGems, EditorConfig. New npm, pnpm, bun, PyPI (uv and pip), gem (Bundler), and mise releases wait 7 days |
 | macOS | Touch ID for sudo, also in terminal multiplexers |
@@ -76,8 +76,8 @@ dotkit also has, other config to copy into the repository, and the plan.
 | Global npm, pnpm, bun, pipx, and `uv tool` tools | `config/mise.toml`, as `npm:` and `pipx:` tools. cargo and Go tools are off: mise builds them from source |
 | `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
 | Ghostty, Git, and mise config | Yours, read after the dotkit file |
-| Starship, uv, and the other tools that read one file | Yours, instead of the dotkit file |
-| `~/.npmrc` with registries | The dotkit file, with your registries and their tokens. Your other npm settings go to the report |
+| Starship and the other tools that read one file | Yours, instead of the dotkit file |
+| `~/.npmrc`, `~/.config/uv/uv.toml` | Yours, read after the dotkit settings. The tokens of `~/.npmrc` go to `~/.secrets` |
 | Detected secrets: tokens in shell files, `~/.npmrc`, and Git config | Variables in `~/.secrets`, outside the repository (see below) |
 | Other `~/.config` entries, pi (`~/.pi/agent`), version managers | Stay in place, or go to `config/` if you select them. The report lists them, with the mise commands for the versions. An old place of an app's config, such as `~/.config/pi`, is not offered |
 
@@ -162,7 +162,8 @@ casks are not in the plan. `dotkit tidy -n` prints the plan and changes
 nothing. `lib/dotkit/migrate/TIDY.md` has the details.
 
 Then use `dotkit`, from any directory; the abbreviation `dk` expands to it.
-`dotkit --help` lists the commands. Before the first apply, `./dotkit` in the
+`dotkit --help` lists the commands. On a terminal the output has colors;
+`--no-color`, `NO_COLOR`, or `DOTKIT_NO_COLOR` turns them off. Before the first apply, `./dotkit` in the
 dotfiles repository does the same.
 
 ## Your dotfiles repository
@@ -180,8 +181,9 @@ dotfiles repository does the same.
 | `nix/shell.nix` | the zsh keymap, the terminal title, and abbreviations |
 | `config/zsh/zshrc` | your zsh lines (`~/.zshrc.local`) |
 
-`dotkit add` does not add a tool that the base has, and `dotkit remove` does not
-remove one.
+`dotkit add` does not add a tool that the base has. When your lists also have a
+tool of the base, `dotkit remove` removes your copy, and the base keeps the
+tool installed. A tool of the base only stays.
 
 ## Change a base setting
 
@@ -194,6 +196,14 @@ Most base files read a file of yours after them, so your settings win:
 | `~/.config/git/config` | `~/.gitconfig` |
 | `~/.config/ghostty/config` | `~/.config/ghostty/config.local` |
 | `~/.config/mise/conf.d/dotkit.toml` | `~/.config/mise/config.toml` (a tool there replaces the base version) |
+| `config/npmrc` of dotkit, the global config of npm (`NPM_CONFIG_GLOBALCONFIG`) | `~/.npmrc` |
+| `/etc/uv/uv.toml` | `~/.config/uv/uv.toml` |
+
+`npm config ls` shows the settings of both npm files, and which of yours
+replace a base setting. `npm config set -g` would write the base file: set
+your settings in `~/.npmrc` instead. Programs that do not get the environment
+of the shell or of the GUI apps, such as `env -i`, do not read the npm base
+settings.
 
 `~/.bash_profile` gives `bash -l`, for example a script with `#!/bin/bash -l`,
 the same PATH and mise as zsh. An interactive bash then reads `~/.bashrc`.
@@ -223,13 +233,26 @@ dotkit.links.".config/ghostty/config.local" = "config/ghostty.conf";
 ```
 
 A relative source is a file in your dotfiles repository. These tools read one
-file only: Starship, herdr, npm, pnpm, uv, bun, RubyGems, and EditorConfig.
-To change one of them, copy the base file to your repository and link the
-same target. Your link replaces the base link:
+file only: Starship, herdr, pnpm, bun, RubyGems, EditorConfig, and the Git
+ignore file. To change one of them, make the base file yours:
+
+```sh
+dotkit own herdr                  # or a path: dotkit own ~/.config/starship.toml
+```
+
+`dotkit own` copies the base file to `config/` of your repository, links it
+there instead of the base file, and applies. The tool can then save its own
+settings, such as the theme of herdr, and Git shows each change. After a
+`dotkit upgrade`, the report and `dotkit doctor` show how your copy differs
+from the base file. `dotkit own --release herdr` gives the file back to the
+base: it removes your link, and your copy stays in the repository until you
+delete it. The base files that a tool reads before a file of yours (zsh,
+bash, Git config, Ghostty, mise) cannot be owned: set what you need in your
+file instead, so the rest of the base still applies. To remove a base link
+without a file of yours:
 
 ```nix
-dotkit.links.".config/herdr/config.toml" = "config/herdr.toml";
-dotkit.links.".npmrc" = null; # no link at all
+dotkit.links.".gemrc" = null; # no link at all
 ```
 
 zsh settings that need a rebuild are options in `nix/shell.nix`:
@@ -247,12 +270,144 @@ Other parts of the base are nix-darwin and Home Manager options. Set them in
 too. The dotkit options are in `nix/darwin.nix`, `nix/home.nix`,
 `nix/links.nix`, and `nix/modules/zsh` of this repository.
 
+A link of yours inside a directory that you or the base link (for example
+`~/.pi/agent/extensions/x.ts` when `~/.pi/agent/extensions` is a link) stops
+the build: Home Manager would write the file into the source of the
+directory.
+
 ## Upgrade
 
 `dotkit upgrade` gets the newest dotkit, which pins Nixpkgs, nix-darwin, and
 Home Manager, plus new Homebrew and mise releases. It shows one plan and asks
 once. Commit `nix/flake.lock` after it. `dotkit rollback` goes back to the
 previous Nix generation.
+
+### When the base gets what you have
+
+A new dotkit can add a tool or a config file that your repository has
+already. After each apply and upgrade, dotkit reports what your repository
+repeats or replaces of the base:
+
+| Overlap | What to do |
+|---|---|
+| A tool in your list and in the base list | `dotkit remove` it: the base keeps it |
+| A mise tool with the same value | `dotkit remove` it |
+| A mise tool with another value | Nothing, if you want your version: yours wins |
+| Your link that replaces a base file, with the same content | `dotkit own --release` it |
+| Your link that replaces a base file (`dotkit own`), with other content | The report shows the diff when the files are similar. For a file that the tool reads after the base file (`~/.gitconfig`, `~/.zshrc.local`, ...), move your changes there and remove your link. Else keep yours, or take the base file |
+| `~/<file>.before-dotkit` | An apply moved your file aside to link the base file. Take what you need from it, then delete it |
+
+The report shows an overlap once, and again when one of the two sides
+changes. `dotkit doctor` lists all of them. `dotkit apply -n` and
+`dotkit upgrade -n` show them before the change, also the files that the
+apply will move aside.
+
+## Security
+
+`dotkit audit` asks [OSV.dev](https://osv.dev) about the tools that dotkit
+installs and the packages in them, for known vulnerabilities and malicious
+releases:
+
+```
+$ dotkit audit
+jq 1.8.1 (Nix):
+  GHSA-xxxx-xxxx-xxxx (high 7.5): jq crash on a long key
+    An upgrade installs 1.8.2, which has the fix. https://osv.dev/vulnerability/GHSA-xxxx-xxxx-xxxx
+```
+
+| Source | What | How |
+|---|---|---|
+| Nix packages | the packages of the configuration | One `nix eval` gives the source repository and the tag or commit of each package. OSV has no Nix ecosystem, so the audit asks about the repository at that tag. It leaves out a CVE that a Nixpkgs patch of the package fixes |
+| Homebrew formulae | the formulae of the lists, with their dependencies | `brew vulns` (Homebrew 6.0.11 or newer), which asks OSV and knows the patches of Homebrew |
+| mise tools | the tools of `config/mise.toml` | The installed version, else the version that an apply installs now. For npm and PyPI tools, OSV also lists the malicious releases (`MAL-*`). Ruby: the records of Bitnami that name a fixed version |
+| Packages in the mise tools | the gems of Ruby (also its default gems), the npm packages of Node and of the npm tools with their dependencies, the Python packages of Python and of the pipx tools | The installed files: gemspec files, `package.json`, `.dist-info` |
+| Packages in binaries | the Go modules and Go version of Go executables, and the crates of Rust executables, of the Nix profile, Homebrew, the mise tools, and the apps in `/Applications` | Sections of the executable: Go writes its build info, cargo-auditable the crates. A Go advisory whose functions the executable does not have is left out, as govulncheck does |
+| GitHub Actions | the actions of `.github/workflows` | The tag of each action, also from the comment after a commit (`@HASH # v4.1.2`) |
+| dotkit | the Python packages of `lib/dotkit/_vendor`, and the inputs of `flake.lock` | |
+
+The report lists what you can act on:
+
+- a malicious release, and a vulnerability that attackers use (in the
+  [KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
+  of CISA), wherever they are;
+- an advisory of a tool of your configuration whose fix an upgrade installs.
+  The audit asks OSV about the version that an upgrade installs: the newest
+  mise release (with the minimum release age), the version in
+  nixpkgs-unstable, the stable Homebrew formula, the newest tag of an action.
+
+It counts the rest in one line: the advisories that no upgrade fixes yet (no
+fixed release, or Nixpkgs does not have it yet), and the ones in the packages
+inside the tools, which only a new release of the tool fixes. `--all` lists
+them too, and `--min-severity high` hides what is below high. The
+notification and the GitHub issues follow the same list.
+
+```
+$ dotkit audit
+Checked 38 Nix packages, 2 Homebrew formulae, 8 mise tools, 353 packages in the mise tools, 2730 packages in binaries, 12 packages of dotkit.
+Not listed: 1 finding that no upgrade fixes yet (fzf); 105 in the packages inside 13 tools (5 critical, 20 high, 23 medium, 57 low or unknown).
+› dotkit audit --all lists them.
+✓ Nothing to act on.
+```
+
+The packages in the mise tools and in binaries exist only where the tools are
+installed, so the Mac checks them; CI runs with `--config-only`. The audit leaves out the
+notices of RustSec that are not vulnerabilities (unmaintained, unsound), and
+the report counts them. It also names what it does not check: a package whose
+source is not in a Git repository that OSV knows (for example a tarball from
+gnu.org), and the apps themselves, because OSV has no data for apps. A run
+asks OSV with a few requests of a few kilobytes each, and reads only the
+advisories that are new or changed. A run takes a few seconds.
+
+An advisory that does not apply to you, for example one for Windows only,
+goes in `audit.toml` of your repository. dotkit has its own `audit.toml`
+for the base.
+
+```toml
+[[ignore]]
+id = "CVE-2024-3220"
+tool = "python"      # optional: only for this tool
+reason = "Only on Windows."
+until = 2027-01-01   # optional: then the finding comes back
+```
+
+The audit finds what is known. The 7-day wait for new npm, pnpm, bun, PyPI,
+gem, and mise releases (see What the base has) is the other half: a
+registry often removes a malicious release in that time. The runtimes
+are pinned: when the audit reports an advisory, set the fixed release in
+`config/mise.toml`.
+
+### Each day, on GitHub
+
+`.github/workflows/audit.yml` of the template runs `dotkit audit
+--config-only --issues` each day on a macOS runner, with the dotkit of
+`nix/flake.lock`. `--config-only` checks what the configuration declares, not
+the tools that the runner has; the packages in the installed tools are for
+the Mac (see below). It opens
+one issue per finding, with the label `dotkit-audit`, so GitHub notifies you.
+It closes the issue when the finding is gone. When a part of the audit
+fails, the workflow fails, and GitHub sends an email. In a public
+repository, GitHub turns the schedule off after 60 days without a commit:
+run the workflow from the Actions tab to turn it on again. A repository
+from an older template does not have the workflow: copy
+`templates/default/.github` of dotkit into it.
+
+The dotkit repository runs the same audit for the base each day, with the
+template as the dotfiles repository.
+
+### Each day, on the Mac
+
+In `nix/darwin.nix`:
+
+```nix
+dotkit.audit.enable = true;   # at 10:00; dotkit.audit.hour sets another hour
+```
+
+A launchd agent then runs `dotkit audit --notify` each day. It shows a
+macOS notification when there is a new finding, and nothing else. When the
+Mac sleeps at that hour, the audit runs when it wakes. The log is
+`~/Library/Logs/dotkit-audit.log`. macOS shows the notification as one of
+Script Editor; when none shows, allow the notifications of Script Editor in
+System Settings.
 
 ## Work on dotkit
 
@@ -275,6 +430,14 @@ checkout, in `nix/home.nix`:
 ```nix
 dotkit.liveDir = "${user.home}/.dotkit";
 ```
+
+To add a config file to the base, add it to `dotkit.baseLinks` in
+`nix/home.nix`. When its tool reads a file of yours after it, add that file
+to `dotkit.layers` too, and to `LINKS` in `lib/dotkit/migrate/base.py`, so
+that setup carries a file of a new user to the layer (`lib/tests/test_base.py`
+compares them). Do not link a file that its tool writes, and do not link a
+file inside a directory that users link. The report of apply then tells the
+users who have the tool or the file already.
 
 Check the base and a Mac from the template:
 
@@ -303,12 +466,21 @@ it with `dotkit upgrade dotkit`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on each push and pull request, on macOS 26
-arm64 runners. The `check` job runs the two `nix` commands above, the Python
-tests of the `dotkit` command and the migration wizard (`lib/tests`, with
-the macOS Python and with the Python of Nixpkgs), `tests/setup.sh` (functions of
-setup in a temporary home directory), shellcheck, nixfmt, statix, and
-deadnix. The `e2e` job runs `scripts/setup --yes` on a
+`.github/workflows/ci.yml` runs once for each pull request, on each push to
+`main`, and on request (workflow_dispatch), on macOS 26 arm64 runners. The
+jobs run in parallel. The `check` job runs shellcheck, nixfmt, statix,
+deadnix, actionlint, and zizmor (the security checks of the workflows, also
+of the template) first, then `nix flake check`, which builds the
+example Mac and runs the Python tests with the Python of Nixpkgs, then
+`tests/setup.sh` (functions of setup in a temporary home directory). The
+`python` job runs the Python tests of the `dotkit` command and the migration
+wizard (`lib/tests`) with the macOS Python, and the tests that skip in the
+Nix sandbox (the scenarios, and the tests that need `nix`) with the Python of
+Nixpkgs. Each action of the workflows is pinned to the commit of its
+release, with the tag in a comment; Dependabot updates the actions and the
+inputs of `flake.lock` (`.github/dependabot.yml`), after a wait of 7 days.
+`.github/workflows/audit.yml` runs `dotkit audit` of the base each day (see
+Security). The `e2e` job runs `scripts/setup --yes` on a
 fresh macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
 `~/.dotfiles` with the wizard and builds it with that commit. The runner is a
 used Mac: it has many Homebrew packages, and the job adds old dotfiles. It

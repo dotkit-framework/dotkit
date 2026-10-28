@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "jq: remove jq from nix/packages.txt\n",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nRemoved jq.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/packages.txt": ""

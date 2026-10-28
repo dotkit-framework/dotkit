@@ -1,0 +1,48 @@
+# Each day: dotkit audit asks OSV.dev about the tools of this configuration:
+# the Nix packages, the Homebrew formulae, the mise tools, and dotkit itself.
+# It opens one issue per finding (label dotkit-audit), so GitHub notifies you,
+# and closes the issue when the finding is gone. audit.toml ignores an
+# advisory. The audit runs the dotkit of nix/flake.lock.
+#
+# In a public repository, GitHub turns the schedule off after 60 days without
+# a commit. Run the workflow from the Actions tab to turn it on again. In a
+# private repository, macOS minutes count 10 times against the free minutes.
+name: Audit
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: dotkit audit
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          github_access_token: ${{ github.token }}
+
+      # mise resolves the versions of the mise tools. The runner has Homebrew.
+      # --config-only: the configuration, not the tools of the runner; the Mac
+      # checks the packages in the installed tools (dotkit.audit.enable).
+      - name: dotkit audit
+        env:
+          # gh opens the issues; mise reads the GitHub releases.
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: nix shell --inputs-from ./nix nixpkgs#mise -c ./dotkit audit --config-only --issues

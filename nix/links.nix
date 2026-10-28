@@ -1,5 +1,7 @@
-# Config files in the home directory, as links. nix/home.nix links the base
+# Config files in the home directory, as links. nix/home.nix lists the base
 # files; the dotfiles repository adds its own and can replace any base link.
+# The manifest of the links goes into the system (nix/darwin.nix), where the
+# dotkit command reads it to report the base files that yours replace.
 {
   config,
   lib,
@@ -20,6 +22,14 @@ let
     lib.filterAttrs (_target: source: source != null) cfg.links
   );
   copies = lib.mapAttrs (_target: resolve) cfg.copies;
+
+  # Home Manager links a file inside a linked directory through that link, into
+  # the source of the directory. Each pair of such targets is an error.
+  targets = lib.attrNames links ++ lib.attrNames copies;
+  nested = lib.concatMap (
+    outer:
+    map (inner: { inherit outer inner; }) (lib.filter (inner: lib.hasPrefix "${outer}/" inner) targets)
+  ) targets;
 in
 {
   options.dotkit = {
@@ -47,7 +57,7 @@ in
       default = { };
       example = {
         ".config/starship.toml" = "config/starship.toml";
-        ".npmrc" = null;
+        ".gemrc" = null;
       };
       description = ''
         Links in the home directory: target = source. A relative source is a
@@ -55,6 +65,32 @@ in
         mkDefault, so a value here replaces a base file, and null removes it.
         Link a directory only if it holds config and no state or secrets.
       '';
+    };
+
+    baseLinks = mkOption {
+      type = types.attrsOf types.str;
+      default = { };
+      internal = true;
+      description = ''
+        The base config files: target = file in the dotkit directory.
+        dotkit.links has each one at mkDefault priority.
+      '';
+    };
+
+    layers = mkOption {
+      type = types.attrsOf types.str;
+      default = { };
+      internal = true;
+      description = ''
+        Base link target = the file of yours that its tool reads after it.
+      '';
+    };
+
+    manifest = mkOption {
+      type = types.attrs;
+      readOnly = true;
+      internal = true;
+      description = "The links for the dotkit command: etc/dotkit/links.json of the system.";
     };
 
     copies = mkOption {
@@ -69,6 +105,24 @@ in
   };
 
   config = {
+    dotkit.links = lib.mapAttrs (_target: file: lib.mkDefault "${cfg.source}/${file}") cfg.baseLinks;
+
+    dotkit.manifest = {
+      version = 1;
+      dotkit = cfg.source;
+      base = lib.mapAttrs (_target: file: "${cfg.source}/${file}") cfg.baseLinks;
+      inherit (cfg) layers;
+      links = lib.mapAttrs (_target: source: if source == null then null else resolve source) cfg.links;
+      inherit copies;
+    };
+
+    assertions = map (n: {
+      assertion = false;
+      message =
+        "dotkit.links: ~/${n.inner} is inside ~/${n.outer}, which is a link too. Home Manager would write "
+        + "the file into the source of ~/${n.outer}. Link one of them only, or set one to null.";
+    }) nested;
+
     home.file = lib.mapAttrs (_target: source: { source = live source; }) links;
 
     home.activation = {

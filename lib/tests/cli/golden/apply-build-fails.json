@@ -4,7 +4,7 @@
  ],
  "exit": 1,
  "stdout": "",
- "stderr": "error: builder for '/nix/store/x.drv' failed\n",
+ "stderr": "Building the system...\nerror: builder for '/nix/store/x.drv' failed\n",
  "files": {},
  "calls": [
   {

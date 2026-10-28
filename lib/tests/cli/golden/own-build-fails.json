@@ -1,0 +1,39 @@
+{
+ "argv": [
+  "own",
+  "-y",
+  "herdr"
+ ],
+ "exit": 1,
+ "stdout": "herdr: copy the base file to config/herdr.toml, and link it as ~/.config/herdr/config.toml (nix/home.nix)\n",
+ "stderr": "Building the system...\nerror: builder for '/nix/store/x.drv' failed\ndotkit: the build failed. The Nix files are restored.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

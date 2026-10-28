@@ -251,9 +251,12 @@ packages, pnpm, and tools that dotkit has already, `Declared.tool`) are not
 items. They go to the report. A file with a secret gets a restricted option
 list (`keep`, `dotkit`; `.gitconfig` or your mise config with a secret:
 `keep` only), unless `lift.py` can move all its secrets to `~/.secrets`:
-`~/.npmrc` then has `tokens` first (the dotkit file, with your registries
-and a variable for each token), and a Git config file keeps its usual
-options without the settings that have a secret.
+`~/.npmrc` then has `tokens` first (your file, with a variable for each
+token), and a Git config file keeps its usual options without the settings
+that have a secret. `~/.npmrc` and `~/.config/uv/uv.toml` are
+`base.OWN_FILES`: their tools read them after the dotkit settings, which
+the base puts elsewhere (the global config of npm, `/etc/uv/uv.toml`), so
+their choices are `adopt` (or `tokens`) and `keep`, never `dotkit`.
 
 ```python
 @dataclass
@@ -489,7 +492,7 @@ item silently, so that a second run with nothing new outputs nothing.
   Nix). Old copy: `cargo uninstall bat`". It is skipped silently when
   `yours_mise_key` is true for its key (`npm:prettier`), and in adopt also
   when `mise_key` is.
-- A runtime asks `yours_mise_key` only. The base's `node = "24"` is a
+- A runtime asks `yours_mise_key` only. The base's `node = "24.22.1"` is a
   default, not a version of yours, so an nvm `node 20` is still offered and
   added.
 
@@ -696,8 +699,9 @@ Secrets are handled at five points:
      `SecretLine` that `rcparse._ASSIGN` matches) to `~/.secrets`, as it was
      written. Another statement with a secret (an alias, a function) is not
      carried; the report names it, never its text.
-   - `config_files` asks `lift.py`. `lift.npmrc` keeps the registries and
-     tokens of `~/.npmrc`; each token becomes `${NAME}`, which npm expands.
+   - `config_files` asks `lift.py`. `lift.npmrc` finds the tokens of
+     `~/.npmrc`; each token becomes `${NAME}`, which npm expands, and the
+     other lines are carried as they are.
      `lift.gitconfig` takes the settings with a secret out of a Git config
      file; they become `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, and
      `GIT_CONFIG_VALUE_<n>`. A file with a secret that `lift.py` cannot move gets only
@@ -907,16 +911,15 @@ text stays true.
 > None of your config files is carried or kept in place. dotkit links its
 > own files at ~/.config/git/config, ~/.config/git/ignore,
 > ~/.config/ghostty/config, ~/.config/herdr/config.toml,
-> ~/.config/starship.toml, ~/.config/uv/uv.toml, ~/.npmrc, ~/.gemrc,
-> ~/.bunfig.toml, ~/.editorconfig, and ~/Library/Preferences/pnpm/config.yaml,
-> and links config/mise.toml of this repository as ~/.config/mise/config.toml.
-> The first apply renames your files at these paths to <name>.before-dotkit.
-> They stay on disk, outside the repository, and the tools no longer read
-> them. The tools of your old mise config are not in config/mise.toml. If a
-> file with a login, such as ~/.npmrc with a token, was renamed, log in again
-> or copy the token by hand; do not put it into Git. ~/.gitconfig stays in
-> place, and Git still reads it after the dotkit settings. Copy the settings
-> you need from the .before-dotkit files.
+> ~/.config/starship.toml, ~/.gemrc, ~/.bunfig.toml, ~/.editorconfig, and
+> ~/Library/Preferences/pnpm/config.yaml, and links config/mise.toml of this
+> repository as ~/.config/mise/config.toml. The first apply renames your files
+> at these paths to <name>.before-dotkit. They stay on disk, outside the
+> repository, and the tools no longer read them. The tools of your old mise
+> config are not in config/mise.toml. ~/.npmrc and ~/.config/uv/uv.toml stay
+> in place, outside the repository: their tools read them after the dotkit
+> settings. ~/.gitconfig stays in place, and Git still reads it after the
+> dotkit settings. Copy the settings you need from the .before-dotkit files.
 
 ### 6.6 Strict mode
 

@@ -223,3 +223,76 @@ def mas(info: Optional[dict] = None) -> List[dict]:
         rules.append(_r("mas", rf"^info --json {app_id}$", json.dumps(obj) + "\n"))
     rules.append(_r("mas", r"^info --json ", stderr="Error: No apps found in the App Store for ADAM ID\n", exit=1))
     return rules
+
+
+# --- dotkit audit
+
+def audit_nix(packages: List[dict]) -> List[dict]:
+    """The packages of the configuration (audit/inventory.NIX_EXPR)."""
+    keys = ("name", "version", "url", "git", "tag", "rev", "homepage")
+    out = [{**{k: "" for k in keys}, "patches": [], **p} for p in packages]
+    return [_r("nix", r"(?s)^eval --json \S+#darwinConfigurations\.mac --apply ", json.dumps(out))]
+
+
+def mise_ls(tools: dict, installs: Optional[dict] = None) -> List[dict]:
+    """mise ls --global --json: key -> installed and active version; installs: key -> install_path."""
+    out = {k: [{"version": v, "requested_version": "latest", "installed": True, "active": True,
+                **({"install_path": installs[k]} if installs and k in installs else {})}] for k, v in tools.items()}
+    return [_r("mise", r"^ls --global --json$", json.dumps(out, indent=2) + "\n")]
+
+
+def brew_vulns(findings: list = (), skipped: list = (), checked: int = 1) -> List[dict]:
+    """brew vulns --json (Homebrew 7): (formula, version, [(id, severity, summary)]) for each finding."""
+    out = {"findings": [{"formula": f, "version": v, "tag": v, "repo_url": f"https://example.com/{f}",
+                         "vulnerabilities": [{"id": i, "severity": s, "summary": t, "aliases": [], "fixed_versions": []}
+                                             for i, s, t in vulns], "patched": []} for f, v, vulns in findings],
+           "skipped_formulae": list(skipped), "checked": checked, "complete": not skipped,
+           "outdated_without_sbom": [], "unscanned_formulae": {}}
+    return [_r("brew", r"^vulns --json --deps --brewfile=", json.dumps(out), exit=1 if findings or skipped else 0)]
+
+
+OSV = "https://api.osv.dev/v1"
+
+
+def osv_batch(results: List[List[str]], once: bool = False) -> List[dict]:
+    """POST /v1/querybatch: the advisory IDs of each query, in order. The log has the queries. once: for the
+    first of two batches (the second asks about the versions of the upgrades)."""
+    out = {"results": [{"vulns": [{"id": i, "modified": "2026-10-01T00:00:00Z"} for i in ids]} if ids else {}
+                       for ids in results]}
+    return [_r("curl", rf"--data-binary @- {re.escape(OSV)}/querybatch$", json.dumps(out), stdin=True,
+               **({"once": True} if once else {}))]
+
+
+def kev(cves: List[str]) -> List[dict]:
+    """The KEV catalog of CISA, which curl writes to its -o file in the cache."""
+    text = json.dumps({"vulnerabilities": [{"cveID": c} for c in cves]})
+    return [_r("curl", r"known_exploited_vulnerabilities\.json$",
+               actions=[{"write": "@SB/home/.cache/dotkit/kev.download", "text": text}])]
+
+
+def nix_unstable(packages: List[dict]) -> List[dict]:
+    """The packages of nixpkgs-unstable for the upgrade of the Nix findings (audit/sources/nix.upgrades)."""
+    keys = ("name", "version", "url", "git", "tag", "rev", "homepage")
+    out = [None if p is None else {**{k: "" for k in keys}, "patches": [], **p} for p in packages]
+    return [_r("nix", r"(?s)^eval --json github:NixOS/nixpkgs/nixpkgs-unstable#", json.dumps(out))]
+
+
+def osv_vulns(records: List[dict]) -> List[dict]:
+    """GET /v1/vulns/ID of each record, in one curl: it writes each record to its -o file in the cache."""
+    actions = [{"write": f"@SB/home/.cache/dotkit/osv/{r['id']}.download",
+                "text": json.dumps({"modified": "2026-10-01T00:00:00Z", **r})} for r in records]
+    return [_r("curl", r"--parallel .* " + re.escape(OSV) + r"/vulns/", actions=actions)]
+
+
+# --- the manifest of the links
+
+def manifest(base: dict, links: dict, layers: Optional[dict] = None, version: int = 1, root: str = "@SB") -> str:
+    """etc/dotkit/links.json of a system (nix/links.nix): base and links map a target to a file of the base
+    (dotkit/...) or of the repository (repo/...), relative to root, or None. The base links that links does
+    not name stay."""
+    def path(f):
+        return None if f is None else f"{root}/{f}"
+    effective = {**{t: path(f) for t, f in base.items()}, **{t: path(f) for t, f in links.items()}}
+    return json.dumps({"version": version, "dotkit": f"{root}/dotkit", "base": {t: path(f) for t, f in base.items()},
+                       "layers": layers or {}, "links": effective, "copies": {},
+                       "backupFileExtension": "before-dotkit"}, indent=1)

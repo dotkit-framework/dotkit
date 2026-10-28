@@ -317,3 +317,123 @@ class CompletionImportTests(unittest.TestCase):
                                    env={"DOTFILES": str(d / "repo"), "HOME": str(d)}, capture_output=True, text=True,
                                    timeout=60)
                 self.assertEqual(r.stdout.splitlines()[-1], "0 []", r.stderr)
+
+
+class HelpStyleTests(unittest.TestCase):
+    """The colors of the help (C8)."""
+
+    def test_style(self):
+        text = ("usage: dotkit add [-h] tool\n\noptions:\n  -n, --dry-run  Show the plan.\n\nThe tool's README:\n"
+                "  nix:ATTR    Nixpkgs\n  Other text\n\nExamples:\n  dotkit add hk    mise\n  DOTKIT_DIR=x dotkit apply\n"
+                "                   Use a checkout\n\nRun `dotkit help`.")
+        s = ui.sgr
+        self.assertEqual(cli.style(text).split("\n"), [
+            f"{s('usage:', 'section')} {s('dotkit add', 'heading')} [-h] tool", "",
+            s("options:", "section"), f"  {s('-n, --dry-run', 'option')}  Show the plan.", "",
+            "The tool's README:", f"  {s('nix:ATTR', 'option')}    Nixpkgs", "  Other text", "",
+            s("Examples:", "section"), f"  {s('dotkit add hk', 'command')}{s('    mise', 'dim')}",
+            f"  {s('DOTKIT_DIR=x dotkit apply', 'command')}", s("                   Use a checkout", "dim"), "",
+            f"Run {s('dotkit help', 'command')}."])
+        # The codes of the help: headings bold yellow, options green.
+        self.assertEqual(s("Examples:", "section"), "\033[1;33mExamples:\033[0m")
+        self.assertEqual(s("-n", "option"), "\033[32m-n\033[0m")
+
+    def test_only_on_a_terminal(self):
+        tty = mock.Mock(isatty=lambda: True)
+        with mock.patch.dict(os.environ, {"TERM": "xterm"}, clear=False):
+            os.environ.pop("NO_COLOR", None)
+            self.assertTrue(ui.colors(tty))
+            self.assertFalse(ui.colors(mock.Mock(isatty=lambda: False)))
+        with mock.patch.dict(os.environ, {"NO_COLOR": "1"}):
+            self.assertFalse(ui.colors(tty))
+        with mock.patch.dict(os.environ, {"TERM": "dumb"}):
+            os.environ.pop("NO_COLOR", None)
+            self.assertFalse(ui.colors(tty))
+
+
+class ColorTests(unittest.TestCase):
+    """The colors of the messages (C9), with a stream that is a terminal."""
+
+    def setUp(self):
+        tty = mock.Mock(isatty=lambda: True)
+        for name, value in (("stdout", tty), ("stderr", tty)):
+            patcher = mock.patch.object(ui.sys, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        env = mock.patch.dict(os.environ, {"TERM": "xterm"})
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("NO_COLOR", None)
+        os.environ.pop("DOTKIT_NO_COLOR", None)
+
+    def test_commands(self):
+        def c(text):
+            return f"\033[{ui.STYLES['command']}m{text}\033[0m"
+        self.assertEqual(ui.commands("Run dotkit own --release ~/.npmrc, then `x y`."),
+                         f"Run {c('dotkit own --release ~/.npmrc')}, then {c('x y')}.")
+        self.assertEqual(ui.commands("dotkit apply: error"), f"{c('dotkit apply')}: error")
+        self.assertEqual(ui.commands("Give it back: dotkit own --release ~/.npmrc"),
+                         f"Give it back: {c('dotkit own --release ~/.npmrc')}")
+        self.assertEqual(ui.commands("No change. Run dotkit apply to apply."),
+                         f"No change. Run {c('dotkit apply')} to apply.")
+        self.assertEqual(ui.commands("Remove yours: dotkit remove nix:fd"), f"Remove yours: {c('dotkit remove nix:fd')}")
+        self.assertEqual(ui.commands("Run dotkit --help."), f"Run {c('dotkit --help')}.")
+        self.assertEqual(ui.commands("See dotkit info dkt-x."), f"See {c('dotkit info dkt-x')}.")
+        # Sentences, and other tools outside backticks: no command.
+        for text in ("Only dotkit can remove it.", "in the dotkit base too", "dotkit does not uninstall App Store apps",
+                     "mise could not add npm:x", "nix eval failed"):
+            self.assertEqual(ui.commands(text), text)
+        self.assertEqual(ui.commands("Run `brew uninstall x`."), f"Run {c('brew uninstall x')}.")
+
+    def test_the_commands_of_the_highlight(self):
+        self.assertEqual(set(ui.COMMANDS), set(cli.COMMANDS) | {"help"})
+
+    def test_diff_line(self):
+        self.assertEqual(ui.diff_line("+a"), "\033[32m+a\033[0m")
+        self.assertEqual(ui.diff_line("-a"), "\033[31m-a\033[0m")
+        self.assertEqual(ui.diff_line("--- a"), "\033[2m--- a\033[0m")
+        self.assertEqual(ui.diff_line(" a"), " a")
+
+    def test_paint_and_mark(self):
+        self.assertEqual(ui.paint("x", "ok"), "\033[1;32mx\033[0m")
+        self.assertEqual(ui.mark("✓", "ok"), "\033[1;32m✓\033[0m ")
+        self.assertEqual(ui.paint("", "ok"), "")
+
+    def test_off(self):
+        with mock.patch.dict(os.environ, {"DOTKIT_NO_COLOR": "1"}):
+            self.assertEqual(ui.paint("x", "ok"), "x")
+            self.assertEqual(ui.mark("✓", "ok"), "")
+        with mock.patch.object(ui, "_no_color", True):
+            self.assertEqual(ui.commands("dotkit apply"), "dotkit apply")
+
+    def test_error_text(self):
+        self.assertEqual(ui.error_text("dotkit: nothing changed."), "\033[1;31mdotkit:\033[0m nothing changed.")
+
+
+class NoColorTests(unittest.TestCase):
+    """--no-color and DOTKIT_NO_COLOR reach the picker, the wizard, and the commands that dotkit runs (C9)."""
+
+    def run_main(self, argv, environ):
+        from dotkit import __main__ as main_mod
+        seen = {}
+
+        def fake_main(e, args):
+            seen.update(args=list(args), no_color=os.environ.get("NO_COLOR"))
+            return 0
+        with mock.patch.dict(os.environ, environ, clear=False), \
+                mock.patch.object(env_mod, "load", lambda: None), mock.patch.object(cli, "main", fake_main), \
+                mock.patch.object(ui, "_no_color", False):
+            os.environ.pop("NO_COLOR", None)
+            for k, v in environ.items():
+                os.environ[k] = v
+            self.assertEqual(main_mod.main(argv), 0)
+        return seen
+
+    def test_flag(self):
+        self.assertEqual(self.run_main(["add", "--no-color", "x"], {}), {"args": ["add", "x"], "no_color": "1"})
+        self.assertEqual(self.run_main(["add", "--", "--no-color"], {}), {"args": ["add", "--", "--no-color"],
+                                                                          "no_color": None})
+
+    def test_variable(self):
+        self.assertEqual(self.run_main(["list"], {"DOTKIT_NO_COLOR": "1"})["no_color"], "1")
+        self.assertIsNone(self.run_main(["list"], {"DOTKIT_NO_COLOR": ""})["no_color"])

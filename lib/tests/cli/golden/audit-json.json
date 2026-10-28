@@ -1,0 +1,260 @@
+{
+ "argv": [
+  "audit",
+  "--json"
+ ],
+ "exit": 1,
+ "stdout": "{\n  \"version\": 1,\n  \"complete\": true,\n  \"checked\": {\n    \"nix\": 3,\n    \"brew\": 1,\n    \"mise\": 3,\n    \"packages\": 0,\n    \"binaries\": 0,\n    \"actions\": 0,\n    \"dotkit\": 1\n  },\n  \"skipped\": {\n    \"packages\": \"no mise tool is installed here\",\n    \"binaries\": \"no tool is installed here\"\n  },\n  \"findings\": [\n    {\n      \"key\": \"mise/npm:@dkt-ai/dkt-code/MAL-2026-1\",\n      \"source\": \"mise\",\n      \"tool\": \"npm:@dkt-ai/dkt-code\",\n      \"version\": \"2.0.0\",\n      \"where\": \"mise\",\n      \"id\": \"MAL-2026-1\",\n      \"aliases\": [],\n      \"summary\": \"Malicious code in @dkt-ai/dkt-code (npm)\",\n      \"severity\": \"CRITICAL\",\n      \"score\": null,\n      \"fixed\": [],\n      \"malicious\": true,\n      \"exploited\": false,\n      \"fix\": \"none\",\n      \"upgrade\": \"2.0.0\",\n      \"url\": \"https://osv.dev/vulnerability/MAL-2026-1\"\n    },\n    {\n      \"key\": \"nix/jq/GHSA-jq-1\",\n      \"source\": \"nix\",\n      \"tool\": \"jq\",\n      \"version\": \"1.8.1\",\n      \"where\": \"Nix\",\n      \"id\": \"GHSA-jq-1\",\n      \"aliases\": [\n        \"CVE-2026-3\"\n      ],\n      \"summary\": \"jq crash on a long key\",\n      \"severity\": \"MEDIUM\",\n      \"score\": 6.1,\n      \"fixed\": [],\n      \"malicious\": false,\n      \"exploited\": true,\n      \"fix\": \"available\",\n      \"upgrade\": \"1.8.2\",\n      \"url\": \"https://osv.dev/vulnerability/GHSA-jq-1\"\n    },\n    {\n      \"key\": \"brew/wget/CVE-2026-2\",\n      \"source\": \"brew\",\n      \"tool\": \"wget\",\n      \"version\": \"1.25.0\",\n      \"where\": \"Homebrew\",\n      \"id\": \"CVE-2026-2\",\n      \"aliases\": [],\n      \"summary\": \"wget overflow\",\n      \"severity\": \"MEDIUM\",\n      \"score\": null,\n      \"fixed\": [],\n      \"malicious\": false,\n      \"exploited\": false,\n      \"fix\": \"available\",\n      \"upgrade\": \"1.25.1\",\n      \"url\": \"https://osv.dev/vulnerability/CVE-2026-2\"\n    },\n    {\n      \"key\": \"mise/npm:cowsay/GHSA-cow-2\",\n      \"source\": \"mise\",\n      \"tool\": \"npm:cowsay\",\n      \"version\": \"1.6.0\",\n      \"where\": \"mise\",\n      \"id\": \"GHSA-cow-2\",\n      \"aliases\": [],\n      \"summary\": \"cowsay reads any file\",\n      \"severity\": \"MEDIUM\",\n      \"score\": null,\n      \"fixed\": [\n        \"1.6.1\"\n      ],\n      \"malicious\": false,\n      \"exploited\": false,\n      \"fix\": \"available\",\n      \"upgrade\": \"1.6.1\",\n      \"url\": \"https://osv.dev/vulnerability/GHSA-cow-2\"\n    }\n  ],\n  \"not_listed\": {\n    \"no_fix\": [\n      {\n        \"key\": \"mise/node/CVE-2026-1\",\n        \"source\": \"mise\",\n        \"tool\": \"node\",\n        \"version\": \"24.1.0\",\n        \"where\": \"mise\",\n        \"id\": \"CVE-2026-1\",\n        \"aliases\": [],\n        \"summary\": \"Node.js reads past a buffer.\",\n        \"severity\": \"HIGH\",\n        \"score\": 8.7,\n        \"fixed\": [],\n        \"malicious\": false,\n        \"exploited\": false,\n        \"fix\": \"none\",\n        \"upgrade\": \"24.1.0\",\n        \"url\": \"https://osv.dev/vulnerability/CVE-2026-1\"\n      }\n    ],\n    \"dependencies\": [],\n    \"below_severity\": []\n  },\n  \"ignored\": [\n    {\n      \"key\": \"mise/npm:cowsay/GHSA-cow-1\",\n      \"source\": \"mise\",\n      \"tool\": \"npm:cowsay\",\n      \"version\": \"1.6.0\",\n      \"where\": \"mise\",\n      \"id\": \"GHSA-cow-1\",\n      \"aliases\": [],\n      \"summary\": \"cowsay prototype pollution\",\n      \"severity\": \"HIGH\",\n      \"score\": null,\n      \"fixed\": [],\n      \"malicious\": false,\n      \"exploited\": false,\n      \"fix\": \"unknown\",\n      \"upgrade\": \"\",\n      \"url\": \"https://osv.dev/vulnerability/GHSA-cow-1\",\n      \"reason\": \"Only in the tests.\",\n      \"file\": \"audit.toml\"\n    }\n  ],\n  \"patched\": [\n    {\n      \"key\": \"nix/jq/CVE-2025-48060\",\n      \"source\": \"nix\",\n      \"tool\": \"jq\",\n      \"version\": \"1.8.1\",\n      \"where\": \"Nix\",\n      \"id\": \"CVE-2025-48060\",\n      \"aliases\": [],\n      \"summary\": \"jq heap overflow\",\n      \"severity\": \"\",\n      \"score\": null,\n      \"fixed\": [],\n      \"malicious\": false,\n      \"exploited\": false,\n      \"fix\": \"unknown\",\n      \"upgrade\": \"\",\n      \"url\": \"https://osv.dev/vulnerability/CVE-2025-48060\"\n    }\n  ],\n  \"notices\": [],\n  \"left_out\": [],\n  \"unchecked\": [\n    {\n      \"source\": \"nix\",\n      \"tool\": \"poppler-utils\",\n      \"version\": \"26.10.0\",\n      \"why\": \"its source is not in a Git repository that OSV knows\"\n    },\n    {\n      \"source\": \"brew\",\n      \"tool\": \"owner/tap/dkt-tool\",\n      \"version\": \"\",\n      \"why\": \"brew vulns does not check the formulae of other taps\"\n    },\n    {\n      \"source\": \"mise\",\n      \"tool\": \"github:modem-dev/dkt-hunk\",\n      \"version\": \"\",\n      \"why\": \"mise cannot resolve its version\"\n    }\n  ],\n  \"errors\": []\n}\n",
+ "stderr": "Collecting the tools...\nAsking OSV.dev...\nChecking what an upgrade fixes...\ndotkit: the ignore rule of CVE-2020-1 in audit.toml ended on 2026-01-01. Remove it, or set a new date.\nNot checked here: the packages in the mise tools (no mise tool is installed here).\nNot checked here: the packages in binaries (no tool is installed here).\nChecked 3 Nix packages, 1 Homebrew formula, 3 mise tools, 1 package of dotkit.\nNot listed: 1 finding that no upgrade fixes yet (node).\ndotkit audit --all lists them.\ndotkit: 4 findings to act on, for 4 tools. Upgrade them (dotkit upgrade), or add an ignore rule to audit.toml.\n",
+ "files": {
+  "home/.cache/dotkit/kev.json": "{\"vulnerabilities\": [{\"cveID\": \"CVE-2026-3\"}, {\"cveID\": \"CVE-1999-1\"}]}",
+  "home/.cache/dotkit/osv/CVE-2025-48060.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"CVE-2025-48060\", \"summary\": \"jq heap overflow\"}}",
+  "home/.cache/dotkit/osv/CVE-2026-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"CVE-2026-1\", \"details\": \"Node.js reads past a buffer.\\nMore text.\", \"severity\": [{\"type\": \"CVSS_V4\", \"score\": \"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N\"}]}}",
+  "home/.cache/dotkit/osv/GHSA-cow-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"GHSA-cow-1\", \"summary\": \"cowsay prototype pollution\", \"database_specific\": {\"severity\": \"HIGH\"}}}",
+  "home/.cache/dotkit/osv/GHSA-cow-2.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"GHSA-cow-2\", \"summary\": \"cowsay reads any file\", \"database_specific\": {\"severity\": \"MODERATE\"}, \"affected\": [{\"package\": {\"ecosystem\": \"npm\", \"name\": \"cowsay\"}, \"ranges\": [{\"type\": \"SEMVER\", \"events\": [{\"introduced\": \"0\"}, {\"fixed\": \"1.6.1\"}]}]}]}}",
+  "home/.cache/dotkit/osv/GHSA-jq-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"GHSA-jq-1\", \"aliases\": [\"CVE-2026-3\"], \"summary\": \"jq crash on a long key\", \"severity\": [{\"type\": \"CVSS_V3\", \"score\": \"CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N\"}]}}",
+  "home/.cache/dotkit/osv/MAL-2026-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"MAL-2026-1\", \"summary\": \"Malicious code in @dkt-ai/dkt-code (npm)\"}}"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac",
+    "--apply",
+    "\n    sys:\n    let\n      lib = sys.pkgs.lib;\n      users = lib.attrValues sys.config.home-manager.users;\n      drvs = lib.concatMap (u: u.home.packages) users ++ sys.config.environment.systemPackages;\n      str = x: if builtins.isString x then x else \"\";\n      one =\n        d:\n        let\n          src = d.src or (d.unwrapped.src or { });\n          urls = src.urls or [ ];\n          v = {\n            name = str (d.pname or (d.name or \"\"));\n            version = str (d.version or \"\");\n            url = str (src.url or (if builtins.isList urls && urls != [ ] then builtins.head urls else \"\"));\n            git = str (src.gitRepoUrl or \"\");\n            tag = str (src.tag or \"\");\n            rev = str (src.rev or \"\");\n            homepage = str (d.meta.homepage or \"\");\n            patches = map (p: str (p.name or (baseNameOf (toString p)))) (d.patches or [ ]);\n          };\n          r = builtins.tryEval (builtins.deepSeq v v);\n        in\n        if r.success then v else null;\n    in\n    builtins.filter (x: x != null) (map one drvs)"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew.brewfile"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "vulns",
+    "--json",
+    "--deps",
+    "--brewfile=@SB/tmp/*/Brewfile"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--formula",
+    "wget"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "ls",
+    "--global",
+    "--json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "npm:@dkt-ai/dkt-code"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "github:modem-dev/dkt-hunk"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsS",
+    "--max-time",
+    "60",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "5",
+    "--retry-all-errors",
+    "-H",
+    "Content-Type: application/json",
+    "--data-binary",
+    "@-",
+    "https://api.osv.dev/v1/querybatch"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   },
+   "stdin": "{\"queries\": [{\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/burntsushi/ripgrep\"}, \"version\": \"15.2.0\"}, {\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/jqlang/jq\"}, \"version\": \"jq-1.8.1\"}, {\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/gpg/gnupg\"}, \"version\": \"gnupg-2.4.9\"}, {\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/nodejs/node\"}, \"version\": \"v24.1.0\"}, {\"package\": {\"ecosystem\": \"npm\", \"name\": \"@dkt-ai/dkt-code\"}, \"version\": \"2.0.0\"}, {\"package\": {\"ecosystem\": \"npm\", \"name\": \"cowsay\"}, \"version\": \"1.6.0\"}, {\"package\": {\"ecosystem\": \"PyPI\", \"name\": \"tomli\"}, \"version\": \"2.3.2\"}]}"
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsS",
+    "--max-time",
+    "60",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "5",
+    "--retry-all-errors",
+    "--parallel",
+    "--parallel-max",
+    "8",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/CVE-2025-48060.download",
+    "https://api.osv.dev/v1/vulns/CVE-2025-48060",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/CVE-2026-1.download",
+    "https://api.osv.dev/v1/vulns/CVE-2026-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-cow-1.download",
+    "https://api.osv.dev/v1/vulns/GHSA-cow-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-cow-2.download",
+    "https://api.osv.dev/v1/vulns/GHSA-cow-2",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-jq-1.download",
+    "https://api.osv.dev/v1/vulns/GHSA-jq-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/MAL-2026-1.download",
+    "https://api.osv.dev/v1/vulns/MAL-2026-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsS",
+    "--max-time",
+    "60",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "5",
+    "--retry-all-errors",
+    "-o",
+    "@SB/home/.cache/dotkit/kev.download",
+    "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "github:NixOS/nixpkgs/nixpkgs-unstable#legacyPackages.aarch64-darwin",
+    "--apply",
+    "\n    pkgs:\n    let\n      str = x: if builtins.isString x then x else \"\";\n      one =\n        d:\n        let\n          src = d.src or (d.unwrapped.src or { });\n          urls = src.urls or [ ];\n          v = {\n            name = str (d.pname or (d.name or \"\"));\n            version = str (d.version or \"\");\n            url = str (src.url or (if builtins.isList urls && urls != [ ] then builtins.head urls else \"\"));\n            git = str (src.gitRepoUrl or \"\");\n            tag = str (src.tag or \"\");\n            rev = str (src.rev or \"\");\n            homepage = str (d.meta.homepage or \"\");\n            patches = map (p: str (p.name or (baseNameOf (toString p)))) (d.patches or [ ]);\n          };\n          r = builtins.tryEval (builtins.deepSeq v v);\n        in\n        if r.success then v else null;\n    in\n    map (n: if builtins.hasAttr n pkgs then one pkgs.${n} else null) [ \"jq\" ]"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "node@lts"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "npm:@dkt-ai/dkt-code"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "npm:cowsay@1.6.0"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsS",
+    "--max-time",
+    "60",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "5",
+    "--retry-all-errors",
+    "-H",
+    "Content-Type: application/json",
+    "--data-binary",
+    "@-",
+    "https://api.osv.dev/v1/querybatch"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   },
+   "stdin": "{\"queries\": [{\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/jqlang/jq\"}, \"version\": \"jq-1.8.2\"}, {\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/nodejs/node\"}, \"version\": \"v24.1.0\"}, {\"package\": {\"ecosystem\": \"npm\", \"name\": \"@dkt-ai/dkt-code\"}, \"version\": \"2.0.0\"}, {\"package\": {\"ecosystem\": \"npm\", \"name\": \"cowsay\"}, \"version\": \"1.6.1\"}]}"
+  }
+ ],
+ "tmp_left": 0
+}

@@ -8,6 +8,7 @@ common tools. This repository adds your own tools and settings.
 dotkit apply        # apply the config: Nix, Homebrew, and mise
 dotkit add <tool>   # add a tool, from the source that dotkit add selects
 dotkit upgrade      # new releases, also of dotkit
+dotkit audit        # known vulnerabilities and malicious releases of your tools
 dotkit --help       # all commands. `dk` expands to `dotkit`
 ```
 
@@ -23,5 +24,7 @@ apply.
 | `nix/home.nix` | your config files (`dotkit.links`) |
 | `nix/shell.nix` | the zsh keymap and abbreviations |
 | `config/zsh/zshrc` | your zsh lines |
+| `audit.toml` | advisories that `dotkit audit` ignores |
+| `.github/workflows/audit.yml` | `dotkit audit` each day, with one GitHub issue per finding |
 
 See the dotkit README for how to change a base setting.

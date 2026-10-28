@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "dkt-hunk: remove github:modem-dev/dkt-hunk from config/mise.toml\n",
- "stderr": "",
+ "stderr": "Removed github:modem-dev/dkt-hunk.\n",
  "files": {},
  "calls": [
   {

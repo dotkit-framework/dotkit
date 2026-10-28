@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "dkt-f: remove dkt-f from nix/brews.txt\n",
- "stderr": "Error: busy\ndotkit: could not uninstall the formula dkt-f. Run: brew uninstall --formula dkt-f\n",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nError: busy\ndotkit: could not uninstall the formula dkt-f. Run: brew uninstall --formula dkt-f\nRemoved dkt-f.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/brews.txt": ""

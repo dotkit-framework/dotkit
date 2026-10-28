@@ -106,7 +106,7 @@ def ask(title: str, rows: List[Row]) -> Optional[int]:
     def _interrupt(event):
         event.app.exit(exception=KeyboardInterrupt)
 
-    no_color = bool(os.environ.get("NO_COLOR"))
+    no_color = not ui.color_allowed()
     style = Style.from_dict({
         "title": "bold",
         "manager": "" if no_color else "bold",

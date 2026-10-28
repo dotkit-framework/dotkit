@@ -6,7 +6,7 @@
  ],
  "exit": 0,
  "stdout": "mas:1289583905 -> nix/mas.txt (Pixelmator Pro)\n",
- "stderr": "",
+ "stderr": "Building the system...\nActivating the system...\nInstalling the mise tools...\nAdded 1289583905 Pixelmator Pro.\n",
  "files": {
   "repo/.build/system": "-> @SB/system-1",
   "repo/nix/mas.txt": "# apps\n409183694 Keynote\n1289583905 Pixelmator Pro\n"

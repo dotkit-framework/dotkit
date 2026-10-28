@@ -39,12 +39,26 @@ LINKS: tuple[Link, ...] = (
     Link(".config/ghostty/config", "config/ghostty.conf", ".config/ghostty/config.local", "config/ghostty.conf"),
     Link(".config/herdr/config.toml", "config/herdr.toml", None, "config/herdr.toml"),
     Link(".config/starship.toml", "config/starship.toml", None, "config/starship.toml"),
-    Link(".config/uv/uv.toml", "config/uv.toml", None, "config/uv.toml"),
-    Link(".npmrc", "config/npmrc", None, "config/npmrc"),
     Link(".gemrc", "config/gemrc", None, "config/gemrc"),
     Link(".bunfig.toml", "config/bunfig.toml", None, "config/bunfig.toml"),
     Link(".editorconfig", "config/editorconfig", None, "config/editorconfig"),
     Link("Library/Preferences/pnpm/config.yaml", "config/pnpm.yaml", None, "config/pnpm.yaml"),
+)
+
+@dataclass(frozen=True)
+class OwnFile:
+    """A config file of yours that its tool reads after the dotkit settings, which the base puts elsewhere."""
+
+    target: str  # relative to the home directory
+    source: str  # the dotkit settings, in the dotkit directory
+    base_place: str  # where the tool reads the dotkit settings
+    repo_file: str  # the file in the dotfiles repository for your copy
+
+
+# nix/home.nix sets NPM_CONFIG_GLOBALCONFIG; nix/darwin.nix writes /etc/uv/uv.toml.
+OWN_FILES: tuple[OwnFile, ...] = (
+    OwnFile(".npmrc", "config/npmrc", "the global config of npm", "config/npmrc"),
+    OwnFile(".config/uv/uv.toml", "config/uv.toml", "/etc/uv/uv.toml", "config/uv.toml"),
 )
 
 # The shell files that the base links, the file of yours that each one reads
@@ -90,8 +104,10 @@ BASE_TARGETS = frozenset(
     ]
 )
 
-# ~/.config entries that the base manages a file in. Other entries are yours.
-# Home Manager links files into direnv (nix-direnv) and zsh (the zsh setup).
+# ~/.config entries that the base manages a file in, or that config_files
+# handles: uv (base.OWN_FILES), so that the other-config migrator does not copy
+# ~/.config/uv as well. Other entries are yours. Home Manager links files into
+# direnv (nix-direnv) and zsh (the zsh setup).
 BASE_CONFIG_DIRS = frozenset({
     "git", "ghostty", "herdr", "mise", "starship.toml", "uv", "zsh", "direnv", "home-manager", "nix",
 })

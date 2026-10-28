@@ -76,6 +76,10 @@ for tool in ripgrep mise ghostty node; do
 done
 
 step 'interactive zsh'
+# Starship warns when a command of the prompt, such as git, takes longer than
+# command_timeout. A busy runner can be that slow on the first prompt. Such a
+# warning is not an error of the shell setup, so only Starship errors show.
+export STARSHIP_LOG=error
 errors=$(mktemp)
 zsh_login 'exit' 2>"$errors" >/dev/null || fail 'zsh -lic exit failed'
 if [[ -s $errors ]]; then
@@ -101,6 +105,7 @@ else
   fail 'an interactive zsh in a terminal did not exit'
 fi
 rm -f "$errors"
+unset STARSHIP_LOG
 out=$(zsh_login 'abbr expand dk') || out=''
 if [[ $out == dotkit ]]; then pass 'dk expands to dotkit'; else fail "dk expands to '$out'"; fi
 
