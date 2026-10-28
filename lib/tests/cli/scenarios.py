@@ -256,6 +256,72 @@ def overlap() -> List[S]:
     ]
 
 
+OWN_HOME_NIX = ('{\n  imports = [ ./shell.nix ];\n\n  dotkit.links = {\n    ".zshrc.local" = "config/zsh/zshrc";\n'
+                '    ".config/starship.toml" = "config/my-starship.toml";\n  };\n}\n')
+OWN_FILES = {
+    "repo/nix/home.nix": OWN_HOME_NIX,
+    "repo/config/my-starship.toml": "mine\n",
+    "dotkit/config/herdr.toml": "# dotkit base. herdr reads one\n# config file.\n\nonboarding = false\n",
+    "dotkit/config/starship.toml": "# starship base\n",
+    "dotkit/config/gemrc": "gem: --no-document\n",
+    "dotkit/config/zsh/zshrc": "",
+    "dotkit/config/gitconfig": "",
+    "dotkit/config/gitignore": "",
+    "dotkit/scripts/herdr/git-status.sh": "",
+}
+
+
+def own_manifest(links: Optional[dict] = None) -> str:
+    """The manifest of the configuration, as `nix eval` prints it."""
+    base = {".config/herdr/config.toml": "dotkit/config/herdr.toml", ".config/starship.toml": "dotkit/config/starship.toml",
+            ".gemrc": "dotkit/config/gemrc", ".zshrc": "dotkit/config/zsh/zshrc",
+            ".config/git/config": "dotkit/config/gitconfig", ".config/git/ignore": "dotkit/config/gitignore",
+            ".config/herdr/git-status.sh": "dotkit/scripts/herdr/git-status.sh"}
+    mine = {".zshrc.local": "repo/config/zsh/zshrc", ".config/starship.toml": "repo/config/my-starship.toml",
+            **(links or {})}
+    return manifest(base, mine, {".zshrc": ".zshrc.local", ".config/git/config": ".gitconfig"})
+
+
+def eval_manifest(links: Optional[dict] = None, text: Optional[str] = None) -> List[dict]:
+    return [{"tool": "nix", "re": r"^eval --raw \S+links\.json", "stdout": own_manifest(links) if text is None else text}]
+
+
+def own() -> List[S]:
+    ok = eval_manifest() + fx.build_once() + fx.apply_ok()
+    dotted = {**OWN_FILES, "repo/nix/home.nix": '{\n  dotkit.links.".zshrc.local" = "config/zsh/zshrc";\n'
+                                                 '  dotkit.links.".config/starship.toml" = "config/my-starship.toml";\n'
+                                                 '  home.stateVersion = "26.05";\n}\n'}
+    return [
+        S("own-dry-run", ["own", "-n", "herdr", "~/.gemrc", ".config/herdr/config.toml"], rules=eval_manifest(),
+          files=OWN_FILES, rows=["Ow1", "Ow2", "Ow3", "Ow8"]),
+        S("own-yes", ["own", "-y", "herdr"], rules=ok, files=OWN_FILES, rows=["Ow3", "Ow4", "Ow9"]),
+        S("own-two", ["own", "-y", "herdr", "gemrc"], rules=ok, files=OWN_FILES, rows=["Ow8", "Ow9"]),
+        S("own-dotted", ["own", "-y", "~/.gemrc"], rules=ok, files=dotted, rows=["Ow2", "Ow4"]),
+        S("own-no-links", ["own", "herdr"], rules=eval_manifest(), rows=["Ow4", "Ow8"],
+          files={**OWN_FILES, "repo/nix/home.nix": "{ }\n"}),
+        S("own-refused", ["own", "-n", ".zshrc", "~/.config/git/config", "~/.config/herdr/git-status.sh", "~/.npmrc",
+                          "~/.vimrc", "zsh", "git"], rules=eval_manifest(), files=OWN_FILES,
+          rows=["Ow2", "Ow5", "Ow8"]),
+        S("own-already", ["own", "starship", "~/.zshrc.local"], rules=eval_manifest(), files=OWN_FILES, rows=["Ow6"]),
+        S("own-copy-exists", ["own", "herdr"], rules=eval_manifest(),
+          files={**OWN_FILES, "repo/config/herdr.toml": "x\n"}, rows=["Ow3"]),
+        S("own-no-terminal", ["own", "herdr"], rules=eval_manifest(), files=OWN_FILES, rows=["Ow8", "Q1"]),
+        S("own-tty-no", ["own", "herdr"], rules=eval_manifest(), files=OWN_FILES, tty="n\n", rows=["Ow8"]),
+        S("own-build-fails", ["own", "-y", "herdr"], rules=eval_manifest() + fx.build(fails=True), files=OWN_FILES,
+          rows=["Ow9"]),
+        S("own-eval-fails", ["own", "herdr"], rules=fx.nix_eval_fails(), files=OWN_FILES, rows=["Ow1"]),
+        S("own-bad-manifest", ["own", "herdr"], rules=eval_manifest(text="{}"), files=OWN_FILES, rows=["Ow1"]),
+        S("own-release", ["own", "-y", "--release", "starship"], rules=ok, files=OWN_FILES, rows=["Ow7", "Ow9"]),
+        S("own-release-dotted-null", ["own", "-y", "--release", "~/.gemrc"], rules=eval_manifest({".gemrc": None})
+          + fx.build_once() + fx.apply_ok(), rows=["Ow7"],
+          files={**OWN_FILES, "repo/nix/home.nix": '{\n  dotkit.links.".gemrc" = null; # off\n}\n'}),
+        S("own-release-not-owned", ["own", "--release", "herdr", "~/.vimrc"], rules=eval_manifest(), files=OWN_FILES,
+          rows=["Ow7"]),
+        S("own-release-no-line", ["own", "--release", "starship"], rules=eval_manifest(), rows=["Ow7"],
+          files={**OWN_FILES, "repo/nix/home.nix": "{ }\n"}),
+    ]
+
+
 def clean() -> List[S]:
     dry = [{"tool": "sudo", "re": "^nix-collect-garbage"}] + fx.brew(r"^cleanup --dry-run$",
                                                                      "Would remove: x (1MB)\n") \
@@ -628,7 +694,7 @@ def remove() -> List[S]:
 
 
 def all_scenarios() -> List[S]:
-    out = (start() + dispatch() + options() + apply() + upgrade() + overlap() + clean() + recovery() + wizard()
+    out = (start() + dispatch() + options() + apply() + upgrade() + overlap() + own() + clean() + recovery() + wizard()
            + pkg_parse() + listing() + info() + add_prefix() + add_mas() + add_bare() + add_checks() + add_apply()
            + picker() + remove())
     names = [s.name for s in out]

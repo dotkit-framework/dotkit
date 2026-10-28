@@ -197,6 +197,16 @@ def _list(p: Parser):
     return lambda env, a: _mod("pkg.cli").Pkg(env).list(a.sources)
 
 
+def _own(p: Parser):
+    dry_run(p)
+    yes(p)
+    p.add_argument("--release", action="store_true",
+                   help="Give the files back to the base: remove your link. Your copy stays in the repository.")
+    p.add_argument("files", nargs="+", metavar="file",
+                   help="A base config file: its path (~/.config/starship.toml) or its name (starship, herdr).")
+    return lambda env, a: _mod("commands.own").own(env, a.files, a.release, a.dry_run, a.yes)
+
+
 def _doctor(p: Parser):
     return lambda env, a: _mod("commands.overlap").doctor(env)
 
@@ -240,7 +250,7 @@ def _mod(name: str):
 GROUPS = (
     ("Config", "Apply and update the config"),
     ("Tools", "Tools in the lists"),
-    ("Check", "Check"),
+    ("Files", "Your config files"),
     ("Mac", "Bring this Mac under dotkit"),
     ("Recovery", "Recovery and cleanup"),
 )
@@ -263,12 +273,22 @@ COMMANDS: Dict[str, Command] = {
                       "Homebrew packages that you remove are uninstalled. Tools of the dotkit base stay."),
     "info": Command("Tools", "Where a tool is declared, its command, and its sources.", _info),
     "list": Command("Tools", "The declared tools.", _list),
-    "doctor": Command("Check", "What your dotfiles repeat or replace of the dotkit base.", _doctor,
+    "own": Command("Files", "Make a base config file yours, so you and its app can change it.", _own,
+                   "Copies the base file to config/ of the repository and links it there, for the tools\n"
+                   "that read one config file: herdr, Starship, pnpm, RubyGems, bun, EditorConfig, and\n"
+                   "the Git ignore file. An app that saves its settings, such as the theme of herdr,\n"
+                   "can then write them. A base file that its tool reads before a file of yours (zsh,\n"
+                   "bash, Git config, Ghostty, mise) cannot be owned: set what you need in your file.\n"
+                   "After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.",
+                   epilog="Examples:\n  dotkit own herdr                 the theme menu of herdr can save\n"
+                          "  dotkit own ~/.config/starship.toml\n"
+                          "  dotkit own --release starship    back to the base file"),
+    "doctor": Command("Files", "What your dotfiles repeat or replace of the dotkit base.", _doctor,
                       "Compares the active system with the base: tools in the lists and config/mise.toml of\n"
                       "both, your links that replace base config files (with a diff when the files are\n"
                       "similar), and the files that an apply moved aside (*.before-dotkit). apply and\n"
                       "upgrade show the new ones."),
-    "history": Command("Check", "The package changes of the last apply.", _history),
+    "history": Command("Recovery", "The package changes of the last apply.", _history),
     "migrate": Command("Mac", "Add the tools that were installed by hand to the lists.", _migrate,
                        "Finds Homebrew packages and taps, App Store apps, and global npm and pipx tools that\n"
                        "were installed by hand and that the lists do not have. Asks, then adds them."),

@@ -1,5 +1,5 @@
 """The commands of dotkit other than add, remove, info, and list (dotkit/pkg): apply, upgrade, clean,
-history, rollback, migrate, tidy, and doctor. dotkit/cli.py parses their arguments.
+history, rollback, migrate, tidy, own, and doctor. dotkit/cli.py parses their arguments.
 
 The tools come from three sources, and dotkit uses the same three words everywhere:
   nix   nix/packages.txt (CLIs), nix/flake.lock (the dotkit release, which

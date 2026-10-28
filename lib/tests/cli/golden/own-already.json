@@ -1,0 +1,26 @@
+{
+ "argv": [
+  "own",
+  "starship",
+  "~/.zshrc.local"
+ ],
+ "exit": 0,
+ "stdout": "starship: ~/.config/starship.toml is yours already (config/my-starship.toml). dotkit doctor shows how it differs from the base file.\n~/.zshrc.local: ~/.zshrc.local is yours already (config/zsh/zshrc).\n",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

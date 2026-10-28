@@ -8,7 +8,8 @@ lists keep the change when that fails.
 
 from __future__ import annotations
 
-from typing import Callable
+from pathlib import Path
+from typing import Callable, Optional, Sequence
 
 from ..core import backup, nix, proc, ui
 from ..core.env import Env
@@ -17,21 +18,30 @@ from .entries import NIX_FILES
 APPLY_FAILED = "dotkit apply failed. The Nix files keep the change. Fix the problem, then run dotkit apply."
 
 
-def apply_nix(env: Env, edit: Callable[[], None]) -> None:
+def apply_nix(env: Env, edit: Callable[[], None], paths: Optional[Sequence[Path]] = None,
+              created: Sequence[Path] = ()) -> None:
+    """paths: the files that edit changes (default: the Nix lists); created: the files that it adds, which a
+    restore deletes."""
     n = nix.Nix(env)
-    copies = backup.Backup([env.repo / f for f in NIX_FILES])
+    copies = backup.Backup([env.repo / f for f in NIX_FILES] if paths is None else paths)
+
+    def restore() -> None:
+        copies.restore()
+        for path in created:
+            path.unlink(missing_ok=True)
+
     try:
         with backup.on_signals():
             try:
                 edit()
             except OSError:
-                copies.restore()
+                restore()
                 raise ui.die("could not change the Nix files. They are restored.")
             if n.build_system() != 0:
-                copies.restore()
+                restore()
                 raise ui.die("the build failed. The Nix files are restored.")
     except (KeyboardInterrupt, backup.Stopped):
-        copies.restore()
+        restore()
         raise ui.Exit(130, "\ndotkit: stopped. The Nix files are restored.")
     copies.discard()
     if n.activate() != 0 or not proc.mise(env.home, ["install"]).ok:

@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "own",
+  "herdr"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: herdr: config/herdr.toml exists already. Move it, or link it yourself in dotkit.links.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

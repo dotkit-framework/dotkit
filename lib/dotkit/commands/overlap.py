@@ -111,10 +111,15 @@ def load_manifest(system: Path) -> Optional[dict]:
     except (OSError, ValueError) as e:
         ui.warn(f"cannot read {path}: {e}. The config files are not compared with the base.")
         return None
-    if not isinstance(data, dict) or data.get("version") != 1:
+    if not valid_manifest(data):
         ui.warn(f"{path} has a format that this dotkit does not know. The config files are not compared.")
         return None
     return data
+
+
+def valid_manifest(data: object) -> bool:
+    return isinstance(data, dict) and data.get("version") == 1 and all(
+        isinstance(data.get(k), dict) for k in ("base", "layers", "links"))
 
 
 def _read(path: str) -> Optional[bytes]:
@@ -129,8 +134,13 @@ def _lines(data: bytes) -> Optional[List[str]]:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
         return None
-    # The spaces at the ends of lines and the blank lines at the end do not count.
-    return [line.rstrip() for line in text.rstrip().split("\n")] if text.strip() else []
+    lines = text.split("\n")
+    # The header about the base file, and the one of dotkit own instead of it, do not count.
+    if lines[0].startswith(("# dotkit base", "# From the dotkit base")):
+        lines = lines[next((i for i, line in enumerate(lines) if not line.startswith("#")), len(lines)):]
+    text = "\n".join(lines)
+    # The spaces at the ends of lines and the blank lines at both ends do not count.
+    return [line.rstrip() for line in text.strip("\n").rstrip().split("\n")] if text.strip() else []
 
 
 @dataclass
@@ -179,7 +189,7 @@ def links(env: Env, manifest: dict, dotkit: Path) -> List[Overlap]:
         c = compare(base[target], source, _short(base[target], env, dotkit), yours)
         if c.kind == "same":
             out.append(Overlap(f"link:{target}", where, f"your {yours} is the same as the base file. "
-                               f"Remove your link of {where}.", fingerprint=c.fingerprint))
+                               f"Give it back: dotkit own --release {where}", fingerprint=c.fingerprint))
             continue
         text = f"your {yours} replaces the base file" + {
             "diff": f"; {c.changed} lines differ.", "different": ", and differs from it a lot.", "unknown": "."}[c.kind]

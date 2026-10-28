@@ -66,7 +66,7 @@ class DoctorTests(Sandbox):
         self.assertEqual(out.splitlines(), [
             "Your dotfiles repeat or replace these parts of the dotkit base:",
             "  nix/packages.txt  fd is in the dotkit base too. Remove yours: dotkit remove nix:fd",
-            "  ~/.npmrc          your config/npmrc is the same as the base file. Remove your link of ~/.npmrc.",
+            "  ~/.npmrc          your config/npmrc is the same as the base file. Give it back: dotkit own --release ~/.npmrc",
         ])
         self.assertEqual(state.read_text(), before)
 
@@ -85,6 +85,13 @@ class CompareTests(Sandbox):
 
     def test_same_without_trailing_spaces(self):
         self.assertEqual(self.compare("x\ny\n", "x  \ny\n\n\n").kind, "same")
+
+    def test_the_headers_do_not_count(self):
+        """An owned copy that only has the header of dotkit own is the same as the base file (Ov4)."""
+        self.assertEqual(self.compare("# dotkit base. herdr reads one\n# config file.\n\na = 1\n",
+                                      "# From the dotkit base (dotkit own). After a dotkit upgrade, dotkit doctor "
+                                      "shows\n# how this file differs from the base file.\n\na = 1\n").kind, "same")
+        self.assertEqual(self.compare("# mine\na = 1\n", "a = 1\n").kind, "diff")
 
     def test_similar_shows_the_diff(self):
         lines = [f"{i}\n" for i in range(20)]
@@ -113,6 +120,25 @@ class CompareTests(Sandbox):
         first = self.compare("a\n", "b\n").fingerprint
         self.assertEqual(self.compare("a\n", "b\n").fingerprint, first)
         self.assertNotEqual(self.compare("a\n", "c\n").fingerprint, first)
+
+
+class ResolveTests(unittest.TestCase):
+    """The arguments of dotkit own (Ow2): the paths that the scenarios cannot pass, and the names."""
+
+    def test_resolve(self):
+        from dotkit.commands import own
+        m = {"dotkit": "/d", "base": {".config/herdr/config.toml": "/d/config/herdr.toml",
+                                     ".config/herdr/git-status.sh": "/d/scripts/herdr/git-status.sh",
+                                     ".bunfig.toml": "/d/config/bunfig.toml", ".gemrc": "/d/config/gemrc"}}
+        home = Path("/Users/jane")
+        self.assertEqual(own.resolve("/Users/jane/.gemrc", m, home), [".gemrc"])
+        self.assertEqual(own.resolve("/Users/jane/x/../.gemrc", m, home), [".gemrc"])
+        self.assertEqual(own.resolve("/etc/gemrc", m, home), ["/etc/gemrc"])
+        self.assertEqual(own.resolve("~/.config/x", m, home), [".config/x"])
+        self.assertEqual(own.resolve("herdr", m, home), [".config/herdr/config.toml"])
+        self.assertEqual(own.resolve("bunfig", m, home), [".bunfig.toml"])
+        self.assertEqual(own.resolve("bunfig.toml", m, home), [".bunfig.toml"])
+        self.assertEqual(own.resolve("git-status", m, home), [])
 
 
 class InlineTests(unittest.TestCase):

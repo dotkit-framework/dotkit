@@ -12,6 +12,7 @@ _dotkit() {
     'remove:remove a tool from the config that declares it, and apply'
     'info:show where a tool is declared, its command, and its sources'
     'list:show the declared tools'
+    'own:make a base config file yours, so you and its app can change it'
     'doctor:show what your dotfiles repeat or replace of the dotkit base'
     'migrate:add the packages that were installed by hand to the lists'
     'tidy:give the apps a clean source, and remove old tools and packages'
@@ -55,6 +56,10 @@ _dotkit() {
             '(-a --all)'{-a,--all}'[also cargo and Go tools, which mise builds from source]' && ret=0 ;;
         tidy)
           _arguments $dry_run $yes $help '--plan[read the edited plan from a file]:plan file:_files' && ret=0 ;;
+        own)
+          _arguments $dry_run $yes $help \
+            '--release[give the files back to the base]' \
+            '*:base config file:(herdr starship pnpm gemrc bunfig editorconfig ~/.config/git/ignore)' && ret=0 ;;
         history|rollback|doctor)
           _arguments $help && ret=0 ;;
       esac

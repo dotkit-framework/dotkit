@@ -1,6 +1,6 @@
-# dotkit base. herdr reads one config file. To change a setting, copy this
-# file to the dotfiles repository and replace the link:
-# dotkit.links.".config/herdr/config.toml" = "config/herdr.toml".
+# dotkit base. herdr reads one config file, and saves settings such as the
+# theme in it. To change a setting, run `dotkit own herdr`: it copies this
+# file to config/herdr.toml of the dotfiles repository and links it there.
 
 onboarding = false
 

@@ -1,0 +1,28 @@
+{
+ "argv": [
+  "own",
+  "-n",
+  "herdr",
+  "~/.gemrc",
+  ".config/herdr/config.toml"
+ ],
+ "exit": 0,
+ "stdout": "herdr: copy the base file to config/herdr.toml, and link it as ~/.config/herdr/config.toml (nix/home.nix)\n~/.gemrc: copy the base file to config/gemrc, and link it as ~/.gemrc (nix/home.nix)\n",
+ "stderr": "No change. Run the command without -n to own them.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

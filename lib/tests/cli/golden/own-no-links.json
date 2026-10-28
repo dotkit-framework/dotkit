@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "own",
+  "herdr"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: herdr: cannot find where nix/ sets dotkit.links. Add this line to nix/home.nix, copy the base file to config/herdr.toml, and run dotkit apply: dotkit.links.\".config/herdr/config.toml\" = \"config/herdr.toml\";\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

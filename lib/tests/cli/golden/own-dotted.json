@@ -1,0 +1,81 @@
+{
+ "argv": [
+  "own",
+  "-y",
+  "~/.gemrc"
+ ],
+ "exit": 0,
+ "stdout": "~/.gemrc: copy the base file to config/gemrc, and link it as ~/.gemrc (nix/home.nix)\n",
+ "stderr": "Commit config/gemrc. After a dotkit upgrade, dotkit doctor shows how yours differs from the base file.\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1",
+  "repo/config/gemrc": "gem: --no-document\n",
+  "repo/nix/home.nix": "{\n  dotkit.links.\".zshrc.local\" = \"config/zsh/zshrc\";\n  dotkit.links.\".config/starship.toml\" = \"config/my-starship.toml\";\n  dotkit.links.\".gemrc\" = \"config/gemrc\";\n  home.stateVersion = \"26.05\";\n}\n"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.environment.etc.\"dotkit/links.json\".text"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

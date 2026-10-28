@@ -233,12 +233,24 @@ dotkit.links.".config/ghostty/config.local" = "config/ghostty.conf";
 
 A relative source is a file in your dotfiles repository. These tools read one
 file only: Starship, herdr, pnpm, bun, RubyGems, EditorConfig, and the Git
-ignore file.
-To change one of them, copy the base file to your repository and link the
-same target. Your link replaces the base link:
+ignore file. To change one of them, make the base file yours:
+
+```sh
+dotkit own herdr                  # or a path: dotkit own ~/.config/starship.toml
+```
+
+`dotkit own` copies the base file to `config/` of your repository, links it
+there instead of the base file, and applies. The tool can then save its own
+settings, such as the theme of herdr, and Git shows each change. After a
+`dotkit upgrade`, the report and `dotkit doctor` show how your copy differs
+from the base file. `dotkit own --release herdr` gives the file back to the
+base: it removes your link, and your copy stays in the repository until you
+delete it. The base files that a tool reads before a file of yours (zsh,
+bash, Git config, Ghostty, mise) cannot be owned: set what you need in your
+file instead, so the rest of the base still applies. To remove a base link
+without a file of yours:
 
 ```nix
-dotkit.links.".config/herdr/config.toml" = "config/herdr.toml";
 dotkit.links.".gemrc" = null; # no link at all
 ```
 
@@ -280,8 +292,8 @@ repeats or replaces of the base:
 | A tool in your list and in the base list | `dotkit remove` it: the base keeps it |
 | A mise tool with the same value | `dotkit remove` it |
 | A mise tool with another value | Nothing, if you want your version: yours wins |
-| Your link that replaces a base file, with the same content | Remove your link |
-| Your link that replaces a base file, with other content | The report shows the diff when the files are similar. For a file that the tool reads after the base file (`~/.gitconfig`, `~/.zshrc.local`, ...), move your changes there and remove your link. Else keep yours, or take the base file |
+| Your link that replaces a base file, with the same content | `dotkit own --release` it |
+| Your link that replaces a base file (`dotkit own`), with other content | The report shows the diff when the files are similar. For a file that the tool reads after the base file (`~/.gitconfig`, `~/.zshrc.local`, ...), move your changes there and remove your link. Else keep yours, or take the base file |
 | `~/<file>.before-dotkit` | An apply moved your file aside to link the base file. Take what you need from it, then delete it |
 
 The report shows an overlap once, and again when one of the two sides
