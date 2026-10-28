@@ -1,0 +1,36 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "mas:497799835"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: mas:497799835: cannot read the name of App Store app 497799835 from mas. Add it to nix/mas.txt as `497799835 Name`.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mas",
+   "argv": [
+    "info",
+    "--json",
+    "497799835"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

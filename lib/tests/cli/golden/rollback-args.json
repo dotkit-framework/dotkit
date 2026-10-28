@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "rollback",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit rollback [-h]\ndotkit rollback: error: unrecognized arguments: x\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -88,9 +88,11 @@ The left column is the code at `d91296a`; the right column is where it is now.
 
 ```
 migrate/
-  dotkit-migrate, run.py           start script, unchanged
+  dotkit-migrate                   start script: runs lib/run.py dotkit-migrate
   ARCHITECTURE.md                  this file
-  dotkit_migrate/
+lib/
+  run.py                           start file of the dotkit programs
+  dotkit/migrate/
     __main__.py                    CLI only: arguments, mode, exit codes, stderr lines
     context.py                     Context: home, env, runner, base, applications, brew_prefix;
                                    read-only file helpers; tilde/expand/repo_error
@@ -120,6 +122,8 @@ migrate/
     lift.py                        the secrets of ~/.npmrc and Git config files as variables
   tests/                           unit, migrator, document, golden, invariant, UI and PTY tests
 ```
+
+The paths below are in `lib/dotkit/migrate/` (code) and `lib/tests/` (tests).
 
 Rules:
 
@@ -574,7 +578,7 @@ class Failure:
     phase: str               # "scan" | "pages" | "plan" | "adopt" | "skipped" | "conflict"
     error: str               # "KeyError: 'versions'": at most 200 characters, the home as ~, masked (section 6);
                              # a conflict: what both owners wanted
-    where: str               # the last traceback frame inside dotkit_migrate: "migrators/runtimes.py:88 in plan";
+    where: str               # the last traceback frame inside dotkit.migrate: "migrators/runtimes.py:88 in plan";
                              # a conflict: the document
     manual: str              # Migrator.manual_steps(ctx)
     reason: str = ""         # for "skipped": "Shell lines failed"; a conflict: the target, "npm:eslint"
@@ -1048,7 +1052,7 @@ Problems in the UI:
 | PTY | `tests/test_wizard_pty.py`, `tests/wizard_child.py` | curses mechanics: keys, keypad sequences, resize, small window, quit, the plain prompts with answer counts taken from the Session; one test where `wizard_child.py` adds a migrator that crashes, and the wizard still finishes |
 | Start and grammar | `tests/test_start.py` | `-I -B` isolation; the Python 3.9 grammar |
 | Temp directories | `tests/__init__.py` (`load_tests`), `tests/test_tempdirs.py` | a run of the suite leaves no `dotkit-migrate-*` directory in `$TMPDIR`; the tests make their `dotkit-migrate-*` directories with `fake.tempdir()` and remove them with `fake.remove()` |
-| e2e | `tests/e2e/migrated.sh` (at the top of the repository, not in `migrate/tests`) in CI | a used macOS runner, strict mode; each new migration adds a fixture to the e2e job and a check here |
+| e2e | `tests/e2e/migrated.sh` (at the top of the repository, not in `lib/tests`) in CI | a used macOS runner, strict mode; each new migration adds a fixture to the e2e job and a check here |
 
 Other focused tests: `tests/test_catalog.py` (the generated rcparse rules),
 `tests/test_rcparse.py`, `tests/test_secrets.py`, `tests/test_context.py`,
@@ -1060,8 +1064,8 @@ and `dotkit add mas:ID`; skipped without nix or `scripts/`).
 The standard checks for every step (called STD below):
 
 ```sh
-cd migrate && /usr/bin/python3 -B -m unittest discover -s tests -t . -v
-cd migrate && nix shell --inputs-from .. nixpkgs#python3 nixpkgs#nixfmt -c python3 -B -m unittest discover -s tests -t . -v
+cd lib && /usr/bin/python3 -B -m unittest discover -s tests -t . -v
+cd lib && nix shell --inputs-from .. nixpkgs#python3 nixpkgs#nixfmt -c python3 -B -m unittest discover -s tests -t . -v
 nix build .#checks.aarch64-darwin.migrate
 # On a real Mac, read-only. Take "before" at the start of the step, the same day; the path must not exist:
 migrate/dotkit-migrate setup --dry-run --yes --repo ~/.dotkit-dryrun-probe > /tmp/dk-after.txt 2>&1
@@ -1478,7 +1482,7 @@ The nix module reads both files through two options, `dotkit.lists.taps` and
 `homebrew.taps` and `homebrew.masApps` from them. The template has the two
 files and lists them in its `nix/darwin.nix`, which no longer has the
 `homebrew.taps = [ ];` and `homebrew.masApps = { };` lines.
-`dotkit add mas:ID` and `dotkit remove mas:ID` (`scripts/dotkit-pkg`) edit
+`dotkit add mas:ID` and `dotkit remove mas:ID` (`lib/dotkit/pkg`) edit
 `nix/mas.txt`. The name comes from `mas`: from `mas list` when the app is
 installed, else `.name` of the first object of `mas info --json <id>` (JSON
 Lines). Without `mas`, the command says to run `dotkit add brew:mas` first.

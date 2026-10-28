@@ -1,0 +1,35 @@
+{
+ "argv": [
+  "upgrade",
+  "-y",
+  "mise"
+ ],
+ "exit": 0,
+ "stdout": "  mise  node                                 22.1.0                 -> 22.2.0\n  mise  npm:cowsay                           1.5.0                  -> 1.6.0\n",
+ "stderr": "Checking mise...\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "outdated",
+    "--json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "upgrade"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

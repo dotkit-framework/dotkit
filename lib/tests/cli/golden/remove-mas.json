@@ -1,0 +1,68 @@
+{
+ "argv": [
+  "remove",
+  "-y",
+  "mas:409183694"
+ ],
+ "exit": 0,
+ "stdout": "mas:409183694: remove 409183694 from nix/mas.txt\n",
+ "stderr": "dotkit: the App Store app 409183694 stays installed. dotkit does not uninstall App Store apps.\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1",
+  "repo/nix/mas.txt": "# apps\n"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

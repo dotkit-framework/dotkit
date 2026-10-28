@@ -1,0 +1,61 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "npm:dkt-cow"
+ ],
+ "exit": 0,
+ "stdout": "npm:dkt-cow -> config/mise.toml\n  ✓ npm:dkt-cow                    1.6.0          \n",
+ "stderr": "No change. Run the command without -n to add.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "npm:dkt-cow"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://registry.npmjs.org/dkt-cow/latest"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "tool",
+    "--description",
+    "npm:dkt-cow"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-cowsay"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

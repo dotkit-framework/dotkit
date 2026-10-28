@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "apply",
+  "-y"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit apply [-h] [-n]\ndotkit apply: error: unrecognized arguments: -y\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "tidy",
+  "-n",
+  "--plan",
+  "nope/plan.txt",
+  "-h"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit tidy [-h] [-n] [-y] [--plan FILE]\ndotkit tidy: error: argument --plan: 'nope/plan.txt' is not in a directory that exists\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

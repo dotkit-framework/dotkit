@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "remove"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit remove [-h] [-n] [-y] tool [tool ...]\ndotkit remove: error: the following arguments are required: tool\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

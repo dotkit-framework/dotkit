@@ -1,0 +1,26 @@
+{
+ "argv": [
+  "remove",
+  "-y",
+  "dkt-hunk"
+ ],
+ "exit": 0,
+ "stdout": "dkt-hunk: remove github:modem-dev/dkt-hunk from config/mise.toml\n",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "unuse",
+    "-g",
+    "github:modem-dev/dkt-hunk"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

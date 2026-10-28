@@ -1,0 +1,129 @@
+{
+ "argv": [
+  "info",
+  "dkt-nothing",
+  "nix:jq"
+ ],
+ "exit": 1,
+ "stdout": "dkt-nothing\n  declared  no\n  add picks none: no source has this name. Check the name, or use a prefix (dotkit add --help).\nnix:jq\n  declared  nix/packages.txt (jq)\n  add picks nix:jq (selected with nix:)\n  sources\n  ✓ nix:jq                         1.8.1          JSON processor\n",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://pypi.org/pypi/dkt-nothing/json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://registry.npmjs.org/dkt-nothing/latest"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-nothing\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"jq\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--cask",
+    "dkt-nothing"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--formula",
+    "dkt-nothing"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "registry",
+    "dkt-nothing"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-jq"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-nothing"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

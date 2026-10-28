@@ -1,0 +1,100 @@
+{
+ "argv": [
+  "add",
+  "-y",
+  "mas:361285480",
+  "mas:1234",
+  "mas:55"
+ ],
+ "exit": 0,
+ "stdout": "mas:361285480 -> nix/mas.txt (Keynote)\nmas:1234 -> nix/mas.txt (Keynote (1234))\nnix/mas.txt has another app named Keynote; added as 'Keynote (1234)'.\nmas:55 -> nix/mas.txt (Back\\slash)\n",
+ "stderr": "",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1",
+  "repo/nix/mas.txt": "361285480 Keynote\n1234 Keynote (1234)\n55 Back\\slash\n"
+ },
+ "calls": [
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

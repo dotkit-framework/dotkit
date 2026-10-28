@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "remove",
+  "nix:zed"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: nix:zed: not in nix/packages.txt. See dotkit info nix:zed.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,61 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "npm:dkt-lib"
+ ],
+ "exit": 0,
+ "stdout": "npm:dkt-lib -> config/mise.toml\n  ✓ npm:dkt-lib                    1.0.0          \n",
+ "stderr": "No change. Run the command without -n to add.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "npm:dkt-lib"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://registry.npmjs.org/dkt-lib/latest"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "tool",
+    "--description",
+    "npm:dkt-lib"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-lib"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

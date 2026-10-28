@@ -1,0 +1,39 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "cask:dkt-cli"
+ ],
+ "exit": 0,
+ "stdout": "cask:dkt-cli -> nix/casks.txt\n  ✓ cask:dkt-cli                   0.1            CLI\n",
+ "stderr": "No change. Run the command without -n to add.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--cask",
+    "dkt-cli"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-c"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

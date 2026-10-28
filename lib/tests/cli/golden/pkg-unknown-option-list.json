@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "list",
+  "--frob"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit list [-h] [source ...]\ndotkit list: error: unrecognized arguments: --frob\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

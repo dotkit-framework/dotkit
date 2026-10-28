@@ -1,0 +1,26 @@
+{
+ "argv": [
+  "upgrade",
+  "nix"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "Checking Nix...\nerror: cannot fetch input 'dotkit'\ndotkit: nix flake update failed for @SB/repo/nix/flake.lock. The lock files are restored.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "path:@SB/repo/nix"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "apply"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "@SB/dotkit/dotkit: line 19: cd: @SB/nope: No such file or directory\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

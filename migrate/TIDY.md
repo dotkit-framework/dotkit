@@ -1,6 +1,6 @@
 # Design: `dotkit tidy`
 
-Status: all three phases are implemented in `dotkit_migrate/tidy/`: apps
+Status: all three phases are implemented in `lib/dotkit/migrate/tidy/`: apps
 (sections 3 to 6), command-line tools (section 8.1), and installer packages
 (section 8.2).
 
@@ -328,13 +328,14 @@ no, 2 for a plan with errors, and 130 after `Ctrl-C`.
 
 In the migrate package, as a new mode next to `setup` and `adopt`:
 `dotkit-migrate tidy --repo <repo> --declared <json>`. `dotkit tidy` in the
-`dotkit` script calls it like `cmd_migrate`. `__main__.py` imports
+Python command (`lib/dotkit/commands/wizard.py`) calls it as it calls `adopt` for
+`dotkit migrate`. `__main__.py` imports
 `tidy/cli.py` only in this mode. The reasons: the same Python
 3.9 runtime, `Context`, `FakeRunner`, `fake.Home`, `Declared`, `ListDoc`,
 `writer.apply_edits`, and the secret guard of the list lines.
 
 ```
-dotkit_migrate/tidy/
+lib/dotkit/migrate/tidy/
   __init__.py
   apps.py      the scan: apps, sources, the cask index, matching. Read-only, through ctx.runner.
   plan.py      pure: facts -> plan lines and text; parse and check an edited plan

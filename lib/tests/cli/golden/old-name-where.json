@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "where"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'where' is now 'info'. Run dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

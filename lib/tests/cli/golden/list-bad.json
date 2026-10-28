@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "list",
+  "nix",
+  "frob"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit list [-h] [source ...]\ndotkit list: error: argument source: 'frob' is not a source. Use nix, brew, or mise\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

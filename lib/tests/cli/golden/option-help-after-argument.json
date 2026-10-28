@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "apply",
+  "extra",
+  "-h"
+ ],
+ "exit": 0,
+ "stdout": "usage: dotkit apply [-h] [-n]\n\nApply the config: Nix, Homebrew, and mise.\n\noptions:\n  -h, --help     show this help message and exit\n  -n, --dry-run  Build and show the changes. Change nothing.\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,27 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "@scope/dkt-pkg"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: @scope/dkt-pkg: npm has no package '@scope/dkt-pkg' with a command.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://registry.npmjs.org/@scope%2Fdkt-pkg/latest"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

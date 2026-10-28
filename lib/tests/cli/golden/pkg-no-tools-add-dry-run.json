@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "add",
+  "-n"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit add [-h] [-n] [-y] [-f] tool [tool ...]\ndotkit add: error: the following arguments are required: tool\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

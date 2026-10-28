@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "list",
+  "mise"
+ ],
+ "exit": 1,
+ "stdout": "mise  node                                 lts (dotkit)\nmise  npm:@dkt-ai/dkt-code                 latest (dotkit)\n",
+ "stderr": "dotkit: @SB/repo/config/mise.toml is not valid TOML: Invalid value (at line 2, column 5).\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

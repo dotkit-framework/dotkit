@@ -1,0 +1,95 @@
+{
+ "argv": [
+  "apply",
+  "-n"
+ ],
+ "exit": 0,
+ "stdout": "Nix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
+ "stderr": "warning: Git tree '@SB/checkout' is dirty\nreal warning\nNo change. Run dotkit apply to apply.\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system.drvPath",
+    "--override-input",
+    "dotkit",
+    "git+file://@SB/checkout",
+    "--no-write-lock-file",
+    "--option",
+    "warn-dirty",
+    "false"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "/nix/store/0000000000000000000000000000000a-darwin-system.drv^*",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "store",
+    "diff-closures",
+    "/run/current-system",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew.onActivation.cleanup",
+    "--override-input",
+    "dotkit",
+    "git+file://@SB/checkout",
+    "--no-write-lock-file",
+    "--option",
+    "warn-dirty",
+    "false"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install",
+    "--dry-run"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "migrate",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit migrate [-h] [-n] [-y] [-a]\ndotkit migrate: error: unrecognized arguments: x\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

@@ -1,0 +1,255 @@
+{
+ "argv": [
+  "add",
+  "-y",
+  "npm:dkt-cow",
+  "nix:dkt-a",
+  "pipx:dkt-py",
+  "brew:dkt-f"
+ ],
+ "exit": 0,
+ "stdout": "npm:dkt-cow -> config/mise.toml\n  ✓ npm:dkt-cow                    1.0            \nnix:dkt-a -> nix/packages.txt\n  ✓ nix:dkt-a                      1.0            A\npipx:dkt-py -> config/mise.toml\n  ✓ pipx:dkt-py                    1.0            \nbrew:dkt-f -> nix/brews.txt\n  ✓ brew:dkt-f                     1.0            \n",
+ "stderr": "",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1",
+  "repo/nix/brews.txt": "dkt-f\n",
+  "repo/nix/packages.txt": "jq\ndkt-a\n"
+ },
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "npm:dkt-cow"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://registry.npmjs.org/dkt-cow/latest"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "tool",
+    "--description",
+    "npm:dkt-cow"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-cow"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-a\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-a"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "pipx:dkt-py"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "tool",
+    "--description",
+    "pipx:dkt-py"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-py\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-py"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--formula",
+    "dkt-f"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-f\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-f"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "use",
+    "-g",
+    "npm:dkt-cow"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "use",
+    "-g",
+    "pipx:dkt-py"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

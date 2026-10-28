@@ -1,0 +1,26 @@
+{
+ "argv": [
+  "migrate"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "error: undefined variable 'oops'\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew",
+    "--apply",
+    "h: { taps = map (t: t.name) h.taps; masApps = h.masApps; }"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

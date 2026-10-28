@@ -1,0 +1,28 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "nix:dkt-none"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: nix:dkt-none: Nixpkgs has no package 'dkt-none' for this Mac.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-none\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

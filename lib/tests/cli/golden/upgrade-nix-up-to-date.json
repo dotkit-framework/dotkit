@@ -1,0 +1,26 @@
+{
+ "argv": [
+  "upgrade",
+  "nix"
+ ],
+ "exit": 0,
+ "stdout": "Everything is up to date.\n",
+ "stderr": "Checking Nix...\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "path:@SB/repo/nix"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

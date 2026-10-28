@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "tidy",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit tidy [-h] [-n] [-y] [--plan FILE]\ndotkit tidy: error: unrecognized arguments: x\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

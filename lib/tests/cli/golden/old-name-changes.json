@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "changes"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: 'changes' is now 'history'. Run dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

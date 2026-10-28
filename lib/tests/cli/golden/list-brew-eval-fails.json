@@ -1,0 +1,25 @@
+{
+ "argv": [
+  "list",
+  "brew"
+ ],
+ "exit": 1,
+ "stdout": "brew  wget                                 formula (dotkit)\nbrew  ghostty                              cask (dotkit)\nbrew  zed                                  cask\n",
+ "stderr": "error: undefined variable 'oops'\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew.masApps"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

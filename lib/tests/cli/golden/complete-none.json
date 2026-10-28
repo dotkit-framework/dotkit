@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "__complete"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: __complete takes inputs, tools-user, or tools-all.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

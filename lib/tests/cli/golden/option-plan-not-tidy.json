@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "migrate",
+  "--plan",
+  "p.txt"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit migrate [-h] [-n] [-y] [-a]\ndotkit migrate: error: unrecognized arguments: --plan p.txt\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

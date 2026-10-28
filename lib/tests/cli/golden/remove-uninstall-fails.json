@@ -1,0 +1,94 @@
+{
+ "argv": [
+  "remove",
+  "-y",
+  "dkt-f"
+ ],
+ "exit": 0,
+ "stdout": "dkt-f: remove dkt-f from nix/brews.txt\n",
+ "stderr": "Error: busy\ndotkit: could not uninstall the formula dkt-f. Run: brew uninstall --formula dkt-f\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1",
+  "repo/nix/brews.txt": ""
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "list",
+    "--formula",
+    "dkt-f"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "uninstall",
+    "--formula",
+    "dkt-f"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

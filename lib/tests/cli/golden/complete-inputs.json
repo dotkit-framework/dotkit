@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "__complete",
+  "inputs"
+ ],
+ "exit": 0,
+ "stdout": "dotkit\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

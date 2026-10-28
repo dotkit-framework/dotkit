@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "add",
+  "--all",
+  "x"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit add [-h] [-n] [-y] [-f] tool [tool ...]\ndotkit add: error: unrecognized arguments: --all\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

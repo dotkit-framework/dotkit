@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "clean",
+  "1d",
+  "2d"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit clean [-h] [-n] [-y] [age]\ndotkit clean: error: unrecognized arguments: 2d\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

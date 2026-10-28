@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "mas:012"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: mas:012: '012' is not an App Store ID. mas list shows the IDs.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

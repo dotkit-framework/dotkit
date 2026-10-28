@@ -1,0 +1,141 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "dkt-tool"
+ ],
+ "exit": 0,
+ "stdout": "dkt-tool: mise:dkt-tool -> config/mise.toml (not in Nixpkgs)\n  ✓ mise:dkt-tool                  1.2.0          From mise\n",
+ "stderr": "No change. Run the command without -n to add.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://pypi.org/pypi/dkt-tool/json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsSL",
+    "--max-time",
+    "10",
+    "https://registry.npmjs.org/dkt-tool/latest"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-tool\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.pkgs",
+    "--apply",
+    "\n    pkgs:\n    let\n      lib = pkgs.lib;\n      p = lib.attrByPath (lib.splitString \".\" \"dkt-tool\") null pkgs;\n      info = {\n        version = p.version or \"\";\n        description = p.meta.description or \"\";\n        bin = p.meta.mainProgram or (p.pname or \"\");\n      };\n      r = builtins.tryEval (\n        if lib.isDerivation p && (p.meta.available or true)\n        then builtins.deepSeq info info else null\n      );\n    in if r.success then r.value else null"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--cask",
+    "dkt-tool"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "info",
+    "--json=v2",
+    "--formula",
+    "dkt-tool"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "dkt-tool"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "registry",
+    "dkt-tool"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "tool",
+    "--description",
+    "dkt-tool"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "dkt-tool"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

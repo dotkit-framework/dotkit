@@ -1,0 +1,35 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "mas:361285480",
+  "mas:1234"
+ ],
+ "exit": 0,
+ "stdout": "mas:361285480 -> nix/mas.txt (Keynote)\nmas:1234 -> nix/mas.txt (Keynote (1234))\nnix/mas.txt has another app named Keynote; added as 'Keynote (1234)'.\n",
+ "stderr": "No change. Run the command without -n to add.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

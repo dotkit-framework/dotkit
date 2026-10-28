@@ -1,0 +1,24 @@
+{
+ "argv": [
+  "upgrade",
+  "mise"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "Checking mise...\nmise ERROR failed\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "outdated",
+    "--json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

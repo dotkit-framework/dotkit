@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "info",
+  "x",
+  "--help"
+ ],
+ "exit": 0,
+ "stdout": "usage: dotkit info [-h] tool [tool ...]\n\nWhere a tool is declared, its command, and its sources.\n\npositional arguments:\n  tool        A name, a command, or a prefix and a name.\n\noptions:\n  -h, --help  show this help message and exit\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

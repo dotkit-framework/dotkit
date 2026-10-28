@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "remove",
+  "brew:dkt-x",
+  "cask:dkt-x",
+  "mas:1",
+  "npm:dkt-x"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: brew:dkt-x: not in nix/brews.txt or nix/casks.txt. See dotkit info brew:dkt-x.\ndotkit: cask:dkt-x: not in nix/casks.txt. See dotkit info cask:dkt-x.\ndotkit: mas:1: not in nix/mas.txt. See dotkit info mas:1.\ndotkit: npm:dkt-x: not in config/mise.toml. See dotkit info npm:dkt-x.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

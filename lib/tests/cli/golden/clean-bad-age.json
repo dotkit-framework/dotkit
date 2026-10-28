@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "clean",
+  "2w"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit clean [-h] [-n] [-y] [age]\ndotkit clean: error: argument age: '2w' is not an age. Use days, for example 30d\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

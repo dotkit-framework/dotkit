@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "brew:.x"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: brew:.x: '.x' is not a valid Homebrew name.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

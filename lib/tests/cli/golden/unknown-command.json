@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "frobnicate"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "dotkit: unknown command: frobnicate. Run dotkit --help.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

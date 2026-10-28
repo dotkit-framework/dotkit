@@ -1,0 +1,49 @@
+{
+ "argv": [
+  "clean",
+  "-n",
+  "30d"
+ ],
+ "exit": 0,
+ "stdout": "Would remove: x (1MB)\n",
+ "stderr": "No change. Run dotkit clean to delete.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "sudo",
+   "argv": [
+    "nix-collect-garbage",
+    "--delete-older-than",
+    "30d",
+    "--dry-run"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "cleanup",
+    "--dry-run"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "prune",
+    "--dry-run"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

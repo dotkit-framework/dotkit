@@ -1,0 +1,89 @@
+{
+ "argv": [
+  "apply"
+ ],
+ "exit": 0,
+ "stdout": "",
+ "stderr": "warning: Git tree '@SB/checkout' is dirty\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system.drvPath",
+    "--override-input",
+    "dotkit",
+    "git+file://@SB/checkout",
+    "--no-write-lock-file",
+    "--option",
+    "warn-dirty",
+    "false"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "/nix/store/0000000000000000000000000000000a-darwin-system.drv^*",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "DOTKIT_DIR": "@SB/checkout"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "tidy",
+  "--plan"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit tidy [-h] [-n] [-y] [--plan FILE]\ndotkit tidy: error: argument --plan: expected one argument\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

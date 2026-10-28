@@ -1,0 +1,46 @@
+{
+ "argv": [
+  "migrate",
+  "-a",
+  "--yes",
+  "--dry-run"
+ ],
+ "exit": 0,
+ "stdout": "",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew",
+    "--apply",
+    "h: { taps = map (t: t.name) h.taps; masApps = h.masApps; }"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "dotkit-migrate",
+   "argv": [
+    "adopt",
+    "--repo",
+    "@SB/repo",
+    "--declared",
+    "{\"masApps\":{\"Keynote\":409183694},\"taps\":[]}",
+    "--dry-run",
+    "--yes",
+    "--all"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,0 +1,27 @@
+{
+ "argv": [
+  "remove",
+  "-y",
+  "jq"
+ ],
+ "exit": 1,
+ "stdout": "jq: remove jq from nix/packages.txt\n",
+ "stderr": "error: builder for '/nix/store/x.drv' failed\ndotkit: the build failed. The Nix files are restored.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

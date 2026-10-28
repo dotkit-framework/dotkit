@@ -8,4 +8,4 @@ if ! /usr/bin/xcode-select -p >/dev/null 2>&1; then
   echo 'dotkit-migrate: the Xcode Command Line Tools are missing. Install them: xcode-select --install' >&2
   exit 1
 fi
-exec /usr/bin/python3 -I -B "$(dirname -- "$0")/run.py" "$@"
+exec /usr/bin/python3 -I -B "$(dirname -- "$0")/../lib/run.py" dotkit-migrate "$@"

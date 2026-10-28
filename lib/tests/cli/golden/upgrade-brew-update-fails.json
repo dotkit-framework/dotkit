@@ -1,0 +1,24 @@
+{
+ "argv": [
+  "upgrade",
+  "brew"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "Checking Homebrew...\nfatal: unable to access\nUpdating Homebrew...\ndotkit: brew update failed.\n",
+ "files": {},
+ "calls": [
+  {
+   "tool": "brew",
+   "argv": [
+    "update",
+    "--quiet"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -1,0 +1,46 @@
+{
+ "argv": [
+  "info",
+  "mas:409183694"
+ ],
+ "exit": 0,
+ "stdout": "mas:409183694\n  declared  nix/mas.txt (409183694)\n  add picks none: mas finds no App Store app with the ID 409183694.\n",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mas",
+   "argv": [
+    "list"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mas",
+   "argv": [
+    "info",
+    "--json",
+    "409183694"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "which",
+    "409183694"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

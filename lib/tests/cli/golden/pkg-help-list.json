@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "list",
+  "-h"
+ ],
+ "exit": 0,
+ "stdout": "usage: dotkit list [-h] [source ...]\n\nThe declared tools.\n\npositional arguments:\n  source      nix, brew, or mise. Without one, all three.\n\noptions:\n  -h, --help  show this help message and exit\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

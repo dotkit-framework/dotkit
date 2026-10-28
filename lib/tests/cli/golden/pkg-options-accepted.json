@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "list",
+  "-f",
+  "-n",
+  "-y",
+  "nix"
+ ],
+ "exit": 2,
+ "stdout": "",
+ "stderr": "usage: dotkit list [-h] [source ...]\ndotkit list: error: unrecognized arguments: -f -n -y\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

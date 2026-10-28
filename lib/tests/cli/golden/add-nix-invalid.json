@@ -1,0 +1,13 @@
+{
+ "argv": [
+  "add",
+  "-n",
+  "nix:9bad"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: nix:9bad: '9bad' is not a valid Nix attribute path.\ndotkit: nothing changed. Fix the errors above, then run the command again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}

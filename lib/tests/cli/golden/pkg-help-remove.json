@@ -1,0 +1,12 @@
+{
+ "argv": [
+  "remove",
+  "-h"
+ ],
+ "exit": 0,
+ "stdout": "usage: dotkit remove [-h] [-n] [-y] tool [tool ...]\n\nRemove a tool from the config that declares it, and apply.\n\nHomebrew packages that you remove are uninstalled. Tools of the dotkit base stay.\n\npositional arguments:\n  tool           A name, or a prefix and a name: nix:jq, brew:wget.\n\noptions:\n  -h, --help     show this help message and exit\n  -n, --dry-run  Show the plan. Change nothing.\n  -y, --yes      Do not ask. Required without a terminal.\n",
+ "stderr": "",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}
