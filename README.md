@@ -359,12 +359,16 @@ it with `dotkit upgrade dotkit`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on each push and pull request, on macOS 26
-arm64 runners. The `check` job runs the two `nix` commands above, the Python
-tests of the `dotkit` command and the migration wizard (`lib/tests`, with
-the macOS Python and with the Python of Nixpkgs), `tests/setup.sh` (functions of
-setup in a temporary home directory), shellcheck, nixfmt, statix, and
-deadnix. The `e2e` job runs `scripts/setup --yes` on a
+`.github/workflows/ci.yml` runs once for each pull request, on each push to
+`main`, and on request (workflow_dispatch), on macOS 26 arm64 runners. The
+jobs run in parallel. The `check` job runs shellcheck, nixfmt, statix,
+deadnix, and actionlint first, then `nix flake check`, which builds the
+example Mac and runs the Python tests with the Python of Nixpkgs, then
+`tests/setup.sh` (functions of setup in a temporary home directory). The
+`python` job runs the Python tests of the `dotkit` command and the migration
+wizard (`lib/tests`) with the macOS Python, and the tests that skip in the
+Nix sandbox (the scenarios, and the tests that need `nix`) with the Python of
+Nixpkgs. The `e2e` job runs `scripts/setup --yes` on a
 fresh macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
 `~/.dotfiles` with the wizard and builds it with that commit. The runner is a
 used Mac: it has many Homebrew packages, and the job adds old dotfiles. It

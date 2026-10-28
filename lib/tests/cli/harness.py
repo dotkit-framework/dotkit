@@ -130,7 +130,10 @@ def setup(sb: Path, impl: Impl, s: Scenario) -> None:
         dst = sb / "dotkit" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.is_dir():
-            shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "tests"))
+            # The vendored packages are two thirds of the files and never change: a link instead of a copy.
+            shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "tests", "_vendor"))
+            if (src / "_vendor").is_dir():
+                (dst / "_vendor").symlink_to(src / "_vendor")
         else:
             shutil.copy2(src, dst)
     launcher = sb / "dotkit/dotkit"
