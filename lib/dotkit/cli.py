@@ -190,6 +190,16 @@ def _mod(name: str):
     return importlib.import_module(f"dotkit.{name}")
 
 
+# The groups of the usage, in order: the key in COMMANDS, and the title.
+GROUPS = (
+    ("Config", "Apply and update the config"),
+    ("Tools", "Tools in the lists"),
+    ("Check", "Check"),
+    ("Mac", "Bring this Mac under dotkit"),
+    ("Recovery", "Recovery and cleanup"),
+)
+
+
 @dataclass
 class Command:
     group: str
@@ -200,28 +210,28 @@ class Command:
 
 
 COMMANDS: Dict[str, Command] = {
-    "apply": Command("Daily", "Apply the config: Nix, Homebrew, and mise.", _apply),
-    "upgrade": Command("Daily", "Get new releases. Shows one plan, asks once, then applies.", _upgrade),
-    "add": Command("Daily", "Select the source for a tool, add it, and apply.", _add, epilog=EPILOG_ADD),
-    "remove": Command("Daily", "Remove a tool from the config that declares it, and apply.", _remove,
+    "apply": Command("Config", "Apply the config: Nix, Homebrew, and mise.", _apply),
+    "upgrade": Command("Config", "Get new releases. Shows one plan, asks once, then applies.", _upgrade),
+    "add": Command("Tools", "Select the source for a tool, add it, and apply.", _add, epilog=EPILOG_ADD),
+    "remove": Command("Tools", "Remove a tool from the config that declares it, and apply.", _remove,
                       "Homebrew packages that you remove are uninstalled. Tools of the dotkit base stay."),
-    "info": Command("Daily", "Where a tool is declared, its command, and its sources.", _info),
-    "list": Command("Daily", "The declared tools.", _list),
-    "doctor": Command("Daily", "What your dotfiles repeat or replace of the dotkit base.", _doctor,
+    "info": Command("Tools", "Where a tool is declared, its command, and its sources.", _info),
+    "list": Command("Tools", "The declared tools.", _list),
+    "doctor": Command("Check", "What your dotfiles repeat or replace of the dotkit base.", _doctor,
                       "Compares the active system with the base: tools in the lists and config/mise.toml of\n"
                       "both, your links that replace base config files (with a diff when the files are\n"
                       "similar), and the files that an apply moved aside (*.before-dotkit). apply and\n"
                       "upgrade show the new ones."),
-    "migrate": Command("Daily", "Add the tools that were installed by hand to the lists.", _migrate,
+    "history": Command("Check", "The package changes of the last apply.", _history),
+    "migrate": Command("Mac", "Add the tools that were installed by hand to the lists.", _migrate,
                        "Finds Homebrew packages and taps, App Store apps, and global npm and pipx tools that\n"
                        "were installed by hand and that the lists do not have. Asks, then adds them."),
-    "tidy": Command("Daily", "Give the apps of this Mac a clean source, and remove old copies.", _tidy,
+    "tidy": Command("Mac", "Give the apps of this Mac a clean source, and remove old copies.", _tidy,
                     "Finds the apps from a DMG or an installer that have a cask, the App Store apps that the\n"
                     "lists do not have, old copies of tools that dotkit has (npm, pipx, uv, cargo, Homebrew,\n"
                     "files), and .pkg installer packages. Opens the plan in your editor, asks once, then\n"
                     "installs the casks, adds them to the lists, and uninstalls what you chose. App data\n"
                     "stays. See lib/dotkit/migrate/TIDY.md."),
-    "history": Command("Recovery", "The package changes of the last apply.", _history),
     "rollback": Command("Recovery", "Go back to the previous Nix generation.", _rollback,
                         "Homebrew and mise do not roll back."),
     "clean": Command("Recovery", "Delete old Nix generations, Homebrew downloads, and mise versions.", _clean,
@@ -233,8 +243,8 @@ COMMANDS: Dict[str, Command] = {
 def usage() -> str:
     lines = ["usage: dotkit <command> [options]", "",
              "Day-to-day commands for a Mac with dotkit. Run them from any directory."]
-    for group in ("Daily", "Recovery"):
-        lines += ["", f"{group}:"]
+    for group, title in GROUPS:
+        lines += ["", f"{title}:"]
         lines += [f"  {name:<10} {c.summary}" for name, c in COMMANDS.items() if c.group == group]
     lines += ["", "Run `dotkit <command> --help` for the options of a command.", "", EXAMPLES]
     return "\n".join(lines)
