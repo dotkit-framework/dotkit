@@ -39,17 +39,23 @@ def _write(stream, text: str) -> None:
 
 # --- Colors. The text is the same with and without them: colors and symbols are only for a terminal.
 
-# --no-color of the command line (cli.main), for this run.
+# --no-color of the command line (__main__), for this run.
 _no_color = False
 
-# The roles of the text, and their SGR codes.
+# The roles of the text, and their SGR codes. The help (cli.style) uses them too.
 STYLES = {
     "error": "1;31", "warn": "1;33", "ok": "1;32", "heading": "1", "name": "1", "file": "36", "command": "36",
     "added": "32", "removed": "31", "changed": "33", "dim": "2", "nix": "34", "brew": "33", "mise": "35",
+    # The help: the headings of its sections, and the first column of its lists (commands, options).
+    "section": "1;33", "option": "32",
 }
-# A dotkit command in a message: highlighted as a command on a terminal.
-_COMMAND = re.compile(r"\b(?:dotkit|brew|mise|nix|npm|git) [a-z](?:[\w:@./~-]*[\w/])?"
-                      r"(?: (?:--?[a-z][\w-]*|~?[\w:@./~-]*[\w/]))*")
+# The commands of dotkit (cli.COMMANDS and help; tests/commands/test_commands.py compares them). Only
+# "dotkit COMMAND" is a command in a message, with the words after it that look like options or arguments:
+# a word that starts with - or ~, or that has : / @ . or - in it. Other commands are highlighted in backticks.
+COMMANDS = ("apply", "upgrade", "add", "remove", "info", "list", "own", "doctor", "history", "migrate", "tidy",
+            "rollback", "clean", "help")
+_ARG = r"(?:-[\w-]+|~(?:[\w:@./~-]*[\w/])?|[\w@~-]*[:/@.-][\w:@./~-]*[\w/])"
+_COMMAND = re.compile(r"\bdotkit (?:(?:" + "|".join(COMMANDS) + r")\b|-[\w-]+)(?: " + _ARG + ")*")
 _CODE = re.compile(r"`([^`]+)`")
 
 
@@ -58,19 +64,27 @@ def no_color() -> None:
     _no_color = True
 
 
-def colors(stream=None) -> bool:
-    """Colors for a stream (stdout by default): a terminal, without --no-color, NO_COLOR, DOTKIT_NO_COLOR, and
-    TERM=dumb."""
-    stream = sys.stdout if stream is None else stream
+def color_allowed() -> bool:
+    """Colors are not turned off: no --no-color, NO_COLOR and DOTKIT_NO_COLOR empty or not set, TERM not dumb.
+    The picker and the curses wizard use this; for a stream, colors()."""
     return (not _no_color and not os.environ.get("NO_COLOR") and not os.environ.get("DOTKIT_NO_COLOR")
-            and os.environ.get("TERM") != "dumb" and stream.isatty())
+            and os.environ.get("TERM") != "dumb")
+
+
+def colors(stream=None) -> bool:
+    """Colors for a stream (stdout by default): color_allowed(), and the stream is a terminal."""
+    stream = sys.stdout if stream is None else stream
+    return color_allowed() and stream.isatty()
+
+
+def sgr(text: str, role: str) -> str:
+    """text in the color of role, always: for the callers that checked colors() already."""
+    return f"\033[{STYLES[role]}m{text}\033[0m" if text else text
 
 
 def paint(text: str, role: str, err: bool = False) -> str:
     """text in the color of role, when the stream (stderr with err) gets colors."""
-    if not text or not colors(sys.stderr if err else sys.stdout):
-        return text
-    return f"\033[{STYLES[role]}m{text}\033[0m"
+    return sgr(text, role) if colors(sys.stderr if err else sys.stdout) else text
 
 
 def mark(symbol: str, role: str, err: bool = False) -> str:
@@ -78,14 +92,26 @@ def mark(symbol: str, role: str, err: bool = False) -> str:
     return paint(symbol, role, err) + " " if colors(sys.stderr if err else sys.stdout) else ""
 
 
-def commands(text: str, err: bool = False, base: str = "") -> str:
-    """The commands in text (dotkit apply, `code`) in the command color; base: the role of the rest."""
+def commands(text: str, err: bool = False) -> str:
+    """The commands in text (dotkit apply, `code`) in the command color. The backticks go away only with
+    colors."""
     if not colors(sys.stderr if err else sys.stdout):
         return text
-    on = f"\033[{STYLES[base]}m" if base else ""
-    text = _CODE.sub(lambda m: f"\033[0;{STYLES['command']}m{m[1]}\033[0m{on}", text)
-    text = _COMMAND.sub(lambda m: f"\033[0;{STYLES['command']}m{m[0]}\033[0m{on}", text)
-    return on + text + ("\033[0m" if on else "")
+    # The backticks first: a command in them is then colored once.
+    return _COMMAND.sub(lambda m: sgr(m[0], "command"), code(text))
+
+
+def code(text: str) -> str:
+    """The text in backticks in the command color, without the backticks."""
+    return _CODE.sub(lambda m: sgr(m[1], "command"), text)
+
+
+def diff_line(line: str, err: bool = False) -> str:
+    """A line of a unified diff in colors on a terminal: the headers dim, + green, - red, @@ cyan."""
+    if line.startswith(("+++", "---")):
+        return paint(line, "dim", err)
+    role = {"+": "added", "-": "removed", "@": "command"}.get(line[:1])
+    return paint(line, role, err) if role else line
 
 
 def out(text: str = "") -> None:

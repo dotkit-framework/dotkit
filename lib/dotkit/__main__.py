@@ -22,9 +22,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     # --no-color goes with every command, before `--`.
     end = argv.index("--") if "--" in argv else len(argv)
-    if "--no-color" in argv[:end]:
+    flag = "--no-color" in argv[:end]
+    if flag:
         ui.no_color()
         argv = [a for i, a in enumerate(argv) if i >= end or a != "--no-color"]
+    # The picker (prompt_toolkit), the wizard, and the commands that dotkit runs read NO_COLOR.
+    if flag or os.environ.get("DOTKIT_NO_COLOR"):
+        os.environ["NO_COLOR"] = "1"
     try:
         e = env.load()
         if argv[:1] == ["__complete"]:

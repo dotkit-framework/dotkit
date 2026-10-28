@@ -288,14 +288,6 @@ def _remember(env: Env, found: List[Overlap]) -> None:
         ui.warn(f"cannot write {path}: {e}.")
 
 
-def _color(line: str, err: bool) -> str:
-    """A line of a diff in colors on a terminal."""
-    if line.startswith(("+++", "---")):
-        return ui.paint(line, "dim", err)
-    role = {"+": "added", "-": "removed", "@": "command"}.get(line[:1])
-    return ui.paint(line, role, err) if role else line
-
-
 def show(found: List[Overlap], stdout: bool = False) -> None:
     """The overlaps on stderr, or on stdout for doctor."""
     write, err = (ui.out, False) if stdout else (ui.note, True)
@@ -303,7 +295,7 @@ def show(found: List[Overlap], stdout: bool = False) -> None:
     for o in found:
         write(f"  {ui.paint(ui.pad(o.where, width), 'file', err)}  {ui.commands(o.text, err)}")
         for line in o.detail:
-            write("      " + _color(line, err))
+            write("      " + ui.diff_line(line, err))
 
 
 def report(env: Env, system: Path, dry_run: bool) -> None:

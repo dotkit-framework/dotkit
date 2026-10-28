@@ -5,7 +5,7 @@
  ],
  "exit": 2,
  "stdout": "",
- "terminal": "usage: \u001b[0;36mdotkit apply\u001b[0m [-h] [-n]\n\u001b[0;36mdotkit apply\u001b[0m: \u001b[1;31merror:\u001b[0m unrecognized arguments: --frob\n",
+ "terminal": "usage: \u001b[36mdotkit apply\u001b[0m [-h] [-n]\n\u001b[36mdotkit apply\u001b[0m: \u001b[1;31merror:\u001b[0m unrecognized arguments: --frob\n",
  "files": {},
  "calls": [],
  "tmp_left": 0

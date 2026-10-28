@@ -61,7 +61,6 @@ OLD_NAMES = {
 }
 
 
-BOLD, HEADING, NAME, CODE, DIM, RESET = "\033[1m", "\033[1;33m", "\033[32m", "\033[36m", "\033[2m", "\033[0m"
 HEADING_LINE = re.compile(r"[A-Za-z][A-Za-z ]*:")
 # The first column of a list: a command, an option, a prefix (nix:ATTR).
 FIRST_COLUMN = re.compile(r"(  )([^\s,]+(?:, [^\s,]+)*)(.*)")
@@ -70,31 +69,31 @@ EXAMPLE = re.compile(r"(  )(\S.*?)(\s{2,}\S.*)?")
 
 
 def style(text: str) -> str:
-    """The help in colors: headings, the commands and options, the examples, and `code`."""
+    """The help in colors (the roles of ui.STYLES): headings, the commands and options, the examples, and
+    `code`. The caller checks ui.colors()."""
     out, section = [], ""
     for line in text.split("\n"):
         if HEADING_LINE.fullmatch(line):
             section = line
-            line = HEADING + line + RESET
+            line = ui.sgr(line, "section")
         elif line.startswith("usage: "):
             words = line[len("usage: "):].split(" ", 2)
             cmd = " ".join(words[:2]) if len(words) > 1 and not words[1].startswith(("<", "[")) else words[0]
-            line = f"{HEADING}usage:{RESET} {BOLD}{cmd}{RESET}{line[len('usage: ') + len(cmd):]}"
+            line = f"{ui.sgr('usage:', 'section')} {ui.sgr(cmd, 'heading')}{line[len('usage: ') + len(cmd):]}"
         elif line and not line[0].isspace():
             section = ""
         elif section == "Examples:":
             if line.startswith("   "):
-                line = DIM + line + RESET
+                line = ui.sgr(line, "dim")
             else:
                 m = EXAMPLE.fullmatch(line)
                 if m:
-                    line = f"{m[1]}{CODE}{m[2]}{RESET}" + (f"{DIM}{m[3]}{RESET}" if m[3] else "")
+                    line = f"{m[1]}{ui.sgr(m[2], 'command')}" + (ui.sgr(m[3], "dim") if m[3] else "")
         else:
             m = FIRST_COLUMN.fullmatch(line)
             if m and (section or ":" in m[2]):
-                line = f"{m[1]}{NAME}{m[2]}{RESET}{m[3]}"
-        line = re.sub(r"`([^`]+)`", lambda m: f"{CODE}{m[1]}{RESET}", line)
-        out.append(line)
+                line = f"{m[1]}{ui.sgr(m[2], 'option')}{m[3]}"
+        out.append(ui.code(line))
     return "\n".join(out)
 
 

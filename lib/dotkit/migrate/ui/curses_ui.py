@@ -45,7 +45,8 @@ class UI(screens_mod.Frontend):
             pass
         scr.keypad(True)
         self.accent = self.dim = self.warn = 0
-        if curses.has_colors():
+        # NO_COLOR: dim and bold only. `dotkit --no-color` sets it for the wizard too.
+        if curses.has_colors() and not os.environ.get("NO_COLOR"):
             try:
                 curses.use_default_colors()
                 bg = -1
