@@ -86,10 +86,15 @@ lib/
   dotkit first, so the lines stay in order. On Ctrl-C it waits until the
   command ends, then raises `KeyboardInterrupt`, so that the caller can
   restore files.
-- **Only `core/lists.py` and `core/backup.py` change the config files**
-  (and `mise use`/`unuse`, which mise does). A change that must not stay
-  half done goes inside `backup.Backup` and `backup.on_signals()`:
-  `core/change.py` and `commands/upgrade.py` show how.
+- **Only a few modules change the files of the repository:**
+  `core/lists.py` (the lists), `core/nix_links.py` (the link lines of
+  nix/), and `core/backup.py` (the restores). `commands/own.py` writes its
+  copies of base files in config/ only inside `core/change.apply_nix()`,
+  which deletes them on a failure. `mise use`/`unuse` change
+  config/mise.toml, and the overlap report writes its state file outside
+  the repository. A change that must not stay half done goes inside
+  `backup.Backup` and `backup.on_signals()`: `core/change.py` and
+  `commands/upgrade.py` show how.
 - **The lookups are apart from the decisions.** `pkg/lookups.py` talks to
   the tools and returns data; `pkg/resolve.choose()` decides and runs no
   command, so its tests are a table.

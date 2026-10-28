@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -109,6 +110,22 @@ class AcknowledgeTests(Sandbox):
     def test_without_a_manifest(self):
         overlap.acknowledge(self.env, self.system, ["link:.x"])
         self.assertFalse((self.dir / "home/.local/state/dotkit/overlaps.json").exists())
+
+
+class MovedTests(Sandbox):
+    """The fingerprint of a directory that an apply moved aside (Ov5): its lstat, not its files."""
+
+    def test_directory(self):
+        d = self.dir / "home/.config/nvim.before-dotkit"
+        (d / "deep/plugin").mkdir(parents=True)
+        os.utime(d, ns=(1, 1_000))
+        first = overlap._content(d)
+        (d / "deep/plugin/x.lua").write_text("x")
+        os.utime(d, ns=(1, 1_000))
+        self.assertEqual(overlap._content(d), first)
+        (d / "init.lua").write_text("y")
+        os.utime(d, ns=(1, 2_000))
+        self.assertNotEqual(overlap._content(d), first)
 
 
 class CompareTests(Sandbox):

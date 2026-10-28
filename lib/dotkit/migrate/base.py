@@ -104,8 +104,10 @@ BASE_TARGETS = frozenset(
     ]
 )
 
-# ~/.config entries that the base manages a file in. Other entries are yours.
-# Home Manager links files into direnv (nix-direnv) and zsh (the zsh setup).
+# ~/.config entries that the base manages a file in, or that config_files
+# handles: uv (base.OWN_FILES), so that the other-config migrator does not copy
+# ~/.config/uv as well. Other entries are yours. Home Manager links files into
+# direnv (nix-direnv) and zsh (the zsh setup).
 BASE_CONFIG_DIRS = frozenset({
     "git", "ghostty", "herdr", "mise", "starship.toml", "uv", "zsh", "direnv", "home-manager", "nix",
 })

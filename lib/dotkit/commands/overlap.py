@@ -167,12 +167,14 @@ def links(env: Env, manifest: Manifest, dotkit: Path) -> List[Overlap]:
 
 
 def _content(path: Path) -> str:
-    """The fingerprint of a file, a link, or a directory (its names)."""
+    """The fingerprint of a file (its bytes), a link (its target), or a directory: the time of its last change of
+    entries (lstat), so that a large directory, such as an old ~/.config/nvim with plugins, is not read on each
+    apply."""
     try:
         if path.is_symlink():
             return _hash("link", os.readlink(path))
         if path.is_dir():
-            return _hash("dir", sorted(str(p.relative_to(path)) for p in path.rglob("*")))
+            return _hash("dir", path.lstat().st_mtime_ns)
         return _hash(path.read_bytes())
     except OSError:
         return ""
