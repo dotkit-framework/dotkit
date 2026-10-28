@@ -14,6 +14,7 @@ _dotkit() {
     'list:show the declared tools'
     'own:make a base config file yours, so you and its app can change it'
     'doctor:show what your dotfiles repeat or replace of the dotkit base'
+    'audit:check the tools for known vulnerabilities and malicious releases'
     'migrate:add the packages that were installed by hand to the lists'
     'tidy:give the apps a clean source, and remove old tools and packages'
     'history:show the package changes of the last apply'
@@ -60,6 +61,11 @@ _dotkit() {
           _arguments $dry_run $yes $help \
             '--release[give the files back to the base]' \
             '*:base config file:(herdr starship pnpm gemrc bunfig editorconfig ~/.config/git/ignore)' && ret=0 ;;
+        audit)
+          _arguments $help \
+            '--json[print the report as JSON]' \
+            '--issues[sync one GitHub issue per finding]' \
+            '--notify[show a macOS notification for new findings]' && ret=0 ;;
         history|rollback|doctor)
           _arguments $help && ret=0 ;;
       esac

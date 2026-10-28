@@ -56,8 +56,8 @@ STYLES = {
 # The commands of dotkit (cli.COMMANDS and help; tests/commands/test_commands.py compares them). Only
 # "dotkit COMMAND" is a command in a message, with the words after it that look like options or arguments:
 # a word that starts with - or ~, or that has : / @ . or - in it. Other commands are highlighted in backticks.
-COMMANDS = ("apply", "upgrade", "add", "remove", "info", "list", "own", "doctor", "history", "migrate", "tidy",
-            "rollback", "clean", "help")
+COMMANDS = ("apply", "upgrade", "add", "remove", "info", "list", "own", "doctor", "audit", "history", "migrate",
+            "tidy", "rollback", "clean", "help")
 _ARG = r"(?:-[\w-]+|~(?:[\w:@./~-]*[\w/])?|[\w@~-]*[:/@.-][\w:@./~-]*[\w/])"
 _COMMAND = re.compile(r"\bdotkit (?:(?:" + "|".join(COMMANDS) + r")\b|-[\w-]+)(?: " + _ARG + ")*")
 _CODE = re.compile(r"`([^`]+)`")

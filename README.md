@@ -14,7 +14,7 @@ upgrade is one command and a rollback is one command.
 | Tools | `nix/packages.txt`: bat, eza, fd, ripgrep, jq, yq, tree, hyperfine, tealdeer, git, git-lfs, git-secret, gh, gnupg, the Zulu 17 JDK, and more; `timeout`, `nproc`, `tac`, `shuf`, and `numfmt` from GNU coreutils |
 | Runtimes | Node.js 24, Python 3.14, Ruby 3.4, and uv from mise (`config/mise.toml`), as defaults outside projects |
 | Apps | Ghostty (`nix/casks.txt`), the JetBrains Mono Nerd Font, herdr (`config/mise.toml`) |
-| Config | Git, Ghostty, herdr with its Git status plugin, Starship, mise, npm, pnpm, uv, bun, RubyGems, EditorConfig. New npm, pnpm, bun, PyPI (uv and pip), gem (Bundler), and mise releases wait 7 days |
+| Config | Git, Ghostty, herdr with its Git status plugin, Starship, mise, npm, pnpm, uv, bun, RubyGems, EditorConfig. New npm, pnpm, bun, PyPI (uv and pip), gem (Bundler), and mise releases wait 7 days; the Node, Python, and Ruby runtimes wait 1 day |
 | macOS | Touch ID for sudo, also in terminal multiplexers |
 
 The base links its files from `config/` into the home directory. See the
@@ -302,6 +302,78 @@ changes. `dotkit doctor` lists all of them. `dotkit apply -n` and
 `dotkit upgrade -n` show them before the change, also the files that the
 apply will move aside.
 
+## Security
+
+`dotkit audit` asks [OSV.dev](https://osv.dev) about the tools that dotkit
+installs, and prints their known vulnerabilities and malicious releases:
+
+```
+$ dotkit audit
+fzf 0.74.5 (Nix):
+  CVE-2026-115319 (unknown): fzf 0.36.0 through 0.74.5 Denial of Service via maskActionContents
+    https://osv.dev/vulnerability/CVE-2026-115319
+```
+
+| Tools | How |
+|---|---|
+| Nix packages | One `nix eval` of the configuration gives the source repository and the tag or commit of each package. OSV has no Nix ecosystem, so the audit asks about the repository at that tag. It leaves out a CVE that a Nixpkgs patch of the package fixes |
+| Homebrew formulae | `brew vulns` (Homebrew 6.0.11 or newer), which asks OSV and knows the patches of Homebrew |
+| mise tools | The installed version, else the version that an apply installs now. For npm and PyPI tools, OSV also lists the malicious releases (`MAL-*`) |
+| dotkit | The Python packages of `lib/dotkit/_vendor`, and the inputs of `flake.lock` |
+
+The report also names what it does not check: a package whose source is
+not in a Git repository that OSV knows (for example a tarball from gnu.org),
+Ruby, and the Homebrew casks, because OSV has no data for apps. A run asks
+OSV once, with a few kilobytes, and reads only the advisories that are new
+or changed. A run takes a few seconds.
+
+An advisory that does not apply to you, for example one for Windows only,
+goes in `audit.toml` of your repository. dotkit has its own `audit.toml`
+for the base.
+
+```toml
+[[ignore]]
+id = "CVE-2024-3220"
+tool = "python"      # optional: only for this tool
+reason = "Only on Windows."
+until = 2027-01-01   # optional: then the finding comes back
+```
+
+The audit finds what is known. The 7-day wait for new npm, pnpm, bun, PyPI,
+gem, and mise releases (see What the base has) is the other half: a
+registry often removes a malicious release in that time. The runtimes
+wait 1 day, because their new releases often fix vulnerabilities.
+
+### Each day, on GitHub
+
+`.github/workflows/audit.yml` of the template runs `dotkit audit --issues`
+each day on a macOS runner, with the dotkit of `nix/flake.lock`. It opens
+one issue per finding, with the label `dotkit-audit`, so GitHub notifies you.
+It closes the issue when the finding is gone. When a part of the audit
+fails, the workflow fails, and GitHub sends an email. In a public
+repository, GitHub turns the schedule off after 60 days without a commit:
+run the workflow from the Actions tab to turn it on again. A repository
+from an older template does not have the workflow: copy
+`templates/default/.github` of dotkit into it.
+
+The dotkit repository runs the same audit for the base each day, with the
+template as the dotfiles repository.
+
+### Each day, on the Mac
+
+In `nix/darwin.nix`:
+
+```nix
+dotkit.audit.enable = true;   # at 10:00; dotkit.audit.hour sets another hour
+```
+
+A launchd agent then runs `dotkit audit --notify` each day. It shows a
+macOS notification when there is a new finding, and nothing else. When the
+Mac sleeps at that hour, the audit runs when it wakes. The log is
+`~/Library/Logs/dotkit-audit.log`. macOS shows the notification as one of
+Script Editor; when none shows, allow the notifications of Script Editor in
+System Settings.
+
 ## Work on dotkit
 
 Clone dotkit and set `DOTKIT_DIR` to the checkout:
@@ -362,13 +434,18 @@ it with `dotkit upgrade dotkit`.
 `.github/workflows/ci.yml` runs once for each pull request, on each push to
 `main`, and on request (workflow_dispatch), on macOS 26 arm64 runners. The
 jobs run in parallel. The `check` job runs shellcheck, nixfmt, statix,
-deadnix, and actionlint first, then `nix flake check`, which builds the
+deadnix, actionlint, and zizmor (the security checks of the workflows, also
+of the template) first, then `nix flake check`, which builds the
 example Mac and runs the Python tests with the Python of Nixpkgs, then
 `tests/setup.sh` (functions of setup in a temporary home directory). The
 `python` job runs the Python tests of the `dotkit` command and the migration
 wizard (`lib/tests`) with the macOS Python, and the tests that skip in the
 Nix sandbox (the scenarios, and the tests that need `nix`) with the Python of
-Nixpkgs. The `e2e` job runs `scripts/setup --yes` on a
+Nixpkgs. Each action of the workflows is pinned to the commit of its
+release, with the tag in a comment; Dependabot updates the actions and the
+inputs of `flake.lock` (`.github/dependabot.yml`), after a wait of 7 days.
+`.github/workflows/audit.yml` runs `dotkit audit` of the base each day (see
+Security). The `e2e` job runs `scripts/setup --yes` on a
 fresh macOS 26 runner with `DOTKIT_DIR` set to the commit, so setup creates
 `~/.dotfiles` with the wizard and builds it with that commit. The runner is a
 used Mac: it has many Homebrew packages, and the job adds old dotfiles. It

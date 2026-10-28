@@ -77,9 +77,12 @@ _REV_URL = re.compile(
     rf"""[a-z][a-z0-9+.-]{{0,31}}://[^\s'"`<>]*?(?:[#@]|[?&]rev=)({_HEX_REV})"""
 )
 
+# A GitHub Action pinned to a commit: `uses: actions/checkout@HASH # v7.0.1`.
+_REV_ACTION = re.compile(rf"""(?<![\w.-])uses:\s*["']?[\w.-]+/[\w./-]+@({_HEX_REV})""")
+
 
 def _without_revisions(line: str) -> str:
-    spans = [m.span(1) for pattern in (_REV_FIELD, _REV_URL) for m in pattern.finditer(line)]
+    spans = [m.span(1) for pattern in (_REV_FIELD, _REV_URL, _REV_ACTION) for m in pattern.finditer(line)]
     for start, end in sorted(set(spans), reverse=True):
         line = line[:start] + "revision" + line[end:]
     return line

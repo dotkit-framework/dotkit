@@ -28,7 +28,7 @@ from tests import fake
 
 ROOT = fake.ROOT
 HERE = Path(__file__).resolve().parent
-TOOLS = ("nix", "brew", "mise", "mas", "curl", "sudo", "darwin-rebuild")
+TOOLS = ("nix", "brew", "mise", "mas", "curl", "sudo", "darwin-rebuild", "gh")
 
 # The dotkit base of the sandbox: small lists, so that the goldens do not
 # change when the real base lists change.
@@ -147,6 +147,13 @@ def setup(sb: Path, impl: Impl, s: Scenario) -> None:
         _write(sb / "checkout/flake.lock", BASE["dotkit/flake.lock"])
     for rel, text in s.files.items():
         p = sb / rel
+        # A file inside a linked directory (_vendor): copy the directory first, so that the write stays in the
+        # sandbox.
+        for parent in reversed(p.parents):
+            if parent.is_symlink() and parent.is_relative_to(sb):
+                target = parent.resolve()
+                parent.unlink()
+                shutil.copytree(target, parent, ignore=shutil.ignore_patterns("__pycache__"))
         if text is None:
             if p.is_symlink() or p.exists():
                 p.unlink()

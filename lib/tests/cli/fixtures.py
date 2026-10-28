@@ -225,6 +225,47 @@ def mas(info: Optional[dict] = None) -> List[dict]:
     return rules
 
 
+# --- dotkit audit
+
+def audit_nix(packages: List[dict]) -> List[dict]:
+    """The packages of the configuration (audit/inventory.NIX_EXPR)."""
+    keys = ("name", "version", "url", "git", "tag", "rev", "homepage")
+    out = [{**{k: "" for k in keys}, "patches": [], **p} for p in packages]
+    return [_r("nix", r"(?s)^eval --json \S+#darwinConfigurations\.mac --apply ", json.dumps(out))]
+
+
+def mise_ls(tools: dict) -> List[dict]:
+    """mise ls --global --json: key -> installed and active version."""
+    out = {k: [{"version": v, "requested_version": "latest", "installed": True, "active": True}] for k, v in tools.items()}
+    return [_r("mise", r"^ls --global --json$", json.dumps(out, indent=2) + "\n")]
+
+
+def brew_vulns(findings: list = (), skipped: list = (), checked: int = 1) -> List[dict]:
+    """brew vulns --json (Homebrew 7): (formula, version, [(id, severity, summary)]) for each finding."""
+    out = {"findings": [{"formula": f, "version": v, "tag": v, "repo_url": f"https://example.com/{f}",
+                         "vulnerabilities": [{"id": i, "severity": s, "summary": t, "aliases": [], "fixed_versions": []}
+                                             for i, s, t in vulns], "patched": []} for f, v, vulns in findings],
+           "skipped_formulae": list(skipped), "checked": checked, "complete": not skipped,
+           "outdated_without_sbom": [], "unscanned_formulae": {}}
+    return [_r("brew", r"^vulns --json --deps --brewfile=", json.dumps(out), exit=1 if findings or skipped else 0)]
+
+
+OSV = "https://api.osv.dev/v1"
+
+
+def osv_batch(results: List[List[str]]) -> List[dict]:
+    """POST /v1/querybatch: the advisory IDs of each query, in order. The log has the queries."""
+    out = {"results": [{"vulns": [{"id": i, "modified": "2026-10-01T00:00:00Z"} for i in ids]} if ids else {}
+                       for ids in results]}
+    return [_r("curl", rf"--data-binary @- {re.escape(OSV)}/querybatch$", json.dumps(out), stdin=True)]
+
+
+def osv_vuln(record: dict) -> List[dict]:
+    """GET /v1/vulns/ID."""
+    record = {"modified": "2026-10-01T00:00:00Z", **record}
+    return [_r("curl", rf" {re.escape(OSV)}/vulns/{re.escape(record['id'])}$", json.dumps(record))]
+
+
 # --- the manifest of the links
 
 def manifest(base: dict, links: dict, layers: Optional[dict] = None, version: int = 1, root: str = "@SB") -> str:

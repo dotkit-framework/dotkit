@@ -67,6 +67,12 @@ lib/
       resolve.py            select the source; choose() has the rules and runs no command
       picker.py             the source picker of add (prompt_toolkit)
       cli.py                the commands
+    audit/                  audit: known vulnerabilities and malicious releases, from OSV.dev
+      inventory.py          the tools and their versions: nix eval, mise, brew vulns, the packages of dotkit
+      match.py              the OSV queries of a tool, the advisories, the ignore rules; runs no command
+      osv.py                the OSV API with curl, and the cache of the advisories
+      issues.py             one GitHub issue per finding, with gh
+      cli.py                the command: the report, --json, --notify
     migrate/                the migration wizard
   tests/
     BEHAVIOR.md             the behavior of the command, row by row

@@ -1,0 +1,49 @@
+# Each day: dotkit audit of the dotkit base, the tools that each Mac with
+# dotkit gets. It asks OSV.dev about the Nix packages, the mise tools, and the
+# Python packages and flake inputs of dotkit, with the template as the
+# dotfiles repository. It opens one issue per finding (label dotkit-audit),
+# and closes the issue when the finding is gone. audit.toml ignores an
+# advisory. A failed run is a failed workflow, so GitHub sends an email.
+name: Audit
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: dotkit audit
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nix reads DOTKIT_DIR as a Git repository and refuses a shallow one.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          github_access_token: ${{ github.token }}
+
+      # mise from the Nixpkgs in flake.lock resolves the versions of the mise
+      # tools, with the minimum release age of config/mise.toml. The runner
+      # has Homebrew, which checks the formulae with brew vulns.
+      - name: dotkit audit
+        env:
+          DOTFILES: templates/default
+          DOTKIT_DIR: ${{ github.workspace }}
+          # gh opens the issues; mise reads the GitHub releases.
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: nix shell --inputs-from . nixpkgs#mise -c ./dotkit audit --issues

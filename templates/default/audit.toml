@@ -1,0 +1,10 @@
+# Advisories that `dotkit audit` ignores: one [[ignore]] table each. Use it
+# for an advisory that does not apply to you, for example one for Windows
+# only. The finding then stays out of the report, the GitHub issues, and the
+# notification.
+#
+# [[ignore]]
+# id = "CVE-2024-3220"
+# tool = "python"      # optional: only for this tool
+# reason = "Only on Windows."
+# until = 2027-01-01   # optional: then the finding comes back

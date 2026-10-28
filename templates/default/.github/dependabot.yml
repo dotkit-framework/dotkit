@@ -1,0 +1,16 @@
+# Dependabot opens a pull request when an action of .github/workflows has a
+# new release. The actions are pinned to a commit, with the tag in a comment.
+# `dotkit upgrade` updates nix/flake.lock, so Dependabot does not.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # New releases wait 7 days, as the tools of dotkit do.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

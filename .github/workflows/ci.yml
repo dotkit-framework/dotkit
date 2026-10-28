@@ -1,5 +1,6 @@
-# check: lints the scripts and the Nix files, then evaluates and builds the
-# example Mac (nix flake check, with the Python tests of lib/tests.nix).
+# check: lints the scripts, the Nix files, and the workflows, then evaluates
+# and builds the example Mac (nix flake check, with the Python tests of
+# lib/tests.nix).
 # python: the Python tests of the dotkit command and the migration wizard with
 # the macOS Python. e2e: a real setup on a fresh macOS runner, which is a used
 # Mac with Homebrew packages and dotfiles, then tests/e2e/verify.sh and
@@ -29,11 +30,17 @@ jobs:
     env:
       # --inputs-from uses the locked inputs below; no global registry is needed.
       NIX_CONFIG: flake-registry =
+    # Each action is pinned to the commit of its release, because a tag can
+    # move. The comment is the tag. Dependabot updates both
+    # (.github/dependabot.yml). No step pushes, so checkout keeps no token in
+    # .git/config.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Upstream Nix from the official installer.
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
         with:
           github_access_token: ${{ github.token }}
 
@@ -70,8 +77,17 @@ jobs:
       - name: deadnix
         run: nix shell --inputs-from . nixpkgs#deadnix -c deadnix --fail .
 
+      # The workflows of dotkit, and the one that the template gives each dotfiles repository.
       - name: actionlint
-        run: nix shell --inputs-from . nixpkgs#actionlint -c actionlint
+        run: |
+          nix shell --inputs-from . nixpkgs#actionlint -c actionlint \
+            .github/workflows/*.yml templates/default/.github/workflows/*.yml
+
+      # Security checks of the workflows and of .github/dependabot.yml:
+      # unpinned actions, template injection, credentials, and permissions.
+      # --offline: no GitHub API, so the result depends only on the files.
+      - name: zizmor
+        run: nix shell --inputs-from . nixpkgs#zizmor -c zizmor --offline --no-progress --collect=workflows,dependabot .
 
       # Evaluates the configurations and builds the checks: the example Mac
       # from the template, and the Python tests of lib/tests.nix with the
@@ -89,9 +105,11 @@ jobs:
     env:
       NIX_CONFIG: flake-registry =
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
         with:
           github_access_token: ${{ github.token }}
 
@@ -133,10 +151,11 @@ jobs:
       # parts, instead of leaving the part out (tests and CI only).
       DOTKIT_MIGRATE_STRICT: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Nix reads DOTKIT_DIR as a Git repository and refuses a shallow one.
           fetch-depth: 0
+          persist-credentials: false
 
       # The runner image has Homebrew and some dotfiles. Setup must cope.
       - name: Show the runner before setup
@@ -164,8 +183,9 @@ jobs:
       # the lines from the Homebrew installer. Home Manager must rename them.
       # The wizard carries the export and the alias, moves the secret to
       # ~/.secrets, and reports the other lines; tests/e2e/migrated.sh checks it.
+      # The global npm and pipx tools of a used Mac have no lockfile.
       - name: Add the dotfiles of a used Mac
-        run: |
+        run: | # zizmor: ignore[adhoc-packages]
           # shellcheck disable=SC2016 # The line for the file, not to expand.
           echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >~/.zprofile
           # shellcheck disable=SC2016
@@ -255,9 +275,10 @@ jobs:
       NIX_CONFIG: access-tokens = github.com=${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # Nix is on the Mac before setup, so the /etc files from before setup
       # have the lines of the Nix installer. The ensure_nix function of setup

@@ -693,10 +693,85 @@ def remove() -> List[S]:
     ]
 
 
+AUDIT_PACKAGES = [
+    {"name": "ripgrep", "version": "15.2.0", "tag": "15.2.0",
+     "url": "https://github.com/BurntSushi/ripgrep/archive/refs/tags/15.2.0.tar.gz"},
+    {"name": "jq", "version": "1.8.1", "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-1.8.1.tar.gz",
+     "patches": ["CVE-2025-48060.patch"]},
+    {"name": "gnupg", "version": "2.4.9", "url": "mirror://gnupg/gnupg/gnupg-2.4.9.tar.bz2"},
+    {"name": "poppler-utils", "version": "26.10.0", "url": "https://poppler.freedesktop.org/poppler-26.10.0.tar.xz"},
+    {"name": "darwin-rebuild"},
+]
+# One package of dotkit, so that the queries do not change with the real lib/dotkit/_vendor.
+AUDIT_FILES = {"dotkit/lib/dotkit/_vendor/vendor.txt": "tomli==2.3.2 --hash=sha256:0\n"}
+# The queries: ripgrep, jq, gnupg, node, npm:@dkt-ai/dkt-code, npm:cowsay, tomli. github:modem-dev/dkt-hunk has no
+# version: mise latest has no rule.
+AUDIT_FOUND = [[], ["CVE-2025-48060", "GHSA-jq-1"], [], ["CVE-2026-1"], ["MAL-2026-1"], ["GHSA-cow-1", "GHSA-cow-2"], []]
+AUDIT_RECORDS = [
+    {"id": "CVE-2025-48060", "summary": "jq heap overflow"},
+    {"id": "GHSA-jq-1", "aliases": ["CVE-2026-3"], "summary": "jq crash on a long key",
+     "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"}]},
+    {"id": "CVE-2026-1", "details": "Node.js reads past a buffer.\nMore text.",
+     "severity": [{"type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"}]},
+    {"id": "MAL-2026-1", "summary": "Malicious code in @dkt-ai/dkt-code (npm)"},
+    {"id": "GHSA-cow-1", "summary": "cowsay prototype pollution", "database_specific": {"severity": "HIGH"}},
+    {"id": "GHSA-cow-2", "summary": "cowsay reads any file", "database_specific": {"severity": "MODERATE"},
+     "affected": [{"package": {"ecosystem": "npm", "name": "cowsay"},
+                   "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "1.6.1"}]}]}]},
+]
+AUDIT_TOML = ('[[ignore]]\nid = "GHSA-cow-1"\ntool = "npm:cowsay"\nreason = "Only in the tests."\n\n'
+              '[[ignore]]\nid = "CVE-2020-1"\nreason = "Old."\nuntil = 2026-01-01\n')
+
+
+def audit_rules(found: Optional[List[List[str]]] = None, brew: Optional[List[dict]] = None) -> List[dict]:
+    """The tools of the sandbox, and OSV. Without found: no advisories."""
+    rules = (fx.audit_nix(AUDIT_PACKAGES) + fx.brewfile('brew "wget"\nbrew "owner/tap/dkt-tool"\ncask "ghostty"\n')
+             + (fx.brew_vulns() if brew is None else brew)
+             + fx.mise_ls({"node": "24.1.0", "npm:cowsay": "1.6.0"})
+             + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
+             + fx.osv_batch(found or [[]] * 7))
+    for record in AUDIT_RECORDS if found else []:
+        rules += fx.osv_vuln(record)
+    return rules
+
+
+def audit_findings_rules() -> List[dict]:
+    return audit_rules(AUDIT_FOUND, fx.brew_vulns([("wget", "1.25.0", [("CVE-2026-2", "MODERATE", "wget overflow")])]))
+
+
+def audit() -> List[S]:
+    issue = {"number": 7, "state": "CLOSED", "title": "old", "body": "<!-- dotkit-audit: mise/npm:cowsay/GHSA-cow-2 -->\nold\n"}
+    gone = {"number": 3, "state": "OPEN", "title": "fzf", "body": "<!-- dotkit-audit: nix/fzf/CVE-2026-9 -->\n"}
+    gh = [{"tool": "gh", "re": "^label create dotkit-audit "},
+          {"tool": "gh", "re": "^issue list ", "stdout": json.dumps([issue, gone])},
+          {"tool": "gh", "re": "^issue (create|edit) ", "stdin": True},
+          {"tool": "gh", "re": "^issue (reopen|close) "}]
+    return [
+        S("audit-clean", ["audit"], audit_rules(), files=AUDIT_FILES, rows=["Au2", "Au3", "Au4", "Au5", "Au6", "Au8"]),
+        S("audit-findings", ["audit"], audit_findings_rules(), files={**AUDIT_FILES, "repo/audit.toml": AUDIT_TOML},
+          rows=["Au1", "Au3", "Au6", "Au7", "Au8"]),
+        S("audit-json", ["audit", "--json"], audit_findings_rules(),
+          files={**AUDIT_FILES, "repo/audit.toml": AUDIT_TOML}, rows=["Au9", "O6"]),
+        S("audit-issues", ["audit", "--issues"], audit_findings_rules() + gh, files=AUDIT_FILES, rows=["Au11"]),
+        S("audit-dotkit-dir", ["audit"], audit_rules(), files=AUDIT_FILES, dotkit_dir=True, rows=["Au2", "G4"]),
+        S("audit-parts-fail", ["audit"], fx.nix_eval_fails() + fx.mise_fails("ls --global --json") + fx.osv_batch([[]]),
+          files=AUDIT_FILES, rows=["Au2", "Au3", "Au4", "Au8"]),
+        S("audit-brew-old", ["audit"],
+          audit_rules(brew=fx.brew("^vulns ", stderr="Error: Unknown command: vulns\n", exit=1)),
+          files=AUDIT_FILES, rows=["Au3"]),
+        S("audit-osv-fails", ["audit"],
+          audit_rules()[:-1] + [{"tool": "curl", "re": "querybatch$", "exit": 22,
+                                 "stderr": "curl: (22) The requested URL returned error: 503\n"}],
+          files=AUDIT_FILES, rows=["Au6"]),
+        S("audit-toml-invalid", ["audit"], files={"repo/audit.toml": '[[ignore]]\nid = "X"\n'}, rows=["Au1"]),
+        S("audit-toml-broken", ["audit"], files={"dotkit/audit.toml": "[[ignore]\n"}, rows=["Au1"]),
+    ]
+
+
 def all_scenarios() -> List[S]:
     out = (start() + dispatch() + options() + apply() + upgrade() + overlap() + own() + clean() + recovery() + wizard()
            + pkg_parse() + listing() + info() + add_prefix() + add_mas() + add_bare() + add_checks() + add_apply()
-           + picker() + remove())
+           + picker() + remove() + audit())
     names = [s.name for s in out]
     dup = sorted({n for n in names if names.count(n) > 1})
     if dup:

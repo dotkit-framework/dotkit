@@ -3,10 +3,12 @@
 # which `dotkit add` and `mise use -g` edit. A tool there replaces the same tool
 # here, for example node = "22".
 [tools]
-# Global default runtimes. Projects override them.
-node = "24"
-python = "3.14"
-ruby = "3.4"
+# Global default runtimes. Projects override them. New releases wait 1 day:
+# a runtime release is often a security fix, and its project publishes it
+# itself, not a package registry.
+node = { version = "24", minimum_release_age = "1d" }
+python = { version = "3.14", minimum_release_age = "1d" }
+ruby = { version = "3.4", minimum_release_age = "1d" }
 
 uv = { version = "latest", minimum_release_age = "1d" }
 

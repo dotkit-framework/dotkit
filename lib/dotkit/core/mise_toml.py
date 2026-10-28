@@ -22,16 +22,25 @@ class InvalidToml(ValueError):
     pass
 
 
-def tools(path: Path) -> Dict[str, object]:
-    """The [tools] table, key -> value, in the order of the file. {} when the file does not exist."""
+def _table(path: Path, name: str) -> Dict[str, object]:
     try:
         data = tomllib.loads(path.read_bytes().decode("utf-8"))
     except FileNotFoundError:
         return {}
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
         raise InvalidToml(f"{path} is not valid TOML: {e}.") from None
-    table = data.get("tools")
+    table = data.get(name)
     return table if isinstance(table, dict) else {}
+
+
+def tools(path: Path) -> Dict[str, object]:
+    """The [tools] table, key -> value, in the order of the file. {} when the file does not exist."""
+    return _table(path, "tools")
+
+
+def settings(path: Path) -> Dict[str, object]:
+    """The [settings] table. {} when the file does not exist."""
+    return _table(path, "settings")
 
 
 def version_text(value: object) -> str:

@@ -1,0 +1,11 @@
+{
+ "argv": [
+  "audit"
+ ],
+ "exit": 1,
+ "stdout": "",
+ "stderr": "dotkit: audit.toml: the ignore of X has no reason.\nFix audit.toml, then run dotkit audit again.\n",
+ "files": {},
+ "calls": [],
+ "tmp_left": 0
+}
