@@ -35,6 +35,7 @@ exit code 2.
 | Row | Behavior | Covered by |
 |---|---|---|
 | C1 | No command, `-h`, `--help`, and `help` print the usage of dotkit on stdout, exit code 0: the commands by group with a summary each, then examples (dotkit/cli.py, COMMANDS). `help CMD` prints the help of the command. | scenarios |
+| C8 | When stdout is a terminal, `NO_COLOR` is not set, and `TERM` is not `dumb`, the help of C1 and O2 is in colors: the headings, `usage:` and the command, the first column of the lists (commands, options, prefixes), the examples (the command, and the text after it dim), and the text in backticks. | unit (tests/commands/test_commands.py) |
 | C2 | Each command has its own options (argparse): an option of another command is an error of this one. | scenarios |
 | C3 | `__complete inputs` prints the inputs of nix/flake.lock that do not follow another input, one per line; with `DOTKIT_DIR`, then the inputs of the checkout's flake.lock as `dotkit/NAME`. It runs no nix. | scenarios |
 | C4 | `__complete tools-user` and `__complete tools-all` print the names of rows N. | scenarios |

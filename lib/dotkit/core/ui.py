@@ -62,6 +62,11 @@ def flush() -> None:
     sys.stderr.flush()
 
 
+def colors(stream) -> bool:
+    """Colors for a stream: a terminal, without NO_COLOR and TERM=dumb."""
+    return stream.isatty() and not os.environ.get("NO_COLOR") and os.environ.get("TERM") != "dumb"
+
+
 def one_line(value: object) -> str:
     """A value of JSON as one field of a row: a string or a number as text, on one line; anything else empty."""
     if isinstance(value, bool) or not isinstance(value, (str, int, float)):

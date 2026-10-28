@@ -317,3 +317,32 @@ class CompletionImportTests(unittest.TestCase):
                                    env={"DOTFILES": str(d / "repo"), "HOME": str(d)}, capture_output=True, text=True,
                                    timeout=60)
                 self.assertEqual(r.stdout.splitlines()[-1], "0 []", r.stderr)
+
+
+class HelpStyleTests(unittest.TestCase):
+    """The colors of the help (C8)."""
+
+    def test_style(self):
+        text = ("usage: dotkit add [-h] tool\n\noptions:\n  -n, --dry-run  Show the plan.\n\nThe tool's README:\n"
+                "  nix:ATTR    Nixpkgs\n  Other text\n\nExamples:\n  dotkit add hk    mise\n  DOTKIT_DIR=x dotkit apply\n"
+                "                   Use a checkout\n\nRun `dotkit help`.")
+        c = cli
+        self.assertEqual(c.style(text).split("\n"), [
+            f"{c.HEADING}usage:{c.RESET} {c.BOLD}dotkit add{c.RESET} [-h] tool", "",
+            f"{c.HEADING}options:{c.RESET}", f"  {c.NAME}-n, --dry-run{c.RESET}  Show the plan.", "",
+            "The tool's README:", f"  {c.NAME}nix:ATTR{c.RESET}    Nixpkgs", "  Other text", "",
+            f"{c.HEADING}Examples:{c.RESET}", f"  {c.CODE}dotkit add hk{c.RESET}{c.DIM}    mise{c.RESET}",
+            f"  {c.CODE}DOTKIT_DIR=x dotkit apply{c.RESET}", f"{c.DIM}                   Use a checkout{c.RESET}", "",
+            f"Run {c.CODE}dotkit help{c.RESET}."])
+
+    def test_only_on_a_terminal(self):
+        tty = mock.Mock(isatty=lambda: True)
+        with mock.patch.dict(os.environ, {"TERM": "xterm"}, clear=False):
+            os.environ.pop("NO_COLOR", None)
+            self.assertTrue(ui.colors(tty))
+            self.assertFalse(ui.colors(mock.Mock(isatty=lambda: False)))
+        with mock.patch.dict(os.environ, {"NO_COLOR": "1"}):
+            self.assertFalse(ui.colors(tty))
+        with mock.patch.dict(os.environ, {"TERM": "dumb"}):
+            os.environ.pop("NO_COLOR", None)
+            self.assertFalse(ui.colors(tty))

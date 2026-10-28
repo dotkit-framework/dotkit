@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import sys
 from dataclasses import dataclass
 from typing import Callable, Dict, List, NoReturn, Optional, Sequence
 
@@ -59,6 +61,47 @@ OLD_NAMES = {
 }
 
 
+BOLD, HEADING, NAME, CODE, DIM, RESET = "\033[1m", "\033[1;33m", "\033[32m", "\033[36m", "\033[2m", "\033[0m"
+HEADING_LINE = re.compile(r"[A-Za-z][A-Za-z ]*:")
+# The first column of a list: a command, an option, a prefix (nix:ATTR).
+FIRST_COLUMN = re.compile(r"(  )([^\s,]+(?:, [^\s,]+)*)(.*)")
+# An example: the command, two spaces or more, and what it does.
+EXAMPLE = re.compile(r"(  )(\S.*?)(\s{2,}\S.*)?")
+
+
+def style(text: str) -> str:
+    """The help in colors: headings, the commands and options, the examples, and `code`."""
+    out, section = [], ""
+    for line in text.split("\n"):
+        if HEADING_LINE.fullmatch(line):
+            section = line
+            line = HEADING + line + RESET
+        elif line.startswith("usage: "):
+            words = line[len("usage: "):].split(" ", 2)
+            cmd = " ".join(words[:2]) if len(words) > 1 and not words[1].startswith(("<", "[")) else words[0]
+            line = f"{HEADING}usage:{RESET} {BOLD}{cmd}{RESET}{line[len('usage: ') + len(cmd):]}"
+        elif line and not line[0].isspace():
+            section = ""
+        elif section == "Examples:":
+            if line.startswith("   "):
+                line = DIM + line + RESET
+            else:
+                m = EXAMPLE.fullmatch(line)
+                if m:
+                    line = f"{m[1]}{CODE}{m[2]}{RESET}" + (f"{DIM}{m[3]}{RESET}" if m[3] else "")
+        else:
+            m = FIRST_COLUMN.fullmatch(line)
+            if m and (section or ":" in m[2]):
+                line = f"{m[1]}{NAME}{m[2]}{RESET}{m[3]}"
+        line = re.sub(r"`([^`]+)`", lambda m: f"{CODE}{m[1]}{RESET}", line)
+        out.append(line)
+    return "\n".join(out)
+
+
+def show_help(text: str) -> None:
+    ui.out(style(text) if ui.colors(sys.stdout) else text)
+
+
 class Parser(argparse.ArgumentParser):
     """argparse with the errors of dotkit: an exception that main() prints, not sys.exit."""
 
@@ -71,6 +114,9 @@ class Parser(argparse.ArgumentParser):
         """Options can come anywhere. parse_intermixed_args does not handle `--`: after it, the words are
         arguments, and the options must come before it."""
         return self.parse_args(args) if "--" in args else self.parse_intermixed_args(args)
+
+    def print_help(self, file=None) -> None:
+        show_help(self.format_help().rstrip())
 
     def error(self, message: str) -> NoReturn:
         raise ui.Exit(2, f"{self.format_usage().rstrip()}\n{self.prog}: error: {message}")
@@ -261,13 +307,13 @@ def parser(name: str) -> Parser:
 def main(env: Env, argv: Sequence[str]) -> int:
     cmd, rest = (argv[0], list(argv[1:])) if argv else ("", [])
     if cmd in ("", "-h", "--help"):
-        ui.out(usage())
+        show_help(usage())
         return 0
     if cmd == "help":
         if rest and rest[0] in COMMANDS:
-            ui.out(parser(rest[0]).format_help().rstrip())
+            show_help(parser(rest[0]).format_help().rstrip())
         else:
-            ui.out(usage())
+            show_help(usage())
         return 0
     if cmd in OLD_NAMES:
         raise ui.Exit(2, f"dotkit: '{cmd}' is now '{OLD_NAMES[cmd]}'. Run dotkit --help.")
