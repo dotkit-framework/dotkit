@@ -49,3 +49,20 @@ def version_text(value: object) -> str:
 def short(key: str) -> str:
     """The tool name of a key, after its last `:` or `/`: github:modem-dev/hunk -> hunk."""
     return re.split(r"[:/]", key)[-1]
+
+
+def inline(value: object) -> str:
+    """A value as TOML on one line: "lts", { version = "latest", minimum_release_age = "1d" }, ["22", "20"]."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(inline(v) for v in value) + "]"
+    if isinstance(value, dict):
+        def key(k: str) -> str:
+            return k if re.fullmatch(r"[A-Za-z0-9_-]+", k) else json.dumps(k, ensure_ascii=False)
+        return "{ " + ", ".join(f"{key(k)} = {inline(v)}" for k, v in value.items()) + " }" if value else "{}"
+    return json.dumps(value, default=str)

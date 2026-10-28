@@ -95,6 +95,7 @@ def options() -> List[S]:
         S("option-all-long-not-migrate", ["apply", "--all"], rows=["O6"]),
         S("option-history-dry-run", ["history", "-n"], rows=["O6"]),
         S("option-rollback-yes", ["rollback", "--yes"], rows=["O6"]),
+        S("option-doctor-args", ["doctor", "-n", "x"], rows=["O4", "O6"]),
         S("option-apply-yes", ["apply", "-y"], rows=["O7"]),
         S("option-apply-dry-run-long", ["apply", "--dry-run", "x"], rows=["O1", "A1"]),
         S("option-checks-before-arguments", ["history", "x", "-n"], rows=["O4"]),
@@ -178,6 +179,80 @@ def upgrade() -> List[S]:
         S("upgrade-all-up-to-date", ["upgrade", "-n"], rows=["U2", "U8"],
           rules=fx.flake_update(REPO_LOCK, SAME_REPO_LOCK) + fx.brew(r"^update --quiet$") + fx.outdated()
           + fx.mise_outdated({})),
+    ]
+
+
+def manifest(base: dict, links: dict, layers: Optional[dict] = None, version: int = 1) -> str:
+    """etc/dotkit/links.json of the built system (nix/links.nix): base and links map a target to a file of
+    the base (dotkit/...) or of the repository (repo/...), or None. The base links that links does not
+    name stay."""
+    def path(f):
+        return None if f is None else f"@SB/{f}"
+    effective = {**{t: path(f) for t, f in base.items()}, **{t: path(f) for t, f in links.items()}}
+    return json.dumps({"version": version, "dotkit": "@SB/dotkit", "base": {t: path(f) for t, f in base.items()},
+                       "layers": layers or {}, "links": effective, "copies": {},
+                       "backupFileExtension": "before-dotkit"}, indent=1)
+
+
+MANIFEST = "system-1/etc/dotkit/links.json"
+# The tools of the repository that the base of harness.BASE has too: a name of a list, a key with the same
+# value, and a key with another value.
+TOOL_OVERLAPS = {
+    "repo/nix/packages.txt": "jq\nfd\n",
+    "repo/nix/brews.txt": "wget\n",
+    "repo/config/mise.toml": '[tools]\nnode = "22"\n"npm:@dkt-ai/dkt-code" = "latest"\n'
+                             '"npm:cowsay" = { version = "1.6.0", minimum_release_age = "1d" }\n',
+}
+STARSHIP = "".join(f"line {i}\n" for i in range(1, 11))
+LINK_OVERLAPS = {
+    MANIFEST: manifest(
+        {".config/starship.toml": "dotkit/config/starship.toml", ".config/uv/uv.toml": "dotkit/config/uv.toml",
+         ".config/git/config": "dotkit/config/gitconfig", ".npmrc": "dotkit/config/npmrc",
+         ".gemrc": "dotkit/config/gemrc", ".editorconfig": "dotkit/config/editorconfig",
+         ".zshrc": "dotkit/config/zshrc"},
+        {".config/starship.toml": "repo/config/starship.toml", ".config/uv/uv.toml": "repo/config/uv.toml",
+         ".config/git/config": "repo/config/gitconfig", ".npmrc": "repo/config/npmrc", ".editorconfig": None,
+         ".config/nvim": "repo/config/nvim"},
+        {".config/git/config": ".gitconfig", ".zshrc": ".zshrc.local"}),
+    "dotkit/config/starship.toml": STARSHIP,
+    "repo/config/starship.toml": STARSHIP.replace("line 4\n", "line four\n") + "line 11\n",
+    "dotkit/config/uv.toml": "a = 1\nb = 2\nc = 3\n",
+    "repo/config/uv.toml": "x = 9\ny = 8\nz = 7\nw = 6\n",
+    "dotkit/config/gitconfig": "[core]\n  pager = delta\n[include]\n  path = ~/.gitconfig\n",
+    "repo/config/gitconfig": "[core]\n  pager = less\n[include]\n  path = ~/.gitconfig\n",
+    "dotkit/config/npmrc": "min-release-age=7\n",
+    "repo/config/npmrc": "min-release-age=7  \n\n",
+    "dotkit/config/gemrc": "", "dotkit/config/editorconfig": "", "dotkit/config/zshrc": "",
+    "home/.zshrc.before-dotkit": "export OLD=1\n",
+    "home/.config/nvim.before-dotkit": "old\n",
+}
+
+
+def overlap() -> List[S]:
+    dry = fx.build() + fx.diff_closures() + fx.cleanup_mode("none") + fx.mise_ok("install --dry-run")
+    known = json.dumps({"version": 1, "seen": {"nix:fd": "", "formula:wget": "", "mise:node": "stale"}})
+    nix_rules = fx.flake_update(REPO_LOCK, NEW_REPO_LOCK) + fx.build() + fx.diff_closures()
+    return [
+        S("overlap-none", ["apply"], rules=fx.apply_ok(), rows=["Ov3", "Ov7"]),
+        S("overlap-tools", ["apply"], rules=fx.apply_ok(), files=TOOL_OVERLAPS, rows=["A2", "Ov1", "Ov2", "Ov7"]),
+        S("overlap-known", ["apply"], rules=fx.apply_ok(),
+          files={**TOOL_OVERLAPS, "home/.local/state/dotkit/overlaps.json": known}, rows=["Ov7"]),
+        S("overlap-all-known", ["apply"], rules=fx.apply_ok(), rows=["Ov7"],
+          files={"repo/nix/packages.txt": "fd\n", "home/.local/state/dotkit/overlaps.json": known}),
+        S("overlap-xdg-state", ["apply"], rules=fx.apply_ok(), env={"XDG_STATE_HOME": "@SB/home/state"},
+          files={"repo/nix/packages.txt": "fd\n"}, rows=["Ov7"]),
+        S("overlap-bad-toml", ["apply"], rules=fx.apply_ok(), files={"repo/config/mise.toml": "[tools\n"},
+          rows=["Ov2"]),
+        S("overlap-links", ["apply"], rules=fx.apply_ok(), files=LINK_OVERLAPS, rows=["Ov3", "Ov4", "Ov5", "Ov7"]),
+        S("overlap-links-dry-run", ["apply", "-n"], rules=dry, skip=real_brew(True), rows=["A6", "Ov6", "Ov7"],
+          files={**LINK_OVERLAPS, "home/.config/starship.toml": "mine\n", "home/.zshrc": "mine\n"}),
+        S("overlap-bad-manifest", ["apply"], rules=fx.apply_ok(), files={MANIFEST: "{"}, rows=["Ov3"]),
+        S("overlap-new-manifest", ["apply"], rules=fx.apply_ok(), files={MANIFEST: manifest({}, {}, version=2)},
+          rows=["Ov3"]),
+        S("overlap-upgrade", ["upgrade", "-y", "nix"], rules=nix_rules + fx.switch_ok(), files=TOOL_OVERLAPS,
+          rows=["U14", "Ov7"]),
+        S("overlap-upgrade-dry-run", ["upgrade", "-n", "nix"], rules=nix_rules, files=TOOL_OVERLAPS,
+          rows=["U11", "Ov7"]),
     ]
 
 
@@ -517,7 +592,14 @@ def remove() -> List[S]:
         S("remove-nix", ["remove", "-y", "jq"], rules=ok, rows=["Rm9", "F2"]),
         S("remove-dry-run", ["remove", "-n", "jq", "zed"], rows=["Rm5", "Rm7"]),
         S("remove-base", ["remove", "ripgrep"], rows=["Rm2", "Rm6"]),
-        S("remove-base-and-repo", ["remove", "fd"], files={"repo/nix/packages.txt": "jq\nfd\n"}, rows=["Rm2"]),
+        S("remove-base-and-repo", ["remove", "-y", "fd"], files={"repo/nix/packages.txt": "jq\nfd\n"}, rules=ok,
+          rows=["Rm11"]),
+        S("remove-base-and-repo-formula", ["remove", "-y", "wget"], files={"repo/nix/brews.txt": "wget\n"}, rules=ok,
+          rows=["Rm11"]),
+        S("remove-base-and-repo-mise", ["remove", "-y", "node"], files=TOOL_OVERLAPS,
+          rules=fx.mise_ok("unuse -g --no-prune node$"), rows=["Rm11"]),
+        S("remove-base-and-repo-dry-run", ["remove", "-n", "fd", "npm:@dkt-ai/dkt-code"], files=TOOL_OVERLAPS,
+          rows=["Rm11"]),
         S("remove-missing", ["remove", "dkt-x"], rows=["Rm3"]),
         S("remove-prefix-other-list", ["remove", "nix:zed"], rows=["Rm1", "Rm3"]),
         S("remove-prefix-files", ["remove", "brew:dkt-x", "cask:dkt-x", "mas:1", "npm:dkt-x"], rows=["Rm1", "Rm3"]),
@@ -546,7 +628,7 @@ def remove() -> List[S]:
 
 
 def all_scenarios() -> List[S]:
-    out = (start() + dispatch() + options() + apply() + upgrade() + clean() + recovery() + wizard()
+    out = (start() + dispatch() + options() + apply() + upgrade() + overlap() + clean() + recovery() + wizard()
            + pkg_parse() + listing() + info() + add_prefix() + add_mas() + add_bare() + add_checks() + add_apply()
            + picker() + remove())
     names = [s.name for s in out]

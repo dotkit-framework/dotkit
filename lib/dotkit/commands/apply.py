@@ -6,6 +6,7 @@ import os
 
 from ..core import nix, proc, ui
 from ..core.env import Env
+from . import overlap
 
 # The Homebrew of the Mac. The preview runs it by this path, as nix-darwin does.
 BREW = "/opt/homebrew/bin/brew"
@@ -29,12 +30,17 @@ def apply(env: Env, dry_run: bool) -> int:
         code = proc.mise(env.home, ["install", "--dry-run"]).code
         if code:
             return code
+        overlap.report(env, env.result, dry_run=True)
         ui.note("No change. Run dotkit apply to apply.")
         return 0
     code = n.switch()
     if code:
         return code
-    return proc.mise(env.home, ["install"]).code
+    code = proc.mise(env.home, ["install"]).code
+    if code:
+        return code
+    overlap.report(env, env.result, dry_run=False)
+    return 0
 
 
 def preview_brew_cleanup(env: Env, n: nix.Nix) -> int:

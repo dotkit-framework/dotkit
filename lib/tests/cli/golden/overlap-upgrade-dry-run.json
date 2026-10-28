@@ -1,0 +1,55 @@
+{
+ "argv": [
+  "upgrade",
+  "-n",
+  "nix"
+ ],
+ "exit": 0,
+ "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
+ "stderr": "Checking Nix...\ndotkit: your dotfiles repeat or replace parts of the dotkit base:\n  nix/packages.txt  fd is in the dotkit base too. Remove yours: dotkit remove nix:fd\n  nix/brews.txt     wget is in the dotkit base too. Remove yours: dotkit remove brew:wget\n  config/mise.toml  node = \"22\" replaces \"lts\" of the dotkit base.\n  config/mise.toml  npm:@dkt-ai/dkt-code is the same in the dotkit base. Remove yours: dotkit remove npm:@dkt-ai/dkt-code\nNo change. Run dotkit upgrade to apply.\n",
+ "files": {
+  "repo/.build/system": "-> @SB/system-1"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "path:@SB/repo/nix"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "store",
+    "diff-closures",
+    "/run/current-system",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

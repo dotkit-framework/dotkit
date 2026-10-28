@@ -13,6 +13,8 @@ class BaseTests(unittest.TestCase):
     def test_links_match_nix_home(self):
         """The tables of base.py are the links of nix/home.nix."""
         text = (fake.ROOT / "nix/home.nix").read_text()
+        # The layers block has the same form: leave it out.
+        text = re.sub(r"^\s*layers = \{\n.*?^\s*\};\n", "", text, flags=re.M | re.S)
         links = dict(re.findall(r'^\s*"([^"]+)" = (?:lib\.mkDefault )?"?([^";]+)"?;', text, re.M))
         targets = {t for t, src in links.items() if src.startswith(("config/", "scripts/"))}
         targets |= {".local/share/dotkit"}
@@ -24,6 +26,17 @@ class BaseTests(unittest.TestCase):
             self.assertTrue((fake.ROOT / link.source).is_file(), link.source)
         for main in base.SHELL_LAYERS:
             self.assertIn(main, links)
+
+    def test_layers_match_nix_home(self):
+        """dotkit.layers of nix/home.nix are the layers of base.py, and the mise config."""
+        text = (fake.ROOT / "nix/home.nix").read_text()
+        block = re.search(r"^\s*layers = \{\n(.*?)^\s*\};\n", text, re.M | re.S)
+        self.assertIsNotNone(block, "dotkit.layers in nix/home.nix")
+        layers = dict(re.findall(r'^\s*"([^"]+)" = "([^"]+)";', block.group(1), re.M))
+        expected = {link.target: link.layer for link in base.LINKS if link.layer}
+        expected.update({main: layer for main, (layer, _) in base.SHELL_LAYERS.items()})
+        expected[".config/mise/conf.d/dotkit.toml"] = ".config/mise/config.toml"
+        self.assertEqual(layers, expected)
 
     def test_tool_path_matches_nix_home(self):
         """base.TOOL_PATH is dotkit.toolPath of nix/home.nix, in its order."""

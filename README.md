@@ -180,8 +180,9 @@ dotfiles repository does the same.
 | `nix/shell.nix` | the zsh keymap, the terminal title, and abbreviations |
 | `config/zsh/zshrc` | your zsh lines (`~/.zshrc.local`) |
 
-`dotkit add` does not add a tool that the base has, and `dotkit remove` does not
-remove one.
+`dotkit add` does not add a tool that the base has. When your lists also have a
+tool of the base, `dotkit remove` removes your copy, and the base keeps the
+tool installed. A tool of the base only stays.
 
 ## Change a base setting
 
@@ -247,12 +248,37 @@ Other parts of the base are nix-darwin and Home Manager options. Set them in
 too. The dotkit options are in `nix/darwin.nix`, `nix/home.nix`,
 `nix/links.nix`, and `nix/modules/zsh` of this repository.
 
+A link of yours inside a directory that you or the base link (for example
+`~/.pi/agent/extensions/x.ts` when `~/.pi/agent/extensions` is a link) stops
+the build: Home Manager would write the file into the source of the
+directory.
+
 ## Upgrade
 
 `dotkit upgrade` gets the newest dotkit, which pins Nixpkgs, nix-darwin, and
 Home Manager, plus new Homebrew and mise releases. It shows one plan and asks
 once. Commit `nix/flake.lock` after it. `dotkit rollback` goes back to the
 previous Nix generation.
+
+### When the base gets what you have
+
+A new dotkit can add a tool or a config file that your repository has
+already. After each apply and upgrade, dotkit reports what your repository
+repeats or replaces of the base:
+
+| Overlap | What to do |
+|---|---|
+| A tool in your list and in the base list | `dotkit remove` it: the base keeps it |
+| A mise tool with the same value | `dotkit remove` it |
+| A mise tool with another value | Nothing, if you want your version: yours wins |
+| Your link that replaces a base file, with the same content | Remove your link |
+| Your link that replaces a base file, with other content | The report shows the diff when the files are similar. For a file that the tool reads after the base file (`~/.gitconfig`, `~/.zshrc.local`, ...), move your changes there and remove your link. Else keep yours, or take the base file |
+| `~/<file>.before-dotkit` | An apply moved your file aside to link the base file. Take what you need from it, then delete it |
+
+The report shows an overlap once, and again when one of the two sides
+changes. `dotkit doctor` lists all of them. `dotkit apply -n` and
+`dotkit upgrade -n` show them before the change, also the files that the
+apply will move aside.
 
 ## Work on dotkit
 
@@ -275,6 +301,14 @@ checkout, in `nix/home.nix`:
 ```nix
 dotkit.liveDir = "${user.home}/.dotkit";
 ```
+
+To add a config file to the base, add it to `dotkit.baseLinks` in
+`nix/home.nix`. When its tool reads a file of yours after it, add that file
+to `dotkit.layers` too, and to `LINKS` in `lib/dotkit/migrate/base.py`, so
+that setup carries a file of a new user to the layer (`lib/tests/test_base.py`
+compares them). Do not link a file that its tool writes, and do not link a
+file inside a directory that users link. The report of apply then tells the
+users who have the tool or the file already.
 
 Check the base and a Mac from the template:
 

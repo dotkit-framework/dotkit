@@ -53,6 +53,7 @@ lib/
       mise_toml.py          the [tools] table of a mise config, read as TOML
       backup.py             copies of files to restore on a failure or a signal
     commands/               apply, upgrade, clean, history, rollback, migrate, tidy
+      overlap.py            what the repository repeats or replaces of the base: the report, doctor
     pkg/                    add, remove, info, list
       names.py              the declared names for the completion (imports only the readers)
       entries.py            KINDS (kind -> file), Entry, Declaration, and the prefixes of arguments

@@ -1,0 +1,66 @@
+{
+ "argv": [
+  "apply"
+ ],
+ "exit": 0,
+ "stdout": "",
+ "stderr": "dotkit: your dotfiles repeat or replace parts of the dotkit base:\n  config/mise.toml  node = \"22\" replaces \"lts\" of the dotkit base.\n  config/mise.toml  npm:@dkt-ai/dkt-code is the same in the dotkit base. Remove yours: dotkit remove npm:@dkt-ai/dkt-code\nAnd 2 known overlaps with the dotkit base. dotkit doctor lists them.\n",
+ "files": {
+  "home/.local/state/dotkit/overlaps.json": "{\n \"version\": 1,\n \"seen\": {\n  \"nix:fd\": \"\",\n  \"formula:wget\": \"\",\n  \"mise:node\": \"6b542cc27b524981\",\n  \"mise:npm:@dkt-ai/dkt-code\": \"00719de4e99ec2e4\"\n }\n}\n",
+  "repo/.build/system": "-> @SB/system-1"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "install"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

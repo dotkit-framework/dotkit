@@ -151,6 +151,10 @@ def _list(p: Parser):
     return lambda env, a: _mod("pkg.cli").Pkg(env).list(a.sources)
 
 
+def _doctor(p: Parser):
+    return lambda env, a: _mod("commands.overlap").doctor(env)
+
+
 def _migrate(p: Parser):
     dry_run(p)
     yes(p)
@@ -203,6 +207,11 @@ COMMANDS: Dict[str, Command] = {
                       "Homebrew packages that you remove are uninstalled. Tools of the dotkit base stay."),
     "info": Command("Daily", "Where a tool is declared, its command, and its sources.", _info),
     "list": Command("Daily", "The declared tools.", _list),
+    "doctor": Command("Daily", "What your dotfiles repeat or replace of the dotkit base.", _doctor,
+                      "Compares the active system with the base: tools in the lists and config/mise.toml of\n"
+                      "both, your links that replace base config files (with a diff when the files are\n"
+                      "similar), and the files that an apply moved aside (*.before-dotkit). apply and\n"
+                      "upgrade show the new ones."),
     "migrate": Command("Daily", "Add the tools that were installed by hand to the lists.", _migrate,
                        "Finds Homebrew packages and taps, App Store apps, and global npm and pipx tools that\n"
                        "were installed by hand and that the lists do not have. Asks, then adds them."),

@@ -1,0 +1,27 @@
+{
+ "argv": [
+  "remove",
+  "-y",
+  "node"
+ ],
+ "exit": 0,
+ "stdout": "node: remove node from config/mise.toml; the dotkit base keeps it (dotkit:config/mise.toml)\n",
+ "stderr": "",
+ "files": {},
+ "calls": [
+  {
+   "tool": "mise",
+   "argv": [
+    "unuse",
+    "-g",
+    "--no-prune",
+    "node"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

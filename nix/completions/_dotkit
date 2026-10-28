@@ -12,6 +12,7 @@ _dotkit() {
     'remove:remove a tool from the config that declares it, and apply'
     'info:show where a tool is declared, its command, and its sources'
     'list:show the declared tools'
+    'doctor:show what your dotfiles repeat or replace of the dotkit base'
     'migrate:add the packages that were installed by hand to the lists'
     'tidy:give the apps a clean source, and remove old tools and packages'
     'history:show the package changes of the last apply'
@@ -54,7 +55,7 @@ _dotkit() {
             '(-a --all)'{-a,--all}'[also cargo and Go tools, which mise builds from source]' && ret=0 ;;
         tidy)
           _arguments $dry_run $yes $help '--plan[read the edited plan from a file]:plan file:_files' && ret=0 ;;
-        history|rollback)
+        history|rollback|doctor)
           _arguments $help && ret=0 ;;
       esac
       ;;

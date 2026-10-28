@@ -112,6 +112,14 @@ in
 
     home-manager.users.${user.name}.home.packages = map package (names cfg.lists.packages);
 
+    # The links of nix/links.nix, for the report of `dotkit apply` and `dotkit doctor`.
+    environment.etc."dotkit/links.json".text = builtins.toJSON (
+      config.home-manager.users.${user.name}.dotkit.manifest
+      // {
+        inherit (config.home-manager) backupFileExtension;
+      }
+    );
+
     system = {
       primaryUser = user.name;
       stateVersion = lib.mkDefault 6;

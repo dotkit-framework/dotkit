@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Set
 
 from ..core import lists, mise_toml, nix, proc, ui
 from ..core.env import Env
@@ -180,13 +180,15 @@ class Pkg:
     def remove(self, tools: Sequence[str]) -> int:
         nix_edits: List[Entry] = []
         mise_entries: List[Entry] = []
+        in_base: Set[Entry] = set()
         failed = False
         for tool in tools:
             # A prefix selects the kinds: nix:jq is only in nix/packages.txt.
             kinds = kinds_of(tool)
             found = [d for d in declared.find(self.env, tool) if d.entry.kind in kinds]
             base = [d for d in found if d.base]
-            if base:
+            found = [d for d in found if not d.base]
+            if base and not found:
                 ui.warn(f"{tool}: in the dotkit base ({base[0].label}). Only dotkit can remove it.")
                 failed = True
                 continue
@@ -202,7 +204,13 @@ class Pkg:
             entry = found[0].entry
             if entry in nix_edits + mise_entries:
                 continue
-            ui.out(f"{tool}: remove {entry.text} from {entry.file}")
+            # The base has the same entry: remove the copy of the repository, and keep the tool installed.
+            kept = [d for d in base if d.entry == entry]
+            if kept:
+                in_base.add(entry)
+                ui.out(f"{tool}: remove {entry.text} from {entry.file}; the dotkit base keeps it ({kept[0].label})")
+            else:
+                ui.out(f"{tool}: remove {entry.text} from {entry.file}")
             (nix_edits if entry.nix else mise_entries).append(entry)
         if failed:
             raise ui.die(FAILED)
@@ -220,12 +228,16 @@ class Pkg:
             # nix/darwin.nix), so uninstall the removed ones here. With cleanup = "uninstall", activation did
             # it already.
             for e in nix_edits:
+                if e in in_base:
+                    continue
                 if e.kind in ("formula", "cask"):
                     self._brew_uninstall(e.kind, e.text)
                 elif e.kind == "mas":
                     ui.warn(f"the App Store app {e.text} stays installed. dotkit does not uninstall App Store apps.")
         for e in mise_entries:
-            if not proc.mise(self.env.home, ["unuse", "-g", e.text]).ok:
+            # The base still uses the versions of a key that it has: do not prune them.
+            args = ["unuse", "-g", "--no-prune", e.text] if e in in_base else ["unuse", "-g", e.text]
+            if not proc.mise(self.env.home, args).ok:
                 raise ui.die(f"mise could not remove {e.text}. The tools before it in the list are removed.")
         return 0
 

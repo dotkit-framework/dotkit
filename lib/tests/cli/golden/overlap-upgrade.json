@@ -1,0 +1,98 @@
+{
+ "argv": [
+  "upgrade",
+  "-y",
+  "nix"
+ ],
+ "exit": 0,
+ "stdout": "  nix   dotkit                               2025-10-09 ccccccc     -> 2025-10-20 ddddddd\n\nNix package changes:\nhello: ∅ → 2.12.2, +268.5 KiB\n",
+ "stderr": "Checking Nix...\ndotkit: your dotfiles repeat or replace parts of the dotkit base:\n  nix/packages.txt  fd is in the dotkit base too. Remove yours: dotkit remove nix:fd\n  nix/brews.txt     wget is in the dotkit base too. Remove yours: dotkit remove brew:wget\n  config/mise.toml  node = \"22\" replaces \"lts\" of the dotkit base.\n  config/mise.toml  npm:@dkt-ai/dkt-code is the same in the dotkit base. Remove yours: dotkit remove npm:@dkt-ai/dkt-code\nCommit nix/flake.lock to keep the upgrade.\n",
+ "files": {
+  "home/.local/state/dotkit/overlaps.json": "{\n \"version\": 1,\n \"seen\": {\n  \"nix:fd\": \"\",\n  \"formula:wget\": \"\",\n  \"mise:node\": \"6b542cc27b524981\",\n  \"mise:npm:@dkt-ai/dkt-code\": \"00719de4e99ec2e4\"\n }\n}\n",
+  "repo/.build/system": "-> @SB/system-1",
+  "repo/nix/flake.lock": "{\n  \"nodes\": {\n    \"root\": {\n      \"inputs\": {\n        \"dotkit\": \"dotkit\",\n        \"nixpkgs\": [\n          \"dotkit\",\n          \"nixpkgs\"\n        ]\n      }\n    },\n    \"dotkit\": {\n      \"locked\": {\n        \"lastModified\": 1761000000,\n        \"rev\": \"ddddddd4444444\"\n      }\n    }\n  },\n  \"root\": \"root\",\n  \"version\": 7\n}\n"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "flake",
+    "update",
+    "--flake",
+    "path:@SB/repo/nix"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "store",
+    "diff-closures",
+    "/run/current-system",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "build",
+    "path:@SB/repo/nix#darwinConfigurations.mac.system",
+    "--out-link",
+    "@SB/repo/.build/system"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "-H",
+    "/usr/bin/env",
+    "NIX_REMOTE=daemon",
+    "@SB/system-1/sw/bin/nix-env",
+    "-p",
+    "/nix/var/nix/profiles/system",
+    "--set",
+    "@SB/system-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "sudo",
+   "argv": [
+    "@SB/system-1/sw/bin/darwin-rebuild",
+    "activate"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

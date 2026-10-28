@@ -53,7 +53,7 @@ argparse reads the options of each command (dotkit/cli.py).
 | O3 | `--` ends the options: the words after it are arguments. | scenarios |
 | O4 | An unknown option, an argument that a command does not take, or a long option that is not complete: an error. | scenarios |
 | O5 | `--plan FILE` gives the wizard an absolute path: the directory resolved, the file name kept. Without FILE, or with a directory that does not exist: an error. | scenarios |
-| O6 | The options: apply `-n`; upgrade `-n -y`; add `-n -y -f`; remove `-n -y`; migrate `-n -y -a`; tidy `-n -y --plan FILE`; clean `-n -y`; info, list, history, and rollback none. add, remove, and info need one tool or more. | scenarios |
+| O6 | The options: apply `-n`; upgrade `-n -y`; add `-n -y -f`; remove `-n -y`; migrate `-n -y -a`; tidy `-n -y --plan FILE`; clean `-n -y`; info, list, doctor, history, and rollback none. add, remove, and info need one tool or more. | scenarios |
 | O7 | `clean` takes one age, `[0-9]+d`, default 14d; `list` takes nix, brew, or mise. Another value: an error. | scenarios |
 
 ## A. apply
@@ -61,11 +61,11 @@ argparse reads the options of each command (dotkit/cli.py).
 | Row | Behavior | Covered by |
 |---|---|---|
 | A1 | apply takes no arguments (O4). | scenarios |
-| A2 | Builds `path:REPO/nix#darwinConfigurations.mac.system` with the link `REPO/.build/system`, then runs `sudo -H /usr/bin/env NIX_REMOTE=daemon SYSTEM/sw/bin/nix-env -p /nix/var/nix/profiles/system --set SYSTEM` and `sudo SYSTEM/sw/bin/darwin-rebuild activate` (SYSTEM is the target of the link), then `mise install` in `$HOME`. | scenarios |
+| A2 | Builds `path:REPO/nix#darwinConfigurations.mac.system` with the link `REPO/.build/system`, then runs `sudo -H /usr/bin/env NIX_REMOTE=daemon SYSTEM/sw/bin/nix-env -p /nix/var/nix/profiles/system --set SYSTEM` and `sudo SYSTEM/sw/bin/darwin-rebuild activate` (SYSTEM is the target of the link), then `mise install` in `$HOME`, then the report of rows Ov for SYSTEM. | scenarios |
 | A3 | When the build fails, apply stops with the exit code of nix and no message. Nothing is activated. | scenarios |
 | A4 | When a sudo command fails, apply stops with its exit code; the later commands do not run. | scenarios |
 | A5 | When `mise install` fails, apply stops with its exit code. | scenarios |
-| A6 | `apply -n` builds, prints "Nix package changes:" on stdout, runs `nix store diff-closures /run/current-system SYSTEM`, the Homebrew preview (A7), `mise install --dry-run` in `$HOME`, then "No change. Run dotkit apply to apply." on stderr (without `dotkit: `). | scenarios |
+| A6 | `apply -n` builds, prints "Nix package changes:" on stdout, runs `nix store diff-closures /run/current-system SYSTEM`, the Homebrew preview (A7), `mise install --dry-run` in `$HOME`, the report of rows Ov with `-n`, then "No change. Run dotkit apply to apply." on stderr (without `dotkit: `). | scenarios |
 | A7 | The Homebrew preview runs only when `/opt/homebrew/bin/brew` exists and `homebrew.onActivation.cleanup` of the configuration is not `none`. | scenarios |
 | A8 | The preview writes the Brewfile of the configuration to `REPO/.build/Brewfile` and runs `/opt/homebrew/bin/brew bundle cleanup --file=FILE` with `HOMEBREW_NO_AUTO_UPDATE=1` and stdin from /dev/null. Exit code 1 is accepted only after the complete report; the report loses its last line and the part from "Would \`brew cleanup\`:". A report that is left prints as "Homebrew removes:" and the lines. Another failure: die "the Homebrew cleanup preview failed with exit code N." | unit, e2e |
 | A9 | With `DOTKIT_DIR`, the build evaluates `...system.drvPath` with the override (G4) and builds `DRV^*` without the flake, so nix keeps its progress bar. | scenarios |
@@ -85,10 +85,10 @@ argparse reads the options of each command (dotkit/cli.py).
 | U8 | No rows: "Everything is up to date." on stdout, exit code 0. | scenarios |
 | U9 | The plan on stdout: `  %-5s %-36s %-22s -> %s` per row, nix rows, then brew, then mise. | scenarios |
 | U10 | With nix rows: a build, then "\nNix package changes:" and diff-closures on stdout. | scenarios |
-| U11 | `-n`: the lock files are restored, "No change. Run dotkit upgrade to apply." on stderr. | scenarios |
+| U11 | `-n`: the lock files are restored; with nix rows, the report of rows Ov with `-n` for the built system; then "No change. Run dotkit upgrade to apply." on stderr. | scenarios |
 | U12 | The question "Upgrade? [y/N] " (rows C-confirm). No: the lock files are restored, die "nothing changed." | scenarios |
 | U13 | Nix rows: a switch (A2 without mise); when it fails, die "the switch failed. The lock files are restored." brew rows: the Brewfile of the configuration goes to `brew bundle install --file=-` on stdin, with `HOMEBREW_NO_INSTALL_CLEANUP=1`. mise rows: `mise upgrade` in `$HOME`. | scenarios |
-| U14 | After an upgrade with nix rows: "Commit nix/flake.lock to keep the upgrade." and with `DOTKIT_DIR` "Commit flake.lock in DIR too, if it changed." on stderr (without `dotkit: `). | scenarios |
+| U14 | After an upgrade with nix rows: the report of rows Ov for the built system, then "Commit nix/flake.lock to keep the upgrade." and with `DOTKIT_DIR` "Commit flake.lock in DIR too, if it changed." on stderr (without `dotkit: `). | scenarios |
 | U15 | Any exit before the switch restores the lock files: an error, a refused question, and a signal. | scenarios (error, question); unit for signals |
 | U16 | When the build fails, upgrade stops with the exit code of nix, and the lock files are restored. | scenarios |
 
@@ -235,15 +235,16 @@ New in the Python code. The goldens of these rows come from the Python code.
 | Row | Behavior | Covered by |
 |---|---|---|
 | Rm1 | A prefix selects the file: `nix:` packages.txt, `brew:` brews.txt or casks.txt, `cask:` casks.txt, `mas:` mas.txt, another prefix config/mise.toml. | scenarios |
-| Rm2 | A declaration in the base: "TOOL: in the dotkit base (FILE). Only dotkit can remove it." | scenarios |
+| Rm2 | A declaration in the base only: "TOOL: in the dotkit base (FILE). Only dotkit can remove it." | scenarios |
 | Rm3 | No declaration: "TOOL: not in FILES. See dotkit info TOOL." | scenarios |
-| Rm4 | More than one declaration: "TOOL: in more than one place: F1,F2. Use a prefix (nix:, brew:, cask:, mise:), or remove it by hand." Two lines of one file count as two places. | scenarios |
+| Rm4 | More than one declaration in the repository: "TOOL: in more than one place: F1,F2. Use a prefix (nix:, brew:, cask:, mise:), or remove it by hand." Two lines of one file count as two places. | scenarios |
 | Rm5 | The plan line on stdout: "TOOL: remove ENTRY from FILE"; an entry that comes again is skipped. | scenarios |
 | Rm6 | When one tool failed: die "nothing changed. Fix the errors above, then run the command again." | scenarios |
 | Rm7 | `-n`: "No change. Run the command without -n to remove." on stderr. | scenarios |
 | Rm8 | The question "Remove?"; no: die "nothing changed." | scenarios |
 | Rm9 | List changes as in Ad13. Then, for a removed formula or cask that `brew list --KIND NAME` shows: `brew uninstall --KIND NAME` (with `HOMEBREW_NO_AUTO_UPDATE=1`); when it fails: "could not uninstall the KIND NAME. Run: brew uninstall --KIND NAME". For an App Store app: "the App Store app ID stays installed. dotkit does not uninstall App Store apps." | scenarios |
 | Rm10 | Then `mise unuse -g KEY` in `$HOME` for each mise entry; when one fails: die "mise could not remove KEY. The tools before it in the list are removed." | scenarios |
+| Rm11 | An entry that the repository and the base both have: the plan line is "TOOL: remove ENTRY from FILE; the dotkit base keeps it (dotkit:FILE)", and only the file of the repository changes. No `brew uninstall` for it; for a mise key, `mise unuse -g --no-prune KEY`, so that the versions of the base stay. | scenarios |
 
 ## X. Installed commands
 
@@ -259,3 +260,18 @@ New in the Python code. The goldens of these rows come from the Python code.
 | F1 | An append adds the missing final newline first, then "NAME\n". | scenarios |
 | F2 | A delete removes each line whose name (L6) is the name, and each line of mas.txt with the ID. The other lines stay as they are, also without a final newline. The file is written in place, so a link stays a link. | scenarios |
 | F3 | The ID of an App Store app name: the first app of mas.txt (L6), or of the planned apps, whose name is the name exactly. | scenarios |
+
+## Ov. Overlaps with the base
+
+What the dotfiles repository repeats or replaces of the dotkit base (commands/overlap.py). The base is the `dotkit` directory of the manifest (Ov3), else the dotkit of the command.
+
+| Row | Behavior | Covered by |
+|---|---|---|
+| Ov1 | A name of nix/packages.txt, brews.txt, or casks.txt that the same list of the base has, at FILE (the list): "NAME is in the dotkit base too. Remove yours: dotkit remove PREFIX:NAME", where PREFIX is nix, brew, or cask. | scenarios |
+| Ov2 | A key of config/mise.toml that the base has: with the same value, "KEY is the same in the dotkit base. Remove yours: dotkit remove KEY"; else "KEY = VALUE replaces VALUE of the dotkit base.", the values as TOML on one line. When a file is not valid TOML: warning "FILE is not valid TOML: ERROR. The mise tools are not compared with the base." | scenarios |
+| Ov3 | The config files come from the manifest `SYSTEM/etc/dotkit/links.json` (nix/links.nix, nix/darwin.nix): the dotkit directory, the base links, the links of the configuration, the layers, and the backup extension of Home Manager. Without it, only Ov1 and Ov2. A manifest that is not JSON: warning "cannot read FILE: ERROR. The config files are not compared with the base."; another version than 1: warning "FILE has a format that this dotkit does not know. The config files are not compared." | scenarios |
+| Ov4 | A base link that the configuration replaces, at `~/TARGET`. With null: "has no link: your configuration sets it to null, so the base file is off." With a file whose lines are the same as the base file (without the spaces at their ends and the blank lines at the end): "your FILE is the same as the base file. Remove your link of ~/TARGET." With a similar file (difflib: at least 50% of the lines the same, and at most 40 changed lines): "your FILE replaces the base file; N lines differ.", then the unified diff with one line of context, indented by 6, in colors when stderr is a terminal and `NO_COLOR` is not set. With another text file: "your FILE replaces the base file, and differs from it a lot.", then "P% of the lines are the same. Compare them: diff -u BASE YOURS". Else (not text, or missing): "your FILE replaces the base file." For a target with a layer, the text ends with "Its tool reads ~/LAYER after the base file: move your changes there, and remove your link of ~/TARGET." (for null: "put your settings there instead."). FILE is relative to the repository. | scenarios |
+| Ov5 | For each link target and each directory above it, `~/PATH.EXT` that exists (EXT is the backup extension): "an apply moved your file aside for the link ~/PATH.", then "Move the settings that you need to ~/LAYER, then delete it." for a target with a layer, else "Compare it with ~/PATH, take what you need, then delete it." | scenarios |
+| Ov6 | With `-n`, a link target that exists and is not a link into /nix/store: "apply moves your file to ~/TARGET.EXT and links the file of your configuration.", then " Move your settings to ~/LAYER first." for a target with a layer. | scenarios |
+| Ov7 | The report, on stderr: the overlaps whose fingerprint (the values or the contents of both sides) is not in the state file, after "dotkit: your dotfiles repeat or replace parts of the dotkit base:", one per line as "  WHERE  TEXT" with WHERE padded. Then, for the others: "And N known overlap(s) with the dotkit base. dotkit doctor lists them." ("lists it" for one), or "Your dotfiles have N known ..." when no overlap is new. Without `-n`, when the overlaps changed, the state file `$XDG_STATE_HOME/dotkit/overlaps.json` (default `~/.local/state`) gets them all. | scenarios |
+| Ov8 | `doctor` lists all overlaps of the active system (`/run/current-system`) on stdout, after "Your dotfiles repeat or replace these parts of the dotkit base:", or prints "Your dotfiles do not repeat or replace any part of the dotkit base." Without a manifest, first "SYSTEM has no link manifest, so the config files are not compared. Run dotkit apply." on stderr. It does not change the state file. Exit code 0. | unit (tests/commands/test_overlap.py) |

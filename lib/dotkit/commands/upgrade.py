@@ -17,6 +17,7 @@ from typing import Any, List, Optional, Tuple
 
 from ..core import backup, lists, nix, proc, ui
 from ..core.env import Env
+from . import overlap
 
 
 @dataclass
@@ -160,6 +161,8 @@ class Upgrade:
                 return code
         if self.dry_run:
             self.restore_locks()
+            if nix_rows:
+                overlap.report(self.env, self.env.result, dry_run=True)
             ui.note("No change. Run dotkit upgrade to apply.")
             return 0
         if not ui.confirm("Upgrade?", self.yes):
@@ -185,6 +188,8 @@ class Upgrade:
             if code:
                 return code
         if nix_rows:
+            # A new dotkit can have tools and config files that the repository has already.
+            overlap.report(self.env, self.env.result, dry_run=False)
             ui.note("Commit nix/flake.lock to keep the upgrade.")
             if self.env.dotkit_dir is not None:
                 ui.note(f"Commit flake.lock in {self.env.dotkit_dir} too, if it changed.")
