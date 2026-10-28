@@ -35,7 +35,7 @@ already lists the local files of these agents, so they do not edit it.
 ## New Mac
 
 ```sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/podkovyrin/dotkit/main/scripts/setup)" setup [<repository-url>]
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/dotkit-framework/dotkit/main/scripts/setup)" setup [<repository-url>]
 ```
 
 Setup installs the Xcode Command Line Tools, Nix, and Homebrew, writes your
@@ -111,7 +111,7 @@ fails, setup moves the links back, and the next run moves them again; when the
 wizard chose another path than `~/.dotfiles`, setup prints the command to
 continue with it. `setup --dry-run` prints the plan and the report and
 changes nothing. It needs only the Command Line Tools. On a Mac with Nix,
-`nix run github:podkovyrin/dotkit#migrate -- setup --dry-run` does the same.
+`nix run github:dotkit-framework/dotkit#migrate -- setup --dry-run` does the same.
 
 Later, `dotkit migrate` finds Homebrew packages and taps, App Store apps, and
 global tools that were installed by hand and that the lists do not have, and
@@ -414,7 +414,7 @@ System Settings.
 Clone dotkit and set `DOTKIT_DIR` to the checkout:
 
 ```sh
-git clone git@github.com:podkovyrin/dotkit.git ~/.dotkit
+git clone git@github.com:dotkit-framework/dotkit.git ~/.dotkit
 export DOTKIT_DIR=~/.dotkit   # for example in config/zsh/zprofile
 ```
 

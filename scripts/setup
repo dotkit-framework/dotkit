@@ -8,7 +8,7 @@ usage() {
     '(Xcode Command Line Tools, Nix, Homebrew), get the dotfiles repository, then' \
     'build and apply the configuration.' \
     '' \
-    'Usage: bash -c "$(curl -fsSL https://raw.githubusercontent.com/podkovyrin/dotkit/main/scripts/setup)" setup [-y] [-n] [<repository-url>]' \
+    'Usage: bash -c "$(curl -fsSL https://raw.githubusercontent.com/dotkit-framework/dotkit/main/scripts/setup)" setup [-y] [-n] [<repository-url>]' \
     '       ~/.dotkit/scripts/setup [-y] [-n] [<repository-url>]' \
     '' \
     'The dotfiles repository is ~/.dotfiles (DOTFILES overrides it). When it does' \
@@ -383,7 +383,7 @@ ensure_clt
 # Run through curl, not from a file: clone dotkit, then run its copy of this script.
 if [[ -z "${BASH_SOURCE[0]:-}" ]]; then
   dir=$(mktemp -d)/dotkit
-  git clone --quiet --depth 1 https://github.com/podkovyrin/dotkit.git "$dir"
+  git clone --quiet --depth 1 https://github.com/dotkit-framework/dotkit.git "$dir"
   exec "$dir/scripts/setup" "$@"
 fi
 dotkit=$(cd -- "$(dirname -- "$0")/.." && pwd -P)

@@ -62,7 +62,7 @@ def drv_path() -> List[dict]:
     """With DOTKIT_DIR: the evaluation of the derivation, with the lock warning of --override-input."""
     warning = ("warning: not writing modified lock file of flake 'path:@SB/repo/nix':\n"
                "• Updated input 'dotkit':\n"
-               "    'github:podkovyrin/dotkit/ccccccc' (2025-10-09)\n"
+               "    'github:dotkit-framework/dotkit/ccccccc' (2025-10-09)\n"
                "  → 'git+file://@SB/checkout' (2025-10-10)\n"
                "warning: Git tree '@SB/checkout' is dirty\n")
     return [_r("nix", r"^eval --raw \S+#darwinConfigurations\.mac\.system\.drvPath", DRV, stderr=warning)]
