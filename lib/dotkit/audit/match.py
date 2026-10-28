@@ -16,6 +16,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
+from . import cvss4
+
 # The sources of a tool, in the order of the report.
 SOURCES = ("nix", "brew", "mise", "dotkit")
 SOURCE_NAMES = {"nix": "Nix", "brew": "Homebrew", "mise": "mise", "dotkit": "dotkit"}
@@ -43,6 +45,7 @@ class Advisory:
     severity: str  # CRITICAL, HIGH, MEDIUM, LOW, or "" (unknown)
     fixed: List[str]  # the versions with the fix, when OSV gives versions (not commits)
     malicious: bool = False
+    score: Optional[float] = None  # the CVSS base score, when the advisory has a vector
 
     @property
     def ids(self) -> FrozenSet[str]:
@@ -287,17 +290,36 @@ def rating(score: float) -> str:
     return "LOW" if score > 0 else ""
 
 
+def cvss_score(record: dict) -> Optional[float]:
+    """The CVSS base score of an OSV record: of its CVSS 4.0 vector, else of its CVSS 3 vector."""
+    vectors = [s.get("score") for s in record.get("severity") or [] if isinstance(s, dict)]
+    vectors = [v for v in vectors if isinstance(v, str)]
+    for v in vectors:
+        score = cvss4.score(v)
+        if score is not None:
+            return score
+    for v in vectors:
+        score = cvss3_score(v)
+        if score is not None:
+            return score
+    return None
+
+
 def severity(record: dict) -> str:
     """The severity of an OSV record: the one of its database (GitHub: LOW, MODERATE, HIGH, CRITICAL),
-    else the rating of its CVSS 3 vector. "" when it has neither, for example only a CVSS 4 vector."""
+    else the rating of its CVSS score. "" when it has neither."""
     text = (record.get("database_specific") or {}).get("severity")
     if isinstance(text, str) and text.upper() in ("LOW", "MODERATE", "MEDIUM", "HIGH", "CRITICAL"):
         return "MEDIUM" if text.upper() == "MODERATE" else text.upper()
-    for s in record.get("severity") or []:
-        score = cvss3_score(s.get("score") or "") if isinstance(s, dict) else None
-        if score is not None:
-            return rating(score)
-    return ""
+    score = cvss_score(record)
+    return rating(score) if score is not None else ""
+
+
+def severity_text(a: Advisory) -> str:
+    """For the report and the issues: "high 7.5", "high" (no CVSS vector), "low 2.0", "none 0.0", or
+    "unknown"."""
+    word = a.severity.lower() or ("none" if a.score == 0 else "unknown")
+    return word if a.score is None else f"{word} {a.score:.1f}"
 
 
 def _fixed(record: dict, query: dict) -> List[str]:
@@ -321,7 +343,8 @@ def advisory(record: dict, query: dict) -> Advisory:
     rid = record.get("id") or ""
     malicious = rid.startswith("MAL-")
     sev = "CRITICAL" if malicious else severity(record)
-    return Advisory(rid, aliases, " ".join(summary.split())[:200], sev, _fixed(record, query), malicious)
+    return Advisory(rid, aliases, " ".join(summary.split())[:200], sev, _fixed(record, query), malicious,
+                    cvss_score(record))
 
 
 # --- The ignore rules of audit.toml
@@ -376,6 +399,7 @@ def _merge(advisories: Iterable[Advisory]) -> List[Advisory]:
             continue
         same.aliases = sorted((same.ids | a.ids) - {same.id})
         same.severity = same.severity or a.severity
+        same.score = same.score if same.score is not None else a.score
         same.fixed = same.fixed or a.fixed
         same.malicious = same.malicious or a.malicious
     return out

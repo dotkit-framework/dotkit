@@ -55,7 +55,7 @@ def load_rules(env: Env) -> List[match.Rule]:
 def _finding_json(f: match.Finding) -> dict:
     a = f.advisory
     return {"key": f.key, "source": f.item.source, "tool": f.item.name, "version": f.item.version, "id": a.id,
-            "aliases": a.aliases, "summary": a.summary, "severity": a.severity, "fixed": a.fixed,
+            "aliases": a.aliases, "summary": a.summary, "severity": a.severity, "score": a.score, "fixed": a.fixed,
             "malicious": a.malicious, "url": a.url}
 
 
@@ -105,7 +105,7 @@ def _print_findings(findings: List[match.Finding]) -> None:
         ui.out(f"{ui.paint(item.name, 'name')}{version} ({match.SOURCE_NAMES[item.source]}):")
         for f in group:
             a = f.advisory
-            kind = ui.paint("MALICIOUS", "error") if a.malicious else ui.paint(a.severity.lower() or "unknown", ROLE[a.severity])
+            kind = ui.paint("MALICIOUS", "error") if a.malicious else ui.paint(match.severity_text(a), ROLE[a.severity])
             ui.out(f"  {a.id} ({kind}): {a.summary or 'no summary'}")
             extra = f"Fixed in {', '.join(a.fixed)}. " if a.fixed else ""
             ui.out(f"    {extra}{ui.paint(a.url, 'dim')}")

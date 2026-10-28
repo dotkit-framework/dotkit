@@ -140,11 +140,22 @@ class SeverityTests(unittest.TestCase):
             ({"database_specific": {"severity": "critical"}}, "CRITICAL"),
             ({"severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]}, "CRITICAL"),
             ({"severity": [{"type": "CVSS_V4", "score": "CVSS:4.0/AV:N"}]}, ""),
+            # CVSS 4.0 first: a low 2.0, though the CVSS 3 vector is critical.
+            ({"severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},
+                           {"type": "CVSS_V4", "score": "CVSS:4.0/AV:L/AC:L/AT:P/PR:L/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N"}]},
+             "LOW"),
             ({}, ""),
         ]
         for record, want in rows:
             with self.subTest(record=record):
                 self.assertEqual(match.severity(record), want)
+
+    def test_severity_text(self):
+        rows = [(("HIGH", 7.5), "high 7.5"), (("HIGH", None), "high"), (("", None), "unknown"), (("", 0.0), "none 0.0"),
+                (("LOW", 2.0), "low 2.0")]
+        for (sev, score), want in rows:
+            with self.subTest(want=want):
+                self.assertEqual(match.severity_text(match.Advisory("X", [], "", sev, [], score=score)), want)
 
     def test_advisory(self):
         q = match.package_query("npm", "x", "1.0")

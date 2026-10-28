@@ -70,6 +70,7 @@ lib/
     audit/                  audit: known vulnerabilities and malicious releases, from OSV.dev
       inventory.py          the tools and their versions: nix eval, mise, brew vulns, the packages of dotkit
       match.py              the OSV queries of a tool, the advisories, the ignore rules; runs no command
+      cvss4.py              the CVSS 4.0 base score, ported from the reference calculator of FIRST
       osv.py                the OSV API with curl, and the cache of the advisories
       issues.py             one GitHub issue per finding, with gh
       cli.py                the command: the report, --json, --notify

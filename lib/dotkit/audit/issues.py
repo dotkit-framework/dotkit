@@ -37,7 +37,7 @@ def title(f: match.Finding) -> str:
 def body(f: match.Finding) -> str:
     a, item = f.advisory, f.item
     rows = [("Tool", f"`{item.name}` {item.version} ({match.SOURCE_NAMES[item.source]})"),
-            ("Advisory", f"[{a.id}]({a.url})"), ("Severity", a.severity.lower() or "unknown")]
+            ("Advisory", f"[{a.id}]({a.url})"), ("Severity", match.severity_text(a))]
     if a.aliases:
         rows.append(("Aliases", ", ".join(a.aliases)))
     if a.fixed:
