@@ -148,11 +148,13 @@ fi
 step 'npm token'
 token=npm_$(printf 'x%.0s' $(seq 36))
 # shellcheck disable=SC2016 # Literal text of the file.
+# The dotkit settings are the global config of npm (NPM_CONFIG_GLOBALCONFIG),
+# so config/npmrc has only the lines of ~/.npmrc.
 if grep -qxF '//npm.pkg.github.com/:_authToken=${GITHUB_NPM_TOKEN}' "$repo/config/npmrc" &&
-  grep -qxF 'min-release-age=7' "$repo/config/npmrc"; then
-  pass 'config/npmrc has the dotkit settings and the token variable'
+  ! grep -qxF 'min-release-age=7' "$repo/config/npmrc"; then
+  pass 'config/npmrc has the token variable, without the dotkit settings'
 else
-  fail 'config/npmrc does not have the dotkit settings and the token variable'
+  fail 'config/npmrc does not have the token variable, or has the dotkit settings'
 fi
 # npm shows a token as (protected), so check the variable, and that npm
 # expands it: without it, npm warns "Failed to replace env in config".
@@ -164,6 +166,13 @@ for shell in zsh bash; do
     pass "$shell -l has GITHUB_NPM_TOKEN from ~/.secrets, and npm expands it"
   else
     fail "$shell -l: '$out'"
+  fi
+  cmd='npm config get min-release-age'
+  if [[ $shell == zsh ]]; then out=$(zsh_login "$cmd") || out=''; else out=$(bash -lc "$cmd" </dev/null) || out=''; fi
+  if [[ $out == 7 ]]; then
+    pass "$shell -l: npm reads min-release-age=7 from the dotkit global config"
+  else
+    fail "$shell -l: npm min-release-age is '$out'"
   fi
 done
 

@@ -107,18 +107,27 @@ in
         brews = [ ./brews.txt ];
         casks = [ ./casks.txt ];
       };
-      guiVariables = [ "JAVA_HOME" ];
+      guiVariables = [
+        "JAVA_HOME"
+        "NPM_CONFIG_GLOBALCONFIG"
+      ];
     };
 
     home-manager.users.${user.name}.home.packages = map package (names cfg.lists.packages);
 
-    # The links of nix/links.nix, for the report of `dotkit apply` and `dotkit doctor`.
-    environment.etc."dotkit/links.json".text = builtins.toJSON (
-      config.home-manager.users.${user.name}.dotkit.manifest
-      // {
-        inherit (config.home-manager) backupFileExtension;
-      }
-    );
+    environment.etc = {
+      # uv reads this system config first, then ~/.config/uv/uv.toml, which is
+      # yours and wins.
+      "uv/uv.toml".source = ../config/uv.toml;
+
+      # The links of nix/links.nix, for the report of `dotkit apply` and `dotkit doctor`.
+      "dotkit/links.json".text = builtins.toJSON (
+        config.home-manager.users.${user.name}.dotkit.manifest
+        // {
+          inherit (config.home-manager) backupFileExtension;
+        }
+      );
+    };
 
     system = {
       primaryUser = user.name;

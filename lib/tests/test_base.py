@@ -27,6 +27,18 @@ class BaseTests(unittest.TestCase):
         for main in base.SHELL_LAYERS:
             self.assertIn(main, links)
 
+    def test_own_files_match_nix(self):
+        """base.OWN_FILES: the base puts their settings where the tool reads them first, and does not link them."""
+        home = (fake.ROOT / "nix/home.nix").read_text()
+        darwin = (fake.ROOT / "nix/darwin.nix").read_text()
+        self.assertEqual([o.target for o in base.OWN_FILES], [".npmrc", ".config/uv/uv.toml"])
+        self.assertIn('NPM_CONFIG_GLOBALCONFIG = "${cfg.source}/config/npmrc";', home)
+        self.assertIn('"uv/uv.toml".source = ../config/uv.toml;', darwin)
+        for own in base.OWN_FILES:
+            self.assertTrue((fake.ROOT / own.source).is_file(), own.source)
+            self.assertNotIn(f'"{own.target}" =', home, own.target)
+            self.assertNotIn(own.target, base.BASE_TARGETS)
+
     def test_layers_match_nix_home(self):
         """dotkit.layers of nix/home.nix are the layers of base.py, and the mise config."""
         text = (fake.ROOT / "nix/home.nix").read_text()

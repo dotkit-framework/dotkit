@@ -76,8 +76,8 @@ dotkit also has, other config to copy into the repository, and the plan.
 | Global npm, pnpm, bun, pipx, and `uv tool` tools | `config/mise.toml`, as `npm:` and `pipx:` tools. cargo and Go tools are off: mise builds them from source |
 | `~/.zshrc`, `~/.zshenv`, `~/.zprofile`, `~/.bash_profile` | Plain exports, aliases, functions, and PATH directories that exist, in `config/zsh/` and `config/bash/`, linked as the `.local` files. Framework, prompt, and version manager lines, tool setup that the base does, and blocks go to the report |
 | Ghostty, Git, and mise config | Yours, read after the dotkit file |
-| Starship, uv, and the other tools that read one file | Yours, instead of the dotkit file |
-| `~/.npmrc` with registries | The dotkit file, with your registries and their tokens. Your other npm settings go to the report |
+| Starship and the other tools that read one file | Yours, instead of the dotkit file |
+| `~/.npmrc`, `~/.config/uv/uv.toml` | Yours, read after the dotkit settings. The tokens of `~/.npmrc` go to `~/.secrets` |
 | Detected secrets: tokens in shell files, `~/.npmrc`, and Git config | Variables in `~/.secrets`, outside the repository (see below) |
 | Other `~/.config` entries, pi (`~/.pi/agent`), version managers | Stay in place, or go to `config/` if you select them. The report lists them, with the mise commands for the versions. An old place of an app's config, such as `~/.config/pi`, is not offered |
 
@@ -195,6 +195,14 @@ Most base files read a file of yours after them, so your settings win:
 | `~/.config/git/config` | `~/.gitconfig` |
 | `~/.config/ghostty/config` | `~/.config/ghostty/config.local` |
 | `~/.config/mise/conf.d/dotkit.toml` | `~/.config/mise/config.toml` (a tool there replaces the base version) |
+| `config/npmrc` of dotkit, the global config of npm (`NPM_CONFIG_GLOBALCONFIG`) | `~/.npmrc` |
+| `/etc/uv/uv.toml` | `~/.config/uv/uv.toml` |
+
+`npm config ls` shows the settings of both npm files, and which of yours
+replace a base setting. `npm config set -g` would write the base file: set
+your settings in `~/.npmrc` instead. Programs that do not get the environment
+of the shell or of the GUI apps, such as `env -i`, do not read the npm base
+settings.
 
 `~/.bash_profile` gives `bash -l`, for example a script with `#!/bin/bash -l`,
 the same PATH and mise as zsh. An interactive bash then reads `~/.bashrc`.
@@ -224,13 +232,14 @@ dotkit.links.".config/ghostty/config.local" = "config/ghostty.conf";
 ```
 
 A relative source is a file in your dotfiles repository. These tools read one
-file only: Starship, herdr, npm, pnpm, uv, bun, RubyGems, and EditorConfig.
+file only: Starship, herdr, pnpm, bun, RubyGems, EditorConfig, and the Git
+ignore file.
 To change one of them, copy the base file to your repository and link the
 same target. Your link replaces the base link:
 
 ```nix
 dotkit.links.".config/herdr/config.toml" = "config/herdr.toml";
-dotkit.links.".npmrc" = null; # no link at all
+dotkit.links.".gemrc" = null; # no link at all
 ```
 
 zsh settings that need a rebuild are options in `nix/shell.nix`:

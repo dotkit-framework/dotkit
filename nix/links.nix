@@ -57,7 +57,7 @@ in
       default = { };
       example = {
         ".config/starship.toml" = "config/starship.toml";
-        ".npmrc" = null;
+        ".gemrc" = null;
       };
       description = ''
         Links in the home directory: target = source. A relative source is a

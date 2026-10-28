@@ -1,11 +1,13 @@
 """Your config files where dotkit links its own: layer, replace, the dotkit file, or keep yours.
 
-Also ~/.gitconfig (adopted into config/gitconfig, merged with
+Also the files that their tool reads after the dotkit settings, which the
+base puts in another place (base.OWN_FILES: ~/.npmrc, ~/.config/uv/uv.toml):
+adopt or keep. Also ~/.gitconfig (adopted into config/gitconfig, merged with
 ~/.config/git/config when both are carried) and your mise config, which
 becomes the base of config/mise.toml when it is carried as "layer". A file
 with a secret never goes into the repository. When lift.py can move all its
 secrets to variables of ~/.secrets, the rest of it can: ~/.npmrc as
-"tokens" (the dotkit file with your registries and tokens), a Git config file
+"tokens" (your file, with a variable for each token), a Git config file
 without its settings with a secret, which go to GIT_CONFIG_* variables.
 """
 
@@ -30,7 +32,7 @@ OPTION_TEXT = {
     "dotkit": "the dotkit file; yours is renamed to <name>.before-dotkit",
     "keep": "leave yours in place, outside the repository",
     "adopt": "yours, in the repository",
-    "tokens": "the dotkit file, with your registries and tokens; the tokens go to ~/.secrets",
+    "tokens": "yours, in the repository; the tokens go to ~/.secrets",
 }
 
 MISE_CONFIG = ".config/mise/config.toml"
@@ -44,7 +46,7 @@ class ConfigFile:
     same_as_base: bool = False
     # Your layer file of the base link (~/.config/ghostty/config.local) exists already.
     layer_exists: bool = False
-    # ~/.npmrc: its registries and tokens (lift.npmrc), None without any or when a secret cannot be moved.
+    # ~/.npmrc: its tokens (lift.npmrc), None without a token or when a secret cannot be moved.
     npm: Optional[lift.NpmTokens] = None
     # A Git config file with secrets that can all move to ~/.secrets: its text without them, and the settings
     # (lift.gitconfig). None otherwise.
@@ -54,6 +56,7 @@ class ConfigFile:
 @dataclass
 class ConfigFacts:
     files: List[ConfigFile] = field(default_factory=list)  # at the targets of base.LINKS
+    own: List[ConfigFile] = field(default_factory=list)  # at the targets of base.OWN_FILES
     gitconfig: Optional[ConfigFile] = None
     mise_config: Optional[ConfigFile] = None  # ~/.config/mise/config.toml
     mise_tools: Dict[str, object] = field(default_factory=dict)  # its [tools], parsed
@@ -75,8 +78,7 @@ def _secrets_of(p: Path) -> List[secrets.Secret]:
 
 def _allowed(x: ConfigFile) -> Tuple[str, ...]:
     """The choices of a file with secrets: none of them copies a secret into the repository."""
-    return ("keep", "dotkit") + (("tokens",) if x.npm else ()) + \
-        (("layer", "replace", "adopt") if x.lifted else ())
+    return ("keep", "dotkit") + (("layer", "replace", "adopt") if x.lifted else ())
 
 
 def _secret_note(x: ConfigFile) -> str:
@@ -194,11 +196,22 @@ def _idiomatic(f: Facts, txn: Txn, settings: Dict[str, object], layered: bool) -
 
 def _choice(x: ConfigFile, c: Choices) -> str:
     choice = c.option(f"file:{x.target}") or "dotkit"
-    if choice == "tokens" and not x.npm:
-        choice = "dotkit"
     if x.secrets and choice not in _allowed(x):
         choice = "keep"
     return choice
+
+
+def _own_options(x: ConfigFile) -> List[str]:
+    """The choices of a file of base.OWN_FILES: none of them copies a secret into the repository."""
+    if x.npm:
+        return ["tokens", "keep"]
+    return ["keep"] if x.secrets else ["adopt", "keep"]
+
+
+def _own_choice(x: ConfigFile, c: Choices) -> str:
+    options = _own_options(x)
+    choice = c.option(f"file:{x.target}") or options[0]
+    return choice if choice in options else "keep"
 
 
 def _git_choice(cf: ConfigFacts, c: Choices) -> str:
@@ -235,13 +248,6 @@ def merged_sources(f: Facts, c: Choices) -> Dict[str, str]:
     return {"config/gitconfig": " and ".join(w for w, _ in parts)} if len(parts) > 1 else {}
 
 
-def _npm_base(f: Facts, link: base_mod.Link) -> str:
-    """config/npmrc of dotkit without its first comment, which is about the dotkit file."""
-    text = _text(f.base.file(link.source))
-    head, sep, rest = text.partition("\n\n")
-    return rest if sep and all(row.startswith("#") for row in head.splitlines()) else text
-
-
 def _text(p: Path) -> str:
     return p.read_text(encoding="utf-8", errors="replace")
 
@@ -262,11 +268,11 @@ class ConfigFiles(Migrator):
         return ("None of your config files is carried or kept in place. dotkit links its own files at "
                 f"{and_list([f'~/{link.target}' for link in base_mod.LINKS])}, and links config/mise.toml of "
                 f"this repository as ~/{MISE_CONFIG}. The first apply renames your files at these paths to "
-                "<name>.before-dotkit. They stay on disk, outside the repository, and the tools no longer read "
-                "them. The tools of your old mise config are not in config/mise.toml. If a file with a login, "
-                "such as ~/.npmrc with a token, was renamed, log in again or copy the token by hand; do not put "
-                f"it into Git. ~/{git.layer} stays in place, and Git still reads it after the dotkit settings. "
-                "Copy the settings you need from the .before-dotkit files.")
+                "<name>.before-dotkit. They stay on disk, outside the repository, and the tools no longer read them. "
+                "The tools of your old mise config are not in config/mise.toml. "
+                f"{and_list([f'~/{o.target}' for o in base_mod.OWN_FILES])} stay in place, outside the repository: "
+                f"their tools read them after the dotkit settings. ~/{git.layer} stays in place, and Git still reads "
+                "it after the dotkit settings. Copy the settings you need from the .before-dotkit files.")
 
     def scan(self, ctx: Context) -> ConfigFacts:
         cf = ConfigFacts()
@@ -278,12 +284,20 @@ class ConfigFiles(Migrator):
             same = read_text(p) == read_text(base_file) if base_file.is_file() else False
             layer_exists = bool(link.layer) and (ctx.home / link.layer).exists()
             x = ConfigFile(link.target, p, _secrets_of(p), same, layer_exists)
-            if link.target == ".npmrc" and not any(s.line == 0 for s in x.secrets):
-                npm = lift.npmrc(read_text(p))
-                x.npm = npm if npm and npm.settings else None
             if link.target == ".config/git/config":
                 x.lifted = _git_lift(ctx, p, x.secrets)
             cf.files.append(x)
+        for own in base_mod.OWN_FILES:
+            p = ctx.home / own.target
+            if not p.is_file() or is_managed(p):
+                continue
+            base_file = ctx.base.file(own.source)
+            same = read_text(p) == read_text(base_file) if base_file.is_file() else False
+            x = ConfigFile(own.target, p, _secrets_of(p), same)
+            if own.target == ".npmrc" and x.secrets and not any(s.line == 0 for s in x.secrets):
+                npm = lift.npmrc(read_text(p))
+                x.npm = npm if npm and any(st.var for st in npm.settings) else None
+            cf.own.append(x)
         p = ctx.home / ".gitconfig"
         if p.is_file() and not is_managed(p):
             found = _secrets_of(p)
@@ -303,8 +317,6 @@ class ConfigFiles(Migrator):
         for x in cf.files:
             link = next(link for link in base_mod.LINKS if link.target == x.target)
             options = []
-            if x.npm:
-                options.append("tokens")
             if link.layer and not (x.layer_exists and link.layer != ".gitconfig"):
                 options.append("layer")
             if x.target != ".config/git/config":
@@ -313,21 +325,29 @@ class ConfigFiles(Migrator):
             note = ""
             if x.secrets:
                 # A file with a secret never goes into the repository; the choices that do not copy it remain.
-                options = [o for o in options if o in _allowed(x)] if x.npm or x.lifted else ["keep", "dotkit"]
+                options = [o for o in options if o in _allowed(x)] if x.lifted else ["keep", "dotkit"]
                 default = options[0]
-                if x.npm:
-                    note = _secret_note(x) + ". Its tokens go to ~/.secrets"
-                elif x.lifted:
+                if x.lifted:
                     note = _secret_note(x) + ". Its settings with a secret go to ~/.secrets"
                 else:
                     note = _secret_note(x) + ". It stays out of the repository"
-            elif x.npm:
-                default, note = "tokens", "your registries go to config/npmrc, with the dotkit settings"
             elif x.same_as_base:
                 default, note = "dotkit", "the same as the dotkit file"
             else:
                 default = options[0]
             items.append(_file_item(x.target, options, default, note))
+        for x in cf.own:
+            own = next(o for o in base_mod.OWN_FILES if o.target == x.target)
+            options = _own_options(x)
+            if x.npm:
+                note = _secret_note(x) + ". Its tokens go to ~/.secrets"
+            elif x.secrets:
+                note = _secret_note(x) + ". It stays out of the repository"
+            elif x.same_as_base:
+                note = "the same as the dotkit settings, which are in " + own.base_place
+            else:
+                note = "read after the dotkit settings, which are in " + own.base_place
+            items.append(_file_item(x.target, options, options[0], note))
         if cf.gitconfig:
             g = cf.gitconfig
             if g.secrets and g.lifted:
@@ -389,8 +409,6 @@ class ConfigFiles(Migrator):
                                             f"config/{Path(link.source).name}. Compare the two; the dotkit file "
                                             f"has settings that yours does not, for example "
                                             f"{_base_example(x.target)}."])
-            elif choice == "tokens":
-                _npm_tokens(f, txn, x, link, where)
             elif choice == "keep":
                 txn.links().link(x.target, None)
                 why = "it has secrets (" + ", ".join(sorted({s.what for s in x.secrets})) + ")" if x.secrets \
@@ -403,6 +421,8 @@ class ConfigFiles(Migrator):
                     r.todo("Config files", "", [f"{where} is replaced by the dotkit file and renamed to "
                                                 f"{where}.before-dotkit. Copy the settings you miss to "
                                                 + (f"~/{link.layer}" if link.layer else "your own copy") + "."])
+        for x in cf.own:
+            _plan_own(txn, x, _own_choice(x, c), tilde(x.path, home))
         if cf.gitconfig and git_choice != "adopt":
             why = "it has secrets" if cf.gitconfig.secrets and not cf.gitconfig.lifted else "you chose to keep it"
             r.todo("Config files", "", [f"{tilde(cf.gitconfig.path, home)} stays in place, because {why}. Git "
@@ -443,28 +463,49 @@ GIT_INTRO = ("Git cannot read a variable in its config files, so these settings 
              "shows them as `command`. GUI apps get them too.")
 
 
-def _npm_tokens(f: Facts, txn: Txn, x: ConfigFile, link: base_mod.Link, where: str) -> None:
-    """~/.npmrc as "tokens": the dotkit settings, with your registries; each token is a variable of ~/.secrets."""
+def _plan_own(txn: Txn, x: ConfigFile, choice: str, where: str) -> None:
+    """A file of base.OWN_FILES: adopted into the repository, with its tokens as variables, or kept in place."""
+    own = next(o for o in base_mod.OWN_FILES if o.target == x.target)
+    r = txn.report
+    if choice == "keep":
+        why = "it has secrets (" + ", ".join(sorted({s.what for s in x.secrets})) + ")" if x.secrets \
+            else "you chose to keep it"
+        r.todo("Config files", "", [f"{where} stays in place and outside the repository, because {why}. Its tool "
+                                    f"reads it after the dotkit settings, which are in {own.base_place}."])
+        return
+    if choice == "tokens":
+        _npm_tokens(txn, x, own, where)
+    else:
+        txn.copies.add(own.repo_file, x.path)
+        r.carried(where, f"{own.repo_file} (read after the dotkit settings)")
+    txn.links().link(x.target, own.repo_file)
+    if x.same_as_base:
+        r.todo("Config files", "", [f"{own.repo_file} has the same settings as the dotkit settings in "
+                                    f"{own.base_place}. Delete the lines that you do not need to set again."])
+
+
+def _npm_tokens(txn: Txn, x: ConfigFile, own: base_mod.OwnFile, where: str) -> None:
+    """~/.npmrc as "tokens": your file, with a variable of ~/.secrets for each token. A comment with a secret is
+    left out."""
     r, s = txn.report, txn.secrets()
+    tokens = {st.key: st for st in x.npm.settings if st.var}
     lines, moved = [], []
-    for st in x.npm.settings:
-        if not st.var:
-            lines.append(f"{st.key}={st.value}")
+    for line in read_text(x.path).splitlines():
+        stripped = line.strip()
+        if stripped[:1] in ("#", ";") and secrets.line_secret(line):
+            continue
+        key = stripped.split("=", 1)[0].strip() if "=" in stripped else ""
+        st = tokens.get(key)
+        if st is None:
+            lines.append(line)
             continue
         name = s.free_name(st.var, st.value)
         s.export(name, st.value, secrets_file.export_line(name, st.value), where)
         lines.append(f"{st.key}=${{{name}}}")
         moved.append(f"{where}: `{name}`, for `{st.key}`")
-    txn.file(link.repo_file).set(f"# Your registries and tokens, from {where}. npm reads the tokens from "
-                                 "~/.secrets.\n" + "\n".join(lines) + "\n\n" + _npm_base(f, link))
-    txn.links().link(x.target, link.repo_file)
-    r.carried(where, f"{link.repo_file} (the dotkit settings, with your registries and tokens)")
-    r.todo("Config files", "", [f"{link.repo_file} has the dotkit settings and the registries and tokens of {where}. "
-                                f"It replaces {link.source} of dotkit, so compare the two after `dotkit upgrade`."])
-    if x.npm.other:
-        keys = ", ".join(f"`{k}`" for k in x.npm.other)
-        r.todo("Config files", "", [f"{where}: these settings are not carried: {keys}. The first apply renames it to "
-                                    f"{where}.before-dotkit. Copy the ones you need to {link.repo_file}."])
+    txn.file(own.repo_file).set(f"# From {where}. npm reads the tokens from ~/.secrets, and this file after the "
+                                "dotkit settings.\n" + "\n".join(lines) + "\n")
+    r.carried(where, f"{own.repo_file} (read after the dotkit settings, with the tokens in ~/.secrets)")
     if moved:
         r.todo("Secrets", NPM_INTRO, moved)
 
@@ -494,8 +535,6 @@ def _git_secrets(txn: Txn, parts: List[Tuple[str, List[Tuple[str, str]]]]) -> No
 
 def _base_example(target: str) -> str:
     return {
-        ".npmrc": "min-release-age=7 and prefix=${HOME}/.local",
-        ".config/uv/uv.toml": "the 7-day wait for new releases",
         ".config/starship.toml": "the Nerd Font symbols and the Git status",
         ".gemrc": "the 7-day wait for new gems",
         ".bunfig.toml": "the 7-day wait for new releases",

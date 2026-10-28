@@ -65,6 +65,10 @@ in
         JAVA_HOME = pkgs.zulu17.home;
         DOTKIT_TOOL_PATH = lib.concatStringsSep ":" cfg.toolPath;
 
+        # npm reads the dotkit settings as its global config, then ~/.npmrc,
+        # which is yours and wins.
+        NPM_CONFIG_GLOBALCONFIG = "${cfg.source}/config/npmrc";
+
         # New releases wait 7 days, as in config/npmrc, pnpm.yaml, uv.toml,
         # bunfig.toml, and mise.toml. pip 26.1 or newer reads the duration.
         PIP_UPLOADED_PRIOR_TO = "P7D";
@@ -117,7 +121,6 @@ in
         ".bunfig.toml" = "config/bunfig.toml";
         ".editorconfig" = "config/editorconfig";
         ".gemrc" = "config/gemrc";
-        ".npmrc" = "config/npmrc";
 
         ".zshenv" = "config/zsh/zshenv";
         ".zprofile" = "config/zsh/zprofile";
@@ -140,7 +143,6 @@ in
         # mise reads conf.d and ~/.config/mise/config.toml. `mise use -g` writes the latter.
         ".config/mise/conf.d/dotkit.toml" = "config/mise.toml";
         ".config/starship.toml" = "config/starship.toml";
-        ".config/uv/uv.toml" = "config/uv.toml";
 
         # pnpm reads its global config here on macOS unless XDG_CONFIG_HOME is set.
         "Library/Preferences/pnpm/config.yaml" = "config/pnpm.yaml";

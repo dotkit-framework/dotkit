@@ -126,7 +126,7 @@ class FlowTests(unittest.TestCase):
         p = self.session()
         ok, c, ui = self.run_flow(p, answers={"files": {"file:.npmrc": "replace"}})
         self.assertTrue(ok)
-        self.assertEqual(ui.errors["file:.npmrc"], "replace is not one of: tokens, dotkit, keep")
+        self.assertEqual(ui.errors["file:.npmrc"], "replace is not one of: tokens, keep")
         self.assertEqual(c.option("file:.npmrc"), "tokens")
 
     def test_a_repository_outside_the_home_directory(self):
@@ -184,8 +184,8 @@ class FlowTests(unittest.TestCase):
         files = by_id["files"]
         self.assertEqual(files.kind, "choices")
         npmrc = next(r for r in files.rows if r.id == "file:.npmrc")
-        self.assertEqual(npmrc.options, ("tokens", "dotkit", "keep"))
-        self.assertEqual(set(npmrc.option_text), {"tokens", "dotkit", "keep"})
+        self.assertEqual(npmrc.options, ("tokens", "keep"))
+        self.assertEqual(set(npmrc.option_text), {"tokens", "keep"})
         self.assertEqual(files.get("file:.npmrc"), "tokens")
 
 

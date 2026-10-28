@@ -544,12 +544,12 @@ class ManualStepsTests(unittest.TestCase):
         self.assertEqual(self.text("config_files"), (
             "None of your config files is carried or kept in place. dotkit links its own files at "
             "~/.config/git/config, ~/.config/git/ignore, ~/.config/ghostty/config, ~/.config/herdr/config.toml, "
-            "~/.config/starship.toml, ~/.config/uv/uv.toml, ~/.npmrc, ~/.gemrc, ~/.bunfig.toml, ~/.editorconfig, "
+            "~/.config/starship.toml, ~/.gemrc, ~/.bunfig.toml, ~/.editorconfig, "
             "and ~/Library/Preferences/pnpm/config.yaml, and links config/mise.toml of this repository as "
             "~/.config/mise/config.toml. The first apply renames your files at these paths to <name>.before-dotkit. "
             "They stay on disk, outside the repository, and the tools no longer read them. The tools of your old "
-            "mise config are not in config/mise.toml. If a file with a login, such as ~/.npmrc with a token, was "
-            "renamed, log in again or copy the token by hand; do not put it into Git. ~/.gitconfig stays in place, "
+            "mise config are not in config/mise.toml. ~/.npmrc and ~/.config/uv/uv.toml stay in place, outside the "
+            "repository: their tools read them after the dotkit settings. ~/.gitconfig stays in place, "
             "and Git still reads it after the dotkit settings. Copy the settings you need from the .before-dotkit "
             "files."))
 

@@ -1,1 +1,3 @@
+# dotkit base: nix-darwin writes it to /etc/uv/uv.toml. uv reads it first,
+# then ~/.config/uv/uv.toml, which is yours and wins.
 exclude-newer = "7 days"

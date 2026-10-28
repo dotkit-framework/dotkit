@@ -196,9 +196,8 @@ class PlanTests(unittest.TestCase):
             ".gitconfig": "config/gitconfig",
         })
         self.assertIn('    ".npmrc" = "config/npmrc";\n', f["nix/home.nix"])
-        self.assertEqual(f["config/npmrc"], "# Your registries and tokens, from ~/.npmrc. npm reads the tokens from "
-                         "~/.secrets.\n//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n\n" +
-                         (fake.ROOT / "config/npmrc").read_text().split("\n\n", 1)[1])
+        self.assertEqual(f["config/npmrc"], "# From ~/.npmrc. npm reads the tokens from ~/.secrets, and this file "
+                         "after the dotkit settings.\n//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n")
         self.assertIn("export EDITOR=vim\nalias gs='git status'\n", f["config/zsh/zshrc"])
         self.assertIn('path=("$HOME/bin" $path)', f["config/zsh/zprofile"])
         self.assertIn("export BASH_THING=1", f["config/bash/bash_profile"])
