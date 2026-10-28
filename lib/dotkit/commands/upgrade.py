@@ -166,9 +166,8 @@ class Upgrade:
                 overlap.report(self.env, self.env.result, dry_run=True)
             ui.hint("No change. Run dotkit upgrade to apply.")
             return 0
-        if not ui.confirm("Upgrade?", self.yes):
-            self.restore_locks()
-            raise ui.die("nothing changed.")
+        # The answer no stops here; run() restores the lock files.
+        ui.confirm_or_stop("Upgrade?", self.yes)
 
         if nix_rows:
             if self.nix.switch(built=True) != 0:

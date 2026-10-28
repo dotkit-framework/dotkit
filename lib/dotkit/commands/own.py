@@ -20,15 +20,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
-from ..core import nix_links, paths, ui
+from ..core import change, nix_links, paths, ui
 from ..core.env import Env
 from ..core.manifest import Manifest
 from ..core.nix_links import nix_string
 from ..migrate.base import OWN_FILES
-from ..pkg import edit
 from . import overlap
 
-FAILED = "nothing changed. Fix the errors above, then run the command again."
 SKIP = "skip"  # nothing to do for an argument, and not an error
 # The header of a copy, instead of the first comment block of a base file that starts with "# dotkit base".
 HEADER = ("# From the dotkit base (dotkit own). After a dotkit upgrade, dotkit doctor shows\n"
@@ -90,13 +88,13 @@ class Own:
             target = targets[0]
             if any(c.target == target for c in changes):
                 continue
-            change = self._release(arg, target, manifest) if release else self._own(arg, target, manifest, changes)
-            if change is None:
+            planned = self._release(arg, target, manifest) if release else self._own(arg, target, manifest, changes)
+            if planned is None:
                 failed = True
-            elif change != SKIP:
-                changes.append(change)
+            elif planned != SKIP:
+                changes.append(planned)
         if failed:
-            raise ui.die(FAILED)
+            raise ui.die(ui.FAILED)
         if not changes:
             return 0
         if self.dry_run:
@@ -105,11 +103,10 @@ class Own:
             return 0
         n = len(changes)
         question = ("Release" if release else "Own") + (" the file?" if n == 1 else f" the {n} files?")
-        if not ui.confirm(question, self.yes):
-            raise ui.die("nothing changed.")
+        ui.confirm_or_stop(question, self.yes)
         nix_files = sorted({c.edit.path for c in changes})
         created = [self.env.repo / c.repo_file for c in changes if c.copy_from is not None]
-        edit.apply_nix(self.env, lambda: self._write(changes), paths=nix_files, created=created)
+        change.apply_nix(self.env, lambda: self._write(changes), nix_files, created)
         if not release:
             # The new link replaces a base file on purpose: the next report does not show it as new.
             overlap.acknowledge(self.env, self.env.result, [f"link:{c.target}" for c in changes])

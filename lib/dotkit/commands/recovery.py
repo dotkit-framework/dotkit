@@ -42,9 +42,8 @@ def clean(env: Env, age: str, dry_run: bool, yes: bool) -> int:
             return code
         ui.hint("No change. Run dotkit clean to delete.")
         return 0
-    if not ui.confirm(f"Delete Nix generations older than {age}, old Homebrew downloads, and unused mise "
-                      "versions?", yes):
-        raise ui.die("nothing changed.")
+    ui.confirm_or_stop(f"Delete Nix generations older than {age}, old Homebrew downloads, and unused mise "
+                       "versions?", yes)
     for argv in (["sudo", "nix-collect-garbage", "--delete-older-than", age], ["brew", "cleanup"]):
         code = proc.run(argv).code
         if code:

@@ -44,7 +44,7 @@ class ChangedFileTests(unittest.TestCase):
             home_nix.write_text(changed)
             return True
         with mock.patch.object(Manifest, "evaluate", lambda env: self.manifest), \
-                mock.patch.object(ui, "confirm", confirm), mock.patch.object(own.edit.nix, "Nix") as nix:
+                mock.patch.object(ui, "confirm", confirm), mock.patch.object(own.change.nix, "Nix") as nix:
             with self.assertRaises(ui.Exit) as e:
                 own.own(self.env, args, release, False, False)
         nix.return_value.build_system.assert_not_called()

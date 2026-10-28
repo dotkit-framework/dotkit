@@ -27,6 +27,10 @@ def die(msg: str) -> Exit:
     return Exit(1, f"dotkit: {msg}")
 
 
+# The end of a command that checked all its arguments first, when one of them failed.
+FAILED = "nothing changed. Fix the errors above, then run the command again."
+
+
 def usage_error(msg: str, hint: str = "Run dotkit --help.") -> Exit:
     return Exit(2, f"dotkit: {msg} {hint}")
 
@@ -209,6 +213,12 @@ def confirm(question: str, yes: bool) -> bool:
         raise die("confirmation needs a terminal. Use -y to continue without one.")
     _write(sys.stderr, f"{mark('?', 'warn', True)}{paint(question, 'heading', True)} {paint('[y/N]', 'dim', True)} ")
     return (read_line() or "").strip(" \t") in ("y", "Y")
+
+
+def confirm_or_stop(question: str, yes: bool) -> None:
+    """confirm(), and the answer no stops the command with "nothing changed."."""
+    if not confirm(question, yes):
+        raise die("nothing changed.")
 
 
 def read_line() -> Optional[str]:

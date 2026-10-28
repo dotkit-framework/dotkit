@@ -19,7 +19,7 @@ selects them; the plan shows them with the prefix to use after a check.
 An app cask and a formula with the same name stop with an error.
 
 The modules: lookups.py asks the sources, declared.py reads the lists and
-finds installed commands, resolve.py selects a source, and edit.py changes
-the lists and applies them. cli.py has the commands. lib/tests/BEHAVIOR.md has
+finds installed commands, and resolve.py selects a source. cli.py has the
+commands; it changes the lists and applies them with core/change.py. lib/tests/BEHAVIOR.md has
 the behavior of each, row by row.
 """

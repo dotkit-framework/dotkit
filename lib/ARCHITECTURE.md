@@ -54,6 +54,7 @@ lib/
       paths.py              paths for messages (~, the repository, the base), the links of Home Manager
       manifest.py           the manifest of the links (etc/dotkit/links.json): from a system, or by nix eval
       nix_links.py          the link lines of dotkit.links in nix/: plan, check, and edit them
+      change.py             change files of the repository, build, activate; restore them on a failure
       backup.py             copies of files to restore on a failure or a signal
     commands/               apply, upgrade, own, doctor, clean, history, rollback, migrate, tidy
       overlap.py            what the repository repeats or replaces of the base: the report, doctor
@@ -65,7 +66,6 @@ lib/
       declared.py           where a tool is declared, and which global tool has a command
       resolve.py            select the source; choose() has the rules and runs no command
       picker.py             the source picker of add (prompt_toolkit)
-      edit.py               change the lists, build, activate; restore the lists on a failure
       cli.py                the commands
     migrate/                the migration wizard
   tests/
@@ -89,7 +89,7 @@ lib/
 - **Only `core/lists.py` and `core/backup.py` change the config files**
   (and `mise use`/`unuse`, which mise does). A change that must not stay
   half done goes inside `backup.Backup` and `backup.on_signals()`:
-  `pkg/edit.py` and `commands/upgrade.py` show how.
+  `core/change.py` and `commands/upgrade.py` show how.
 - **The lookups are apart from the decisions.** `pkg/lookups.py` talks to
   the tools and returns data; `pkg/resolve.choose()` decides and runs no
   command, so its tests are a table.

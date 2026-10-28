@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from ..core import nix, proc, ui
+from ..core import change, nix, proc, ui
 from ..core.env import Env
 from . import overlap
 
@@ -33,11 +33,7 @@ def apply(env: Env, dry_run: bool) -> int:
         overlap.report(env, env.result, dry_run=True)
         ui.hint("No change. Run dotkit apply to apply.")
         return 0
-    code = n.switch()
-    if code:
-        return code
-    ui.progress("Installing the mise tools...")
-    code = proc.mise(env.home, ["install"]).code
+    code = n.build_system() or change.activate_and_install(env)
     if code:
         return code
     overlap.report(env, env.result, dry_run=False)

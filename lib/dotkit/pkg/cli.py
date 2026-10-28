@@ -6,14 +6,13 @@ import os
 import re
 from typing import List, Optional, Sequence, Set
 
-from ..core import lists, mise_toml, nix, proc, ui
+from ..core import change, lists, mise_toml, nix, proc, ui
 from ..core.env import Env
-from . import declared, edit, picker
-from .entries import KINDS, Entry, kinds_of
+from . import declared, picker
+from .entries import KINDS, NIX_FILES, Entry, kinds_of
 from .lookups import Lookups
 from .resolve import KEYS, Candidates, Outcome, Resolver, Selection
 
-FAILED = "nothing changed. Fix the errors above, then run the command again."
 # The reason of a source that the user selected in the picker, when it is not the one of the rules.
 PICKED = "selected in the list"
 
@@ -54,6 +53,9 @@ class Pkg:
         self.dry_run, self.yes, self.force = dry_run, yes, force
         self.look = Lookups(env)
         self.resolver = Resolver(self.look)
+
+    def _lists(self) -> list:
+        return [self.env.repo / f for f in NIX_FILES]
 
     # --- add
 
@@ -112,7 +114,7 @@ class Pkg:
             print_candidates(outcome.candidates, s)
             (nix_edits if s.entry.nix else mise_entries).append(s.entry)
         if failed:
-            raise ui.die(FAILED)
+            raise ui.die(ui.FAILED)
         planned = len(nix_edits) + len(mise_entries)
         if planned == 0:
             return 0
@@ -120,14 +122,13 @@ class Pkg:
             ui.hint("No change. Run the command without -n to add.")
             return 0
         what = "tool" if planned == 1 else f"{planned} tools"
-        if not ui.confirm(f"Add the {what}?", self.yes):
-            raise ui.die("nothing changed.")
+        ui.confirm_or_stop(f"Add the {what}?", self.yes)
         # Nix first: a failed build restores the Nix files, and mise is not changed yet.
         if nix_edits:
-            def change() -> None:
+            def edit_lists() -> None:
                 for e in nix_edits:
                     lists.append(self.env.repo / e.file, e.text)
-            edit.apply_nix(self.env, change)
+            change.apply_nix(self.env, edit_lists, self._lists())
         # `mise use` writes "latest" when the spec has no version.
         for e in mise_entries:
             if not proc.mise(self.env.home, ["use", "-g", e.text]).ok:
@@ -226,17 +227,16 @@ class Pkg:
                 ui.out(f"{_tool(tool)} remove {ui.paint(entry.text, 'removed')} from {ui.paint(entry.file, 'file')}")
             (nix_edits if entry.nix else mise_entries).append(entry)
         if failed:
-            raise ui.die(FAILED)
+            raise ui.die(ui.FAILED)
         if self.dry_run:
             ui.hint("No change. Run the command without -n to remove.")
             return 0
-        if not ui.confirm("Remove?", self.yes):
-            raise ui.die("nothing changed.")
+        ui.confirm_or_stop("Remove?", self.yes)
         if nix_edits:
-            def change() -> None:
+            def edit_lists() -> None:
                 for e in nix_edits:
                     (lists.delete_mas if e.kind == "mas" else lists.delete)(self.env.repo / e.file, e.text)
-            edit.apply_nix(self.env, change)
+            change.apply_nix(self.env, edit_lists, self._lists())
             # Activation does not uninstall Homebrew packages (homebrew.onActivation.cleanup in
             # nix/darwin.nix), so uninstall the removed ones here. With cleanup = "uninstall", activation did
             # it already.

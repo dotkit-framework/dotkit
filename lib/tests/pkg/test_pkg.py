@@ -17,9 +17,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from dotkit.core import change
 from dotkit.core import env as env_mod
 from dotkit.core import ui
-from dotkit.pkg import cli, declared, edit, lookups, picker
+from dotkit.pkg import cli, declared, lookups, picker
+from dotkit.pkg.entries import NIX_FILES
 from dotkit.pkg.lookups import Found
 from dotkit.pkg.resolve import Candidates, choose
 from tests import fake
@@ -156,12 +158,12 @@ class SignalTests(Sandbox):
         self.quiet()
         packages = self.dir / "repo/nix/packages.txt"
 
-        def change():
+        def edit_lists():
             packages.write_text("changed\n")
 
         with mock.patch("dotkit.core.nix.Nix.build_system", side_effect=KeyboardInterrupt):
             with self.assertRaises(ui.Exit) as c:
-                edit.apply_nix(self.env, change)
+                change.apply_nix(self.env, edit_lists, [self.env.repo / f for f in NIX_FILES])
         self.assertEqual((c.exception.code, c.exception.text), (130, "\ndotkit: stopped. The Nix files are restored."))
         self.assertEqual(packages.read_text(), "jq\n")
 
@@ -169,12 +171,12 @@ class SignalTests(Sandbox):
         self.quiet()
         casks = self.dir / "repo/nix/casks.txt"
 
-        def change():
+        def edit_lists():
             casks.write_text("half")
             os.kill(os.getpid(), signal.SIGTERM)
 
         with self.assertRaises(ui.Exit) as c:
-            edit.apply_nix(self.env, change)
+            change.apply_nix(self.env, edit_lists, [self.env.repo / f for f in NIX_FILES])
         self.assertEqual(c.exception.code, 130)
         self.assertEqual(casks.read_text(), "zed")
         self.assertEqual(signal.getsignal(signal.SIGTERM), signal.SIG_DFL)
@@ -183,12 +185,12 @@ class SignalTests(Sandbox):
         self.quiet()
         packages = self.dir / "repo/nix/packages.txt"
 
-        def change():
+        def edit_lists():
             packages.write_text("half")
             raise PermissionError("read-only")
 
         with self.assertRaises(ui.Exit) as c:
-            edit.apply_nix(self.env, change)
+            change.apply_nix(self.env, edit_lists, [self.env.repo / f for f in NIX_FILES])
         self.assertEqual((c.exception.code, c.exception.text),
                          (1, "dotkit: could not change the Nix files. They are restored."))
         self.assertEqual(packages.read_text(), "jq\n")
