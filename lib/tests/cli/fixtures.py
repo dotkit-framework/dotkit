@@ -234,9 +234,10 @@ def audit_nix(packages: List[dict]) -> List[dict]:
     return [_r("nix", r"(?s)^eval --json \S+#darwinConfigurations\.mac --apply ", json.dumps(out))]
 
 
-def mise_ls(tools: dict) -> List[dict]:
-    """mise ls --global --json: key -> installed and active version."""
-    out = {k: [{"version": v, "requested_version": "latest", "installed": True, "active": True}] for k, v in tools.items()}
+def mise_ls(tools: dict, installs: Optional[dict] = None) -> List[dict]:
+    """mise ls --global --json: key -> installed and active version; installs: key -> install_path."""
+    out = {k: [{"version": v, "requested_version": "latest", "installed": True, "active": True,
+                **({"install_path": installs[k]} if installs and k in installs else {})}] for k, v in tools.items()}
     return [_r("mise", r"^ls --global --json$", json.dumps(out, indent=2) + "\n")]
 
 
@@ -260,10 +261,11 @@ def osv_batch(results: List[List[str]]) -> List[dict]:
     return [_r("curl", rf"--data-binary @- {re.escape(OSV)}/querybatch$", json.dumps(out), stdin=True)]
 
 
-def osv_vuln(record: dict) -> List[dict]:
-    """GET /v1/vulns/ID."""
-    record = {"modified": "2026-10-01T00:00:00Z", **record}
-    return [_r("curl", rf" {re.escape(OSV)}/vulns/{re.escape(record['id'])}$", json.dumps(record))]
+def osv_vulns(records: List[dict]) -> List[dict]:
+    """GET /v1/vulns/ID of each record, in one curl: it writes each record to its -o file in the cache."""
+    actions = [{"write": f"@SB/home/.cache/dotkit/osv/{r['id']}.download",
+                "text": json.dumps({"modified": "2026-10-01T00:00:00Z", **r})} for r in records]
+    return [_r("curl", r"--parallel .* " + re.escape(OSV) + r"/vulns/", actions=actions)]
 
 
 # --- the manifest of the links

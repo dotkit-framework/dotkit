@@ -77,26 +77,55 @@ def query(queries: Sequence[dict]) -> List[List[Tuple[str, str]]]:
 def records(ids: Dict[str, str], cache: Path) -> Dict[str, dict]:
     """The advisory of each ID; ids: ID -> modified, from query(). The cache keeps the modified time of
     the batch with each advisory: the advisory itself has the time with more digits. A cached advisory
-    with the same time is not read again."""
-    out = {}
+    with the same time is not read again; the others come in one curl, 8 at a time."""
+    out: Dict[str, dict] = {}
+    need: List[str] = []
     for rid, modified in sorted(ids.items()):
-        path = cache / f"{rid}.json"
-        cached = None
         try:
-            cached = json.loads(path.read_text(encoding="utf-8"))
+            cached = json.loads((cache / f"{rid}.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            pass
+            cached = None
         if (isinstance(cached, dict) and modified and cached.get("batch_modified") == modified
                 and isinstance(cached.get("record"), dict)):
             out[rid] = cached["record"]
-            continue
-        record = _curl([f"{API}/vulns/{rid}"])
-        out[rid] = record
+        else:
+            need.append(rid)
+    if not need:
+        return out
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise ui.die(f"cannot create {cache}: {e.strerror}.") from None
+    args = ["--parallel", "--parallel-max", "8"]
+    for rid in need:
+        # A download of an earlier run that stopped must not count as this one.
         try:
-            cache.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"batch_modified": modified, "record": record}), encoding="utf-8")
-            os.replace(tmp, path)
+            (cache / f"{rid}.download").unlink()
         except OSError:
             pass
+    for rid in need:
+        args += ["-o", str(cache / f"{rid}.download"), f"{API}/vulns/{rid}"]
+    r = proc.run(["curl", "-fsS", "--max-time", "60", "--retry", "3", "--retry-delay", "5", "--retry-all-errors",
+                  *args], stdout=proc.CAPTURE, stderr=proc.CAPTURE)
+    missing = []
+    for rid in need:
+        download = cache / f"{rid}.download"
+        try:
+            record = json.loads(download.read_text(encoding="utf-8"))
+            download.unlink()
+        except (OSError, ValueError):
+            record = None
+        if not isinstance(record, dict):
+            missing.append(rid)
+            continue
+        out[rid] = record
+        try:
+            tmp = cache / f"{rid}.tmp"
+            tmp.write_text(json.dumps({"batch_modified": ids[rid], "record": record}), encoding="utf-8")
+            os.replace(tmp, cache / f"{rid}.json")
+        except OSError:
+            pass
+    if missing:
+        error = r.err.strip().split("\n")[-1] if r.err.strip() else f"curl exit code {r.code}"
+        raise ui.die(f"cannot read {len(missing)} of {len(need)} advisories from {API}/vulns: {error}")
     return out

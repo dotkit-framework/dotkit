@@ -730,13 +730,65 @@ def audit_rules(found: Optional[List[List[str]]] = None, brew: Optional[List[dic
              + fx.mise_ls({"node": "24.1.0", "npm:cowsay": "1.6.0"})
              + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
              + fx.osv_batch(found or [[]] * 7))
-    for record in AUDIT_RECORDS if found else []:
-        rules += fx.osv_vuln(record)
-    return rules
+    return rules + (fx.osv_vulns(AUDIT_RECORDS) if found else [])
 
 
 def audit_findings_rules() -> List[dict]:
     return audit_rules(AUDIT_FOUND, fx.brew_vulns([("wget", "1.25.0", [("CVE-2026-2", "MODERATE", "wget overflow")])]))
+
+
+NODE = "@SB/home/.local/share/mise/installs/node/24.1.0"
+AUDIT_SOURCE_FILES = {
+    "repo/config/mise.toml": ('[tools]\n"github:modem-dev/dkt-hunk" = "latest"\n"npm:cowsay" = { version = "1.6.0" }\n'
+                              'ruby = "3.4"\n'),
+    # The npm of Node, with a dependency that has an advisory.
+    "home/.local/share/mise/installs/node/24.1.0/lib/node_modules/npm/package.json":
+        json.dumps({"name": "npm", "version": "11.0.0"}),
+    "home/.local/share/mise/installs/node/24.1.0/lib/node_modules/npm/node_modules/undici/package.json":
+        json.dumps({"name": "undici", "version": "6.28.0"}),
+    "repo/.github/workflows/ci.yml": ("jobs:\n  a:\n    steps:\n"
+                                      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
+                                      "      - uses: tj-actions/changed-files@v45.0.7\n      - uses: owner/x@main\n"),
+}
+
+
+def audit_sources_rules() -> List[dict]:
+    """Ruby from Bitnami, the packages of Node, and the GitHub Actions of the repository."""
+    found = [[], [], [], ["BIT-node-1"], [], [], ["BIT-ruby-1", "BIT-ruby-2"], [], ["GHSA-undici-1"], [],
+             ["GHSA-tj-1", "GHSA-tj-2"], []]
+    records = [
+        {"id": "BIT-node-1", "summary": "Node bug"},
+        {"id": "BIT-ruby-1", "summary": "Ruby regex heap read",
+         "affected": [{"package": {"ecosystem": "Bitnami", "name": "ruby"},
+                       "ranges": [{"type": "SEMVER", "events": [{"introduced": "3.4.0"}, {"fixed": "3.4.13"}]}]}]},
+        # No fixed version: left out.
+        {"id": "BIT-ruby-2", "summary": "Ruby, every version",
+         "affected": [{"package": {"ecosystem": "Bitnami", "name": "ruby"},
+                       "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}]}]}]},
+        {"id": "GHSA-undici-1", "summary": "undici TLS bypass", "database_specific": {"severity": "HIGH"}},
+        {"id": "GHSA-tj-1", "summary": "changed-files leaks secrets",
+         "affected": [{"package": {"ecosystem": "GitHub Actions", "name": "tj-actions/changed-files"},
+                       "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "46.0.1"}]}]}]},
+        # Fixed before the version of the workflow: left out.
+        {"id": "GHSA-tj-2", "summary": "changed-files old bug",
+         "affected": [{"package": {"ecosystem": "GitHub Actions", "name": "tj-actions/changed-files"},
+                       "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "41.0.0"}]}]}]},
+    ]
+    return (fx.audit_nix(AUDIT_PACKAGES) + fx.brewfile() + fx.brew_vulns()
+            + fx.mise_ls({"node": "24.1.0", "npm:cowsay": "1.6.0", "ruby": "3.4.12"}, {"node": NODE})
+            + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
+            + fx.osv_batch(found) + fx.osv_vulns(records))
+
+
+def audit_config_only_rules() -> List[dict]:
+    """As audit_sources_rules, but mise resolves each version with mise latest, and the packages of Node are
+    not read."""
+    found = [[], [], [], [], [], [], [], [], [], []]
+    return (fx.audit_nix(AUDIT_PACKAGES) + fx.brewfile() + fx.brew_vulns()
+            + fx.mise_ls({"node": "24.1.0", "ruby": "3.4.12"}, {"node": NODE})
+            + fx.mise_ok(r"latest node@lts$", "24.2.0\n") + fx.mise_ok(r"latest npm:@dkt-ai/dkt-code$", "2.0.0\n")
+            + fx.mise_ok(r"latest npm:cowsay@1\.6\.0$", "1.6.0\n") + fx.mise_ok(r"latest ruby@3\.4$", "3.4.13\n")
+            + fx.osv_batch(found))
 
 
 def audit() -> List[S]:
@@ -763,6 +815,10 @@ def audit() -> List[S]:
           audit_rules()[:-1] + [{"tool": "curl", "re": "querybatch$", "exit": 22,
                                  "stderr": "curl: (22) The requested URL returned error: 503\n"}],
           files=AUDIT_FILES, rows=["Au6"]),
+        S("audit-sources", ["audit"], audit_sources_rules(), files={**AUDIT_FILES, **AUDIT_SOURCE_FILES},
+          rows=["Au4", "Au12", "Au14", "Au15"]),
+        S("audit-config-only", ["audit", "--config-only"], audit_config_only_rules(),
+          files={**AUDIT_FILES, **AUDIT_SOURCE_FILES}, rows=["Au15", "O6"]),
         S("audit-toml-invalid", ["audit"], files={"repo/audit.toml": '[[ignore]]\nid = "X"\n'}, rows=["Au1"]),
         S("audit-toml-broken", ["audit"], files={"dotkit/audit.toml": "[[ignore]\n"}, rows=["Au1"]),
     ]

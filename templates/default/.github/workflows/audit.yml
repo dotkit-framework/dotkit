@@ -38,9 +38,11 @@ jobs:
           github_access_token: ${{ github.token }}
 
       # mise resolves the versions of the mise tools. The runner has Homebrew.
+      # --config-only: the configuration, not the tools of the runner; the Mac
+      # checks the packages in the installed tools (dotkit.audit.enable).
       - name: dotkit audit
         env:
           # gh opens the issues; mise reads the GitHub releases.
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: nix shell --inputs-from ./nix nixpkgs#mise -c ./dotkit audit --issues
+        run: nix shell --inputs-from ./nix nixpkgs#mise -c ./dotkit audit --config-only --issues

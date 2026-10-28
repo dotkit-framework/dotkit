@@ -4,7 +4,7 @@
  ],
  "exit": 1,
  "stdout": "npm:@dkt-ai/dkt-code 2.0.0 (mise):\n  MAL-2026-1 (MALICIOUS): Malicious code in @dkt-ai/dkt-code (npm)\n    https://osv.dev/vulnerability/MAL-2026-1\n\nnode 24.1.0 (mise):\n  CVE-2026-1 (high 8.7): Node.js reads past a buffer.\n    https://osv.dev/vulnerability/CVE-2026-1\n\njq 1.8.1 (Nix):\n  GHSA-jq-1 (medium 6.1): jq crash on a long key\n    https://osv.dev/vulnerability/GHSA-jq-1\n\nwget 1.25.0 (Homebrew):\n  CVE-2026-2 (medium): wget overflow\n    https://osv.dev/vulnerability/CVE-2026-2\n\nnpm:cowsay 1.6.0 (mise):\n  GHSA-cow-2 (medium): cowsay reads any file\n    Fixed in 1.6.1. https://osv.dev/vulnerability/GHSA-cow-2\n",
- "stderr": "Collecting the tools...\nAsking OSV.dev...\ndotkit: the ignore rule of CVE-2020-1 in audit.toml ended on 2026-01-01. Remove it, or set a new date.\nNot checked, its source is not in a Git repository that OSV knows: poppler-utils.\nNot checked, brew vulns does not check the formulae of other taps: owner/tap/dkt-tool.\nNot checked, mise cannot resolve its version: github:modem-dev/dkt-hunk.\nHomebrew casks are not checked: OSV has no data for apps. `brew outdated --cask --greedy` shows the old ones.\nLeft out: 1 advisory that a Nixpkgs patch fixes.\nIgnored: 1 advisory (audit.toml).\nChecked 3 Nix packages, 1 Homebrew formula, 3 mise tools, 1 package of dotkit.\ndotkit: 5 findings for 5 tools. Upgrade them (dotkit upgrade), or add an ignore rule to audit.toml.\n",
+ "stderr": "Collecting the tools...\nAsking OSV.dev...\ndotkit: the ignore rule of CVE-2020-1 in audit.toml ended on 2026-01-01. Remove it, or set a new date.\nNot checked, its source is not in a Git repository that OSV knows: poppler-utils.\nNot checked, brew vulns does not check the formulae of other taps: owner/tap/dkt-tool.\nNot checked, mise cannot resolve its version: github:modem-dev/dkt-hunk.\nNot checked here: the packages in the mise tools (no mise tool is installed here).\nNot checked here: the packages in binaries (no tool is installed here).\nApps (Homebrew casks) are checked only for the Go and Rust packages in their executables: OSV has no data for the apps themselves. `brew outdated --cask --greedy` shows the old ones.\nLeft out: 1 advisory that a Nixpkgs patch fixes.\nIgnored: 1 advisory (audit.toml).\nChecked 3 Nix packages, 1 Homebrew formula, 3 mise tools, 1 package of dotkit.\ndotkit: 5 findings for 5 tools. Upgrade them (dotkit upgrade), or add an ignore rule to audit.toml.\n",
  "files": {
   "home/.cache/dotkit/osv/CVE-2025-48060.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"CVE-2025-48060\", \"summary\": \"jq heap overflow\"}}",
   "home/.cache/dotkit/osv/CVE-2026-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"CVE-2026-1\", \"details\": \"Node.js reads past a buffer.\\nMore text.\", \"severity\": [{\"type\": \"CVSS_V4\", \"score\": \"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N\"}]}}",
@@ -122,96 +122,26 @@
     "--retry-delay",
     "5",
     "--retry-all-errors",
-    "https://api.osv.dev/v1/vulns/CVE-2025-48060"
-   ],
-   "cwd": "@SB/home",
-   "env": {
-    "DOTFILES": "@SB/repo"
-   }
-  },
-  {
-   "tool": "curl",
-   "argv": [
-    "-fsS",
-    "--max-time",
-    "60",
-    "--retry",
-    "3",
-    "--retry-delay",
-    "5",
-    "--retry-all-errors",
-    "https://api.osv.dev/v1/vulns/CVE-2026-1"
-   ],
-   "cwd": "@SB/home",
-   "env": {
-    "DOTFILES": "@SB/repo"
-   }
-  },
-  {
-   "tool": "curl",
-   "argv": [
-    "-fsS",
-    "--max-time",
-    "60",
-    "--retry",
-    "3",
-    "--retry-delay",
-    "5",
-    "--retry-all-errors",
-    "https://api.osv.dev/v1/vulns/GHSA-cow-1"
-   ],
-   "cwd": "@SB/home",
-   "env": {
-    "DOTFILES": "@SB/repo"
-   }
-  },
-  {
-   "tool": "curl",
-   "argv": [
-    "-fsS",
-    "--max-time",
-    "60",
-    "--retry",
-    "3",
-    "--retry-delay",
-    "5",
-    "--retry-all-errors",
-    "https://api.osv.dev/v1/vulns/GHSA-cow-2"
-   ],
-   "cwd": "@SB/home",
-   "env": {
-    "DOTFILES": "@SB/repo"
-   }
-  },
-  {
-   "tool": "curl",
-   "argv": [
-    "-fsS",
-    "--max-time",
-    "60",
-    "--retry",
-    "3",
-    "--retry-delay",
-    "5",
-    "--retry-all-errors",
-    "https://api.osv.dev/v1/vulns/GHSA-jq-1"
-   ],
-   "cwd": "@SB/home",
-   "env": {
-    "DOTFILES": "@SB/repo"
-   }
-  },
-  {
-   "tool": "curl",
-   "argv": [
-    "-fsS",
-    "--max-time",
-    "60",
-    "--retry",
-    "3",
-    "--retry-delay",
-    "5",
-    "--retry-all-errors",
+    "--parallel",
+    "--parallel-max",
+    "8",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/CVE-2025-48060.download",
+    "https://api.osv.dev/v1/vulns/CVE-2025-48060",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/CVE-2026-1.download",
+    "https://api.osv.dev/v1/vulns/CVE-2026-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-cow-1.download",
+    "https://api.osv.dev/v1/vulns/GHSA-cow-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-cow-2.download",
+    "https://api.osv.dev/v1/vulns/GHSA-cow-2",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-jq-1.download",
+    "https://api.osv.dev/v1/vulns/GHSA-jq-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/MAL-2026-1.download",
     "https://api.osv.dev/v1/vulns/MAL-2026-1"
    ],
    "cwd": "@SB/home",

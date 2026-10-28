@@ -1,11 +1,7 @@
-"""The decisions of the audit: which OSV queries a tool gets, and which advisories are findings.
+"""The decisions of the audit: which advisories of OSV are findings, their severity, and the ignore rules.
 
-Nothing here runs a command, so the tests are tables. inventory.py collects the tools, osv.py asks OSV.
-
-OSV has no ecosystem for Nix and Homebrew. A tool from a Git repository is a query of the GIT ecosystem:
-the repository URL and the tag of the release, or the commit. OSV compares the repository URL as it
-stores it, in lowercase, so the queries use lowercase URLs. A package of npm, PyPI, crates.io, Go, or
-RubyGems is a query of its own ecosystem; there OSV also has the malicious releases (MAL-*).
+Nothing here runs a command, so the tests are tables. The sources (sources/) collect the tools and make
+their queries, osv.py asks OSV.
 """
 
 from __future__ import annotations
@@ -14,234 +10,78 @@ import datetime
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from . import cvss4
-
-# The sources of a tool, in the order of the report.
-SOURCES = ("nix", "brew", "mise", "dotkit")
-SOURCE_NAMES = {"nix": "Nix", "brew": "Homebrew", "mise": "mise", "dotkit": "dotkit"}
-
-
-@dataclass
-class Item:
-    """One tool at one version, and its OSV queries. An item without queries is not checked: why says
-    the reason."""
-
-    source: str  # a key of SOURCES
-    name: str  # as the report shows it: fzf, npm:cowsay, prompt_toolkit
-    version: str
-    queries: List[dict] = field(default_factory=list)
-    # The CVE IDs that a Nixpkgs patch of the package fixes (the patch file names have them).
-    patched: FrozenSet[str] = frozenset()
-    why: str = ""
-
-
-@dataclass
-class Advisory:
-    id: str
-    aliases: List[str]
-    summary: str
-    severity: str  # CRITICAL, HIGH, MEDIUM, LOW, or "" (unknown)
-    fixed: List[str]  # the versions with the fix, when OSV gives versions (not commits)
-    malicious: bool = False
-    score: Optional[float] = None  # the CVSS base score, when the advisory has a vector
-
-    @property
-    def ids(self) -> FrozenSet[str]:
-        return frozenset([self.id, *self.aliases])
-
-    @property
-    def url(self) -> str:
-        return f"https://osv.dev/vulnerability/{self.id}"
-
-
-@dataclass
-class Finding:
-    item: Item
-    advisory: Advisory
-
-    @property
-    def key(self) -> str:
-        """The same finding in each run, also after an upgrade to another version that has it."""
-        return f"{self.item.source}/{self.item.name}/{self.advisory.id}"
-
-    @property
-    def keys(self) -> List[str]:
-        """key, then the keys of the aliases. When OSV adds an alias that sorts first, the ID of the
-        finding changes; an issue or a notification of an alias key is the same finding."""
-        return [self.key] + [f"{self.item.source}/{self.item.name}/{i}" for i in sorted(self.advisory.ids)
-                             if i != self.advisory.id]
-
-    @property
-    def tool_key(self) -> str:
-        return f"{self.item.source}/{self.item.name}"
-
-
-# --- The queries
-
-
-def git_query(repo: str, version: str) -> dict:
-    return {"package": {"ecosystem": "GIT", "name": repo.lower()}, "version": version}
-
-
-def package_query(ecosystem: str, name: str, version: str) -> dict:
-    return {"package": {"ecosystem": ecosystem, "name": name}, "version": version}
-
+from .model import Advisory, Finding, Item
 
 HEX40 = re.compile(r"[0-9a-f]{40}")
-# The repository of a source URL: https://github.com/OWNER/REPO/archive/..., .../releases/download/TAG/...,
-# https://github.com/OWNER/REPO.git
-_HOSTED = re.compile(r"https://(github\.com|gitlab\.com|codeberg\.org)/([^/]+)/([^/?#]+?)(?:\.git)?(?:[/?#]|$)")
-# GitLab archives by the API: https://gitlab.com/api/v4/projects/OWNER%2FREPO/repository/archive.tar.gz?sha=REF
-_GITLAB_API = re.compile(r"https://gitlab\.com/api/v4/projects/([^/]+)%2[Ff]([^/]+)/repository/archive[^?]*\?sha=([^&]+)")
-# The ref in an archive URL: .../archive/refs/tags/REF.tar.gz or .../archive/REF.tar.gz
-_ARCHIVE = re.compile(r"/archive/(?:refs/tags/)?(.+?)\.(?:tar\.gz|tar\.bz2|tar\.xz|tgz|zip)$")
-_RELEASE = re.compile(r"/releases/download/([^/]+)/")
-
-# Packages whose source is not on a Git host that OSV knows, by their Nixpkgs pname: the mirror that OSV
-# has, and the tag of a version. Each one returns advisories for an old version.
-KNOWN_REPOS: Dict[str, Tuple[str, str]] = {
-    "git": ("https://github.com/git/git", "v{v}"),
-    "nix": ("https://github.com/nixos/nix", "{v}"),
-    "zsh": ("https://github.com/zsh-users/zsh", "zsh-{v}"),
-    "gnupg": ("https://github.com/gpg/gnupg", "gnupg-{v}"),
-    "openssl": ("https://github.com/openssl/openssl", "openssl-{v}"),
-    "curl": ("https://github.com/curl/curl", "curl-{v_}"),
-    "python3": ("https://github.com/python/cpython", "v{v}"),
-    "nodejs": ("https://github.com/nodejs/node", "v{v}"),
-    "neovim": ("https://github.com/neovim/neovim", "v{v}"),
-}
-
-
-def _tag(template: str, version: str) -> str:
-    return template.format(v=version, v_=version.replace(".", "_"))
-
-
-def nix_item(pkg: dict) -> Optional[Item]:
-    """The item of a Nix package (inventory.NIX_EXPR gives the fields). None for a package without a
-    version, such as a wrapper script of the configuration."""
-    name, version = pkg.get("name") or "", pkg.get("version") or ""
-    if not name or not version:
-        return None
-    patched = frozenset(m.upper() for p in pkg.get("patches") or [] for m in re.findall(r"CVE-\d{4}-\d+", p, re.I))
-    item = Item("nix", name, version, patched=patched)
-    if name in KNOWN_REPOS:
-        repo, template = KNOWN_REPOS[name]
-        item.queries = [git_query(repo, _tag(template, version))]
-        return item
-    url = pkg.get("url") or pkg.get("git") or ""
-    ref = pkg.get("tag") or pkg.get("rev") or ""
-    if ref.startswith("refs/tags/"):
-        ref = ref[len("refs/tags/"):]
-    m = _GITLAB_API.match(url)
-    if m:
-        repo, ref = f"https://gitlab.com/{m[1]}/{m[2]}", ref or m[3]
-    else:
-        m = _HOSTED.match(url) or _HOSTED.match(pkg.get("homepage") or "")
-        if not m:
-            item.why = "its source is not in a Git repository that OSV knows"
-            return item
-        repo = f"https://{m[1]}/{m[2]}/{m[3]}"
-        if not ref:
-            r = _RELEASE.search(url) or _ARCHIVE.search(url)
-            ref = r[1] if r else ""
-    if HEX40.fullmatch(ref):
-        item.queries = [{"commit": ref}]
-    elif ref:
-        item.queries = [git_query(repo, ref)]
-    else:
-        # Only the homepage: the usual tags of a version.
-        item.queries = [git_query(repo, f"v{version}"), git_query(repo, version)]
-    return item
-
-
-# The mise backends with an OSV ecosystem, and the ones that are a GitHub repository.
-ECOSYSTEMS = {"npm": "npm", "pipx": "PyPI", "pypi": "PyPI", "cargo": "crates.io", "go": "Go", "gem": "RubyGems"}
-GITHUB_BACKENDS = ("github", "aqua", "ubi")
-# The core tools of mise: the repository and the tag of a version. Go is the stdlib package of the Go
-# ecosystem. OSV has no advisories for the tags of Ruby.
-MISE_CORE: Dict[str, Tuple[str, str]] = {
-    "node": ("https://github.com/nodejs/node", "v{v}"),
-    "python": ("https://github.com/python/cpython", "v{v}"),
-    "bun": ("https://github.com/oven-sh/bun", "bun-v{v}"),
-    "deno": ("https://github.com/denoland/deno", "v{v}"),
-}
-# Registry tools whose advisories are in a package ecosystem that the mise registry does not name.
-MISE_ALIASES = {
-    "claude-code": "npm:@anthropic-ai/claude-code",
-    "codex": "npm:@openai/codex",
-    "gemini-cli": "npm:@google/gemini-cli",
-}
-
-
-def backend_queries(spec: str, version: str) -> List[dict]:
-    """The queries of a mise backend spec (npm:cowsay, github:owner/repo); [] for the other backends."""
-    backend, _, name = spec.partition(":")
-    # A spec can have options in brackets (github:o/r[exe=x]) or a version (npm:x@1).
-    name = name.split("[", 1)[0]
-    if backend in ECOSYSTEMS and name:
-        if name[1:].find("@") > 0:
-            name = name[:name.rindex("@")]
-        return [package_query(ECOSYSTEMS[backend], name, version)]
-    if backend in GITHUB_BACKENDS and re.fullmatch(r"[\w.-]+/[\w.-]+", name):
-        repo = f"https://github.com/{name}"
-        # mise drops the v of a tag: query both forms; only one is a tag of the repository.
-        return [git_query(repo, f"v{version}"), git_query(repo, version)]
-    return []
-
-
-def mise_item(key: str, version: str, backends: Sequence[str] = ()) -> Item:
-    """The item of a mise tool: KEY of the [tools] table, at VERSION. backends: what `mise registry KEY`
-    prints, for a key without a backend."""
-    item = Item("mise", key, version)
-    if key == "go":
-        item.queries = [package_query("Go", "stdlib", version)]
-    elif key in MISE_CORE:
-        repo, template = MISE_CORE[key]
-        item.queries = [git_query(repo, _tag(template, version))]
-    elif ":" in key:
-        item.queries = backend_queries(key, version)
-    else:
-        specs = [MISE_ALIASES[key]] if key in MISE_ALIASES else []
-        specs += [b for b in backends if not b.startswith(("asdf:", "vfox:"))]
-        seen: List[dict] = []
-        for spec in specs:
-            for q in backend_queries(spec, version):
-                if q not in seen:
-                    seen.append(q)
-        item.queries = seen
-    if not item.queries:
-        item.why = "OSV has no data for its source"
-    return item
-
-
-def vendored_items(text: str) -> List[Item]:
-    """The packages of lib/dotkit/_vendor/vendor.txt (NAME==VERSION --hash=...), from PyPI."""
-    out = []
-    for line in text.split("\n"):
-        m = re.match(r"\s*([A-Za-z0-9_.-]+)==([^\s;]+)", line)
-        if m:
-            out.append(Item("dotkit", m[1], m[2], [package_query("PyPI", m[1], m[2])]))
-    return out
-
-
-def flake_items(lock: dict) -> List[Item]:
-    """The inputs of a flake.lock from GitHub, by their locked commit: the zsh plugins, nix-darwin, Home
-    Manager, and Nixpkgs."""
-    out = []
-    nodes = lock.get("nodes") if isinstance(lock, dict) else None
-    for name, node in sorted((nodes or {}).items()):
-        locked = node.get("locked") if isinstance(node, dict) else None
-        if not isinstance(locked, dict) or locked.get("type") != "github":
-            continue
-        rev = locked.get("rev")
-        if isinstance(rev, str) and HEX40.fullmatch(rev):
-            out.append(Item("dotkit", f"input {name}", rev[:12], [{"commit": rev}]))
-    return out
-
 
 # --- The advisories
+
+
+def notice(record: dict) -> str:
+    """The kind of a notice that is not a vulnerability: "unmaintained", "unsound", or "notice" (RustSec
+    has them as `informational`); "" for a vulnerability."""
+    for a in record.get("affected") or []:
+        info = (a.get("database_specific") or {}).get("informational") if isinstance(a, dict) else None
+        if isinstance(info, str) and info:
+            return info
+    info = (record.get("database_specific") or {}).get("informational")
+    return info if isinstance(info, str) else ""
+
+
+def _version_key(v: str) -> tuple:
+    """A version for comparison: the numbers in order, without zeros at the end (47.1 is 47.1.0); a
+    pre-release (1.0.0-rc.1) before its release."""
+    v = v[1:] if v[:1] in ("v", "V") else v
+    main, _, pre = v.partition("-")
+    nums = [int(n) for n in re.findall(r"\d+", main)]
+    while len(nums) > 1 and nums[-1] == 0:
+        nums.pop()
+    return tuple(nums), 0 if pre else 1, pre
+
+
+def _affected_of(record: dict, query: dict) -> List[dict]:
+    pkg = query.get("package") or {}
+    eco, name = pkg.get("ecosystem"), (pkg.get("name") or "").lower()
+    return [a for a in record.get("affected") or [] if isinstance(a, dict)
+            and (a.get("package") or {}).get("ecosystem") == eco and ((a.get("package") or {}).get("name") or "").lower() == name]
+
+
+def in_ranges(record: dict, query: dict, version: str) -> bool:
+    """True when VERSION is in a range of the record for the package of the query: introduced, then fixed
+    (not included) or last_affected (included), or in its list of versions. For an ecosystem where OSV
+    does not compare versions itself (GitHub Actions)."""
+    key = _version_key(version)
+    for a in _affected_of(record, query):
+        if version in (a.get("versions") or []):
+            return True
+        for r in a.get("ranges") or []:
+            if r.get("type") not in ("ECOSYSTEM", "SEMVER"):
+                continue
+            start = None
+            for e in r.get("events") or []:
+                if "introduced" in e:
+                    start = _version_key(e["introduced"])
+                elif start is not None and "fixed" in e:
+                    if start <= key < _version_key(e["fixed"]):
+                        return True
+                    start = None
+                elif start is not None and "last_affected" in e:
+                    if start <= key <= _version_key(e["last_affected"]):
+                        return True
+                    start = None
+            if start is not None and start <= key:
+                return True
+    return False
+
+
+def has_fix(record: dict, query: dict) -> bool:
+    """True when the record names a version with the fix, or the last affected one, for the package of
+    the query. A record of Bitnami without one has every version affected, also the fixed ones."""
+    return any("fixed" in e or "last_affected" in e for a in _affected_of(record, query)
+               for r in a.get("ranges") or [] for e in r.get("events") or [] if isinstance(e, dict))
 
 
 _CVSS3 = {
@@ -359,7 +199,9 @@ class Rule:
     file: str = ""
 
     def matches(self, f: Finding) -> bool:
-        return self.id in f.advisory.ids and (not self.tool or self.tool == f.item.name)
+        """The same ID or alias, and the tool of the rule, when it has one: the name of the item, or the
+        tool that has the package (mise for mise > zstd-safe)."""
+        return self.id in f.advisory.ids and (not self.tool or self.tool in (f.item.name, f.item.parent))
 
 
 def rules(data: dict, file: str) -> Tuple[List[Rule], List[str]]:
@@ -412,6 +254,10 @@ class Result:
     ignored: List[Tuple[Finding, Rule]] = field(default_factory=list)
     # The advisories that a Nixpkgs patch fixes.
     patched: List[Finding] = field(default_factory=list)
+    # (finding, kind) for each notice: unmaintained, unsound.
+    notices: List[Tuple[Finding, str]] = field(default_factory=list)
+    # (finding, reason) for each advisory that the check of its source left out.
+    left_out: List[Tuple[Finding, str]] = field(default_factory=list)
     # The rules whose until date has passed.
     expired: List[Rule] = field(default_factory=list)
 
@@ -420,24 +266,40 @@ def findings(items: Sequence[Item], ids: Sequence[List[str]], records: Dict[str,
              today: datetime.date, more: Sequence[Finding] = ()) -> Result:
     """The findings of the items. ids: the advisory IDs of each query, in the order of the queries of the
     items. records: the OSV record of each ID. more: the findings that came without OSV queries (brew
-    vulns), for the ignore rules."""
+    vulns), for the ignore rules. A withdrawn record is left out."""
     result = Result()
     active = [r for r in rules_ if r.until is None or r.until >= today]
     result.expired = [r for r in rules_ if r.until is not None and r.until < today]
-    found: List[Finding] = []
+    found: List[Tuple[Finding, str]] = []
     n = 0
     for item in items:
-        advisories = []
+        advisories, why = [], {}
         for q in item.queries:
-            advisories += [advisory(records[i], q) for i in ids[n] if i in records]
+            for i in ids[n]:
+                record = records.get(i)
+                if record is None or record.get("withdrawn"):
+                    continue
+                verdict = item.accept(record, q) if item.accept else None
+                if verdict == "":
+                    continue
+                a = advisory(record, q)
+                advisories.append(a)
+                why[a.id] = verdict or ("notice:" + notice(record) if notice(record) else "")
             n += 1
-        found += [Finding(item, a) for a in _merge(advisories)]
-    for f in [*found, *more]:
+        for a in _merge(advisories):
+            # The verdict of a vulnerability: of any of its records (a GO record decides for its GHSA alias).
+            verdict = next((why[i] for i in sorted(a.ids) if why.get(i)), "")
+            found.append((Finding(item, a), verdict))
+    for f, why_ in [*found, *((f, "") for f in more)]:
         rule = next((r for r in active if r.matches(f)), None)
         if rule is not None:
             result.ignored.append((f, rule))
         elif f.advisory.ids & f.item.patched:
             result.patched.append(f)
+        elif why_.startswith("notice:"):
+            result.notices.append((f, why_[len("notice:"):]))
+        elif why_:
+            result.left_out.append((f, why_))
         else:
             result.findings.append(f)
     return result

@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import List
 from unittest import mock
 
-from dotkit.audit import cli, issues, match, osv
+from dotkit.audit import cli, issues, osv
+from dotkit.audit.model import Advisory, Finding, Item
 from dotkit.core import proc
 from dotkit.core.env import Env
 from tests import fake
@@ -60,27 +61,73 @@ class OsvTests(unittest.TestCase):
         self.addCleanup(fake.remove, tmp)
         (tmp / "A-1.json").write_text(json.dumps({"batch_modified": "m1", "record": {"id": "A-1", "cached": True}}))
         (tmp / "B-1.json").write_text(json.dumps({"batch_modified": "old", "record": {"id": "B-1"}}))
-        calls = Calls([ok({"id": "B-1", "modified": "new"})])
-        with mock.patch.object(osv.proc, "run", calls):
-            got = osv.records({"A-1": "m1", "B-1": "new"}, tmp)
+        curl = Downloads({"B-1": {"id": "B-1", "modified": "new"}, "C-1": {"id": "C-1"}})
+        with mock.patch.object(osv.proc, "run", curl):
+            got = osv.records({"A-1": "m1", "B-1": "new", "C-1": "m"}, tmp)
         self.assertTrue(got["A-1"]["cached"])
-        self.assertEqual(got["B-1"]["modified"], "new")
-        self.assertEqual([argv[-1] for argv, _ in calls.log], ["https://api.osv.dev/v1/vulns/B-1"])
+        self.assertEqual((got["B-1"]["modified"], got["C-1"]["id"]), ("new", "C-1"))
+        # One curl for both, in parallel.
+        self.assertEqual(len(curl.log), 1)
+        self.assertEqual(curl.log[0][-6:], ["-o", str(tmp / "B-1.download"), "https://api.osv.dev/v1/vulns/B-1",
+                                            "-o", str(tmp / "C-1.download"), "https://api.osv.dev/v1/vulns/C-1"])
+        self.assertIn("--parallel", curl.log[0])
         self.assertEqual(json.loads((tmp / "B-1.json").read_text())["batch_modified"], "new")
+        self.assertEqual(sorted(p.name for p in tmp.iterdir()), ["A-1.json", "B-1.json", "C-1.json"])
 
     def test_cache_time_of_the_batch(self):
         """The batch gives microseconds, the advisory nanoseconds: the cache compares the time of the batch."""
         tmp = fake.tempdir()
         self.addCleanup(fake.remove, tmp)
-        calls = Calls([ok({"id": "A-1", "modified": "2026-10-01T00:00:03.167701747Z"})])
-        with mock.patch.object(osv.proc, "run", calls):
+        curl = Downloads({"A-1": {"id": "A-1", "modified": "2026-10-01T00:00:03.167701747Z"}})
+        with mock.patch.object(osv.proc, "run", curl):
             osv.records({"A-1": "2026-10-01T00:00:03.167701Z"}, tmp)
             osv.records({"A-1": "2026-10-01T00:00:03.167701Z"}, tmp)
-        self.assertEqual(len(calls.log), 1)
+        self.assertEqual(len(curl.log), 1)
+
+    def test_an_old_download_does_not_count(self):
+        tmp = fake.tempdir()
+        self.addCleanup(fake.remove, tmp)
+        (tmp / "A-1.download").write_text(json.dumps({"id": "A-1", "old": True}))
+        with mock.patch.object(osv.proc, "run", Downloads({}, err="curl: (6) Could not resolve host")):
+            with self.assertRaises(osv.ui.Exit):
+                osv.records({"A-1": "m"}, tmp)
+
+    def test_a_download_fails(self):
+        tmp = fake.tempdir()
+        self.addCleanup(fake.remove, tmp)
+        curl = Downloads({"A-1": {"id": "A-1"}}, err="curl: (22) The requested URL returned error: 404")
+        with mock.patch.object(osv.proc, "run", curl):
+            with self.assertRaises(osv.ui.Exit) as e:
+                osv.records({"A-1": "m", "B-1": "m"}, tmp)
+        self.assertEqual(e.exception.text, "dotkit: cannot read 1 of 2 advisories from https://api.osv.dev/v1/vulns: "
+                                           "curl: (22) The requested URL returned error: 404")
 
 
-def finding(name="fzf", rid="CVE-1", version="1.0", source="nix") -> match.Finding:
-    return match.Finding(match.Item(source, name, version), match.Advisory(rid, [], "A bug", "HIGH", []))
+class Downloads:
+    """A fake curl for osv.records: writes the record of each -o FILE URL that it has."""
+
+    def __init__(self, records: dict, err: str = ""):
+        self.records, self.err, self.log = records, err, []
+
+    def __call__(self, argv, **kw):
+        self.log.append(list(argv))
+        for i, a in enumerate(argv):
+            if a == "-o":
+                rid = argv[i + 2].rsplit("/", 1)[1]
+                if rid in self.records:
+                    Path(argv[i + 1]).write_text(json.dumps(self.records[rid]))
+        return proc.Result(22 if self.err else 0, "", self.err)
+
+
+def finding(name="fzf", rid="CVE-1", version="1.0", source="nix") -> Finding:
+    return Finding(Item(source, name, version), Advisory(rid, [], "A bug", "HIGH", []))
+
+
+class OnePerKeyTests(unittest.TestCase):
+    def test_versions_join(self):
+        a, b, c = finding("node", version="22.1.0"), finding("node", version="20.9.0"), finding("node", version="22.1.0")
+        out = cli._one_per_key([a, b, c, finding("jq")])
+        self.assertEqual([(f.item.name, f.item.version) for f in out], [("node", "20.9.0, 22.1.0"), ("jq", "1.0")])
 
 
 class IssueTests(unittest.TestCase):
@@ -129,7 +176,7 @@ class IssueTests(unittest.TestCase):
         second open issue of the same finding closes."""
         old = finding("python", "PSF-1", source="mise")
         other = finding("python", "GHSA-1", source="mise")
-        now = match.Finding(old.item, match.Advisory("CVE-1", ["GHSA-1", "PSF-1"], "A bug", "HIGH", []))
+        now = Finding(old.item, Advisory("CVE-1", ["GHSA-1", "PSF-1"], "A bug", "HIGH", []))
         counts, calls = self.sync([self.issue(4, old), self.issue(5, other)], [now])
         self.assertEqual(counts, {"opened": 0, "reopened": 0, "updated": 1, "closed": 1})
         self.assertEqual(calls, [["issue", "edit", "5"], ["issue", "close", "4"]])
@@ -143,7 +190,7 @@ class IssueTests(unittest.TestCase):
         self.assertEqual((counts["closed"], calls), (0, []))
 
     def test_body(self):
-        mal = match.Finding(match.Item("mise", "npm:x", "1.0"), match.Advisory("MAL-1", ["GHSA-1"], "Malicious code in @x/y",
+        mal = Finding(Item("mise", "npm:x", "1.0"), Advisory("MAL-1", ["GHSA-1"], "Malicious code in @x/y",
                                                                               "CRITICAL", ["1.1"], True))
         text = issues.body(mal)
         self.assertTrue(text.startswith("<!-- dotkit-audit: mise/npm:x/MAL-1 -->\n**OSV lists this release as malicious.**"))
@@ -185,7 +232,7 @@ class NotifyTests(unittest.TestCase):
         a = finding("a", "PSF-1")
         self.notify([a, finding("b", source="mise")])
         # The CVE alias sorts first now: not new. mise failed: its key stays for the next run.
-        now = match.Finding(a.item, match.Advisory("CVE-1", ["PSF-1"], "", "", []))
+        now = Finding(a.item, Advisory("CVE-1", ["PSF-1"], "", "", []))
         self.assertEqual(self.notify_keep([now], {"mise"}), [])
         state = json.loads((self.dir / "state/dotkit/audit.json").read_text())
         self.assertEqual(state, {"seen": ["mise/b/CVE-1", "nix/a/CVE-1", "nix/a/PSF-1"]})
@@ -198,7 +245,7 @@ class NotifyTests(unittest.TestCase):
         return [argv for argv, _ in calls.log]
 
     def test_malicious(self):
-        f = match.Finding(match.Item("mise", "npm:x", "1"), match.Advisory("MAL-1", [], "", "CRITICAL", [], True))
+        f = Finding(Item("mise", "npm:x", "1"), Advisory("MAL-1", [], "", "CRITICAL", [], True))
         self.assertTrue(self.notify([f])[0][-1].startswith("A malicious release! 1 new finding: npm:x."))
 
 

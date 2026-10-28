@@ -247,7 +247,9 @@ def run(impl: Impl, s: Scenario) -> dict:
         # PROMPT_TOOLKIT_NO_CPR: the test terminal does not answer the cursor position requests of prompt_toolkit.
         env = {"HOME": str(sb / "home"), "TMPDIR": str(sb / "tmp"), "LC_ALL": "en_US.UTF-8", "PROMPT_TOOLKIT_NO_CPR": "1",
                "PATH": f"{sb / 'bin'}:/usr/bin:/bin:/usr/sbin:/sbin", "FAKE_DIR": str(sb / "fake"),
-               "USER": os.environ.get("USER", "")}
+               "USER": os.environ.get("USER", ""),
+               # dotkit audit reads the executables of the system (/run/current-system, /Applications) under it.
+               "DOTKIT_AUDIT_ROOT": str(sb / "root")}
         if not s.color:
             env["NO_COLOR"] = "1"
         if not s.no_dotfiles:

@@ -305,27 +305,38 @@ apply will move aside.
 ## Security
 
 `dotkit audit` asks [OSV.dev](https://osv.dev) about the tools that dotkit
-installs, and prints their known vulnerabilities and malicious releases:
+installs and the packages in them, and prints their known vulnerabilities
+and malicious releases:
 
 ```
 $ dotkit audit
 fzf 0.74.5 (Nix):
-  CVE-2026-115319 (unknown): fzf 0.36.0 through 0.74.5 Denial of Service via maskActionContents
+  CVE-2026-115319 (low 2.0): fzf 0.36.0 through 0.74.5 Denial of Service via maskActionContents
     https://osv.dev/vulnerability/CVE-2026-115319
+
+mise > zip 8.6.0 (Rust crate in mise 2026.10.17 (Nix)):
+  RUSTSEC-2026-0369 (critical 9.1): ZipStreamReader::extract() and ZipArchive::extract() apply Unix permissions through symlinks
+    Fixed in 9.0.0. https://osv.dev/vulnerability/RUSTSEC-2026-0369
 ```
 
-| Tools | How |
-|---|---|
-| Nix packages | One `nix eval` of the configuration gives the source repository and the tag or commit of each package. OSV has no Nix ecosystem, so the audit asks about the repository at that tag. It leaves out a CVE that a Nixpkgs patch of the package fixes |
-| Homebrew formulae | `brew vulns` (Homebrew 6.0.11 or newer), which asks OSV and knows the patches of Homebrew |
-| mise tools | The installed version, else the version that an apply installs now. For npm and PyPI tools, OSV also lists the malicious releases (`MAL-*`) |
-| dotkit | The Python packages of `lib/dotkit/_vendor`, and the inputs of `flake.lock` |
+| Source | What | How |
+|---|---|---|
+| Nix packages | the packages of the configuration | One `nix eval` gives the source repository and the tag or commit of each package. OSV has no Nix ecosystem, so the audit asks about the repository at that tag. It leaves out a CVE that a Nixpkgs patch of the package fixes |
+| Homebrew formulae | the formulae of the lists, with their dependencies | `brew vulns` (Homebrew 6.0.11 or newer), which asks OSV and knows the patches of Homebrew |
+| mise tools | the tools of `config/mise.toml` | The installed version, else the version that an apply installs now. For npm and PyPI tools, OSV also lists the malicious releases (`MAL-*`). Ruby: the records of Bitnami that name a fixed version |
+| Packages in the mise tools | the gems of Ruby (also its default gems), the npm packages of Node and of the npm tools with their dependencies, the Python packages of Python and of the pipx tools | The installed files: gemspec files, `package.json`, `.dist-info` |
+| Packages in binaries | the Go modules and Go version of Go executables, and the crates of Rust executables, of the Nix profile, Homebrew, the mise tools, and the apps in `/Applications` | Sections of the executable: Go writes its build info, cargo-auditable the crates. A Go advisory whose functions the executable does not have is left out, as govulncheck does |
+| GitHub Actions | the actions of `.github/workflows` | The tag of each action, also from the comment after a commit (`@HASH # v4.1.2`) |
+| dotkit | the Python packages of `lib/dotkit/_vendor`, and the inputs of `flake.lock` | |
 
-The report also names what it does not check: a package whose source is
-not in a Git repository that OSV knows (for example a tarball from gnu.org),
-Ruby, and the Homebrew casks, because OSV has no data for apps. A run asks
-OSV once, with a few kilobytes, and reads only the advisories that are new
-or changed. A run takes a few seconds.
+The packages in the mise tools and in binaries exist only where the tools are
+installed, so the Mac checks them; CI runs with `--config-only`. The audit leaves out the
+notices of RustSec that are not vulnerabilities (unmaintained, unsound), and
+the report counts them. It also names what it does not check: a package whose
+source is not in a Git repository that OSV knows (for example a tarball from
+gnu.org), and the apps themselves, because OSV has no data for apps. A run
+asks OSV with a few requests of a few kilobytes each, and reads only the
+advisories that are new or changed. A run takes a few seconds.
 
 An advisory that does not apply to you, for example one for Windows only,
 goes in `audit.toml` of your repository. dotkit has its own `audit.toml`
@@ -347,8 +358,11 @@ are pinned: when the audit reports an advisory, set the fixed release in
 
 ### Each day, on GitHub
 
-`.github/workflows/audit.yml` of the template runs `dotkit audit --issues`
-each day on a macOS runner, with the dotkit of `nix/flake.lock`. It opens
+`.github/workflows/audit.yml` of the template runs `dotkit audit
+--config-only --issues` each day on a macOS runner, with the dotkit of
+`nix/flake.lock`. `--config-only` checks what the configuration declares, not
+the tools that the runner has; the packages in the installed tools are for
+the Mac (see below). It opens
 one issue per finding, with the label `dotkit-audit`, so GitHub notifies you.
 It closes the issue when the finding is gone. When a part of the audit
 fails, the workflow fails, and GitHub sends an email. In a public

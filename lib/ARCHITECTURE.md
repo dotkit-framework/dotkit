@@ -68,12 +68,15 @@ lib/
       picker.py             the source picker of add (prompt_toolkit)
       cli.py                the commands
     audit/                  audit: known vulnerabilities and malicious releases, from OSV.dev
-      inventory.py          the tools and their versions: nix eval, mise, brew vulns, the packages of dotkit
-      match.py              the OSV queries of a tool, the advisories, the ignore rules; runs no command
+      model.py              Item, Part, Advisory, Finding: what the sources make and the core reads
+      sources/              one module per source: nix, brew, mise, packages, binaries, actions, dotkit;
+                            each collect(ctx) returns a Part, with its decisions in pure functions
+      macho.py              the Mach-O sections of an executable: Go build info and function names, Rust crates
+      match.py              the advisories, notices, ranges, severity, and ignore rules; runs no command
       cvss4.py              the CVSS 4.0 base score, ported from the reference calculator of FIRST
       osv.py                the OSV API with curl, and the cache of the advisories
       issues.py             one GitHub issue per finding, with gh
-      cli.py                the command: the report, --json, --notify
+      cli.py                the command: asks OSV once for all sources, the report, --json, --notify
     migrate/                the migration wizard
   tests/
     BEHAVIOR.md             the behavior of the command, row by row
@@ -151,3 +154,21 @@ cd lib && /usr/bin/python3 -B -m unittest discover -s tests -t .
 3. Add scenarios to `tests/cli/scenarios.py` with the rows, and write their
    goldens with `DOTKIT_CLI_REGOLD=1`. Read each new golden before you
    commit it.
+
+## Add an audit source
+
+1. Add a module to `dotkit/audit/sources/` with `NAME` (the key of its findings
+   and issues: keep it once it is released), `LABEL`, `NOUNS`, and
+   `collect(ctx) -> model.Part`. Keep the decisions (the items, their
+   queries, an `accept` check) in pure functions, and run commands only
+   through `core/proc.py`. `ctx.mise_ls()` runs `mise ls` once for all
+   sources; `ctx.system(path)` gives a path of the system, which the
+   scenarios move into the sandbox.
+2. A failure is `Part(error=...)`: the audit is not complete, and a daily
+   workflow fails. A source that does not apply here, for example tools that
+   CI does not install, is `Part(skipped=...)`: not checked, not a failure.
+3. Add it to `SOURCES` in `sources/__init__.py`, in the order of the report.
+   The core asks OSV once for the queries of all sources, and match.py
+   decides for all of them.
+4. Add its row to `tests/BEHAVIOR.md`, unit tests for its pure functions, and
+   a scenario when it runs a command.

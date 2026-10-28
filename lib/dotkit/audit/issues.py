@@ -15,6 +15,7 @@ from typing import Collection, Dict, List, Sequence
 
 from ..core import proc, ui
 from . import match
+from .model import Finding
 
 LABEL = "dotkit-audit"
 # A key can have spaces: dotkit/input zsh-abbr/ID.
@@ -29,14 +30,14 @@ def _gh(repo: Path, args: List[str], body: str = "") -> proc.Result:
     return r
 
 
-def title(f: match.Finding) -> str:
+def title(f: Finding) -> str:
     kind = "malicious release" if f.advisory.malicious else "advisory"
     return f"{f.item.name} {f.item.version}: {kind} {f.advisory.id}".replace("  ", " ")
 
 
-def body(f: match.Finding) -> str:
+def body(f: Finding) -> str:
     a, item = f.advisory, f.item
-    rows = [("Tool", f"`{item.name}` {item.version} ({match.SOURCE_NAMES[item.source]})"),
+    rows = [("Tool", f"`{item.name}` {item.version} ({item.where})"),
             ("Advisory", f"[{a.id}]({a.url})"), ("Severity", match.severity_text(a))]
     if a.aliases:
         rows.append(("Aliases", ", ".join(a.aliases)))
@@ -61,7 +62,7 @@ def body(f: match.Finding) -> str:
     return "\n".join(lines) + "\n"
 
 
-def sync(repo: Path, findings: Sequence[match.Finding], complete_sources: Collection[str],
+def sync(repo: Path, findings: Sequence[Finding], complete_sources: Collection[str],
          unchecked: Collection[str] = ()) -> Dict[str, int]:
     """Opens, reopens, updates, and closes the issues. unchecked: the tool keys (SOURCE/NAME) that the run
     did not check. Returns the count of each change."""

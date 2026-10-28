@@ -1,0 +1,154 @@
+{
+ "argv": [
+  "audit"
+ ],
+ "exit": 1,
+ "stdout": "node > undici 6.28.0 (npm package in node 24.1.0):\n  GHSA-undici-1 (high): undici TLS bypass\n    https://osv.dev/vulnerability/GHSA-undici-1\n\nnode 24.1.0 (mise):\n  BIT-node-1 (unknown): Node bug\n    https://osv.dev/vulnerability/BIT-node-1\n\nruby 3.4.12 (mise):\n  BIT-ruby-1 (unknown): Ruby regex heap read\n    Fixed in 3.4.13. https://osv.dev/vulnerability/BIT-ruby-1\n\ntj-actions/changed-files v45.0.7 (GitHub Actions):\n  GHSA-tj-1 (unknown): changed-files leaks secrets\n    Fixed in 46.0.1. https://osv.dev/vulnerability/GHSA-tj-1\n",
+ "stderr": "Collecting the tools...\nAsking OSV.dev...\nNot checked, its source is not in a Git repository that OSV knows: poppler-utils.\nNot checked, mise cannot resolve its version: github:modem-dev/dkt-hunk.\nNot checked, its ref is not a release tag: owner/x.\nNot checked here: the packages in binaries (no tool is installed here).\nApps (Homebrew casks) are checked only for the Go and Rust packages in their executables: OSV has no data for the apps themselves. `brew outdated --cask --greedy` shows the old ones.\nChecked 3 Nix packages, 1 Homebrew formula, 4 mise tools, 2 packages in the mise tools, 2 GitHub Actions, 1 package of dotkit.\ndotkit: 4 findings for 4 tools. Upgrade them (dotkit upgrade), or add an ignore rule to audit.toml.\n",
+ "files": {
+  "home/.cache/dotkit/osv/BIT-node-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"BIT-node-1\", \"summary\": \"Node bug\"}}",
+  "home/.cache/dotkit/osv/BIT-ruby-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"BIT-ruby-1\", \"summary\": \"Ruby regex heap read\", \"affected\": [{\"package\": {\"ecosystem\": \"Bitnami\", \"name\": \"ruby\"}, \"ranges\": [{\"type\": \"SEMVER\", \"events\": [{\"introduced\": \"3.4.0\"}, {\"fixed\": \"3.4.13\"}]}]}]}}",
+  "home/.cache/dotkit/osv/BIT-ruby-2.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"BIT-ruby-2\", \"summary\": \"Ruby, every version\", \"affected\": [{\"package\": {\"ecosystem\": \"Bitnami\", \"name\": \"ruby\"}, \"ranges\": [{\"type\": \"SEMVER\", \"events\": [{\"introduced\": \"0\"}]}]}]}}",
+  "home/.cache/dotkit/osv/GHSA-tj-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"GHSA-tj-1\", \"summary\": \"changed-files leaks secrets\", \"affected\": [{\"package\": {\"ecosystem\": \"GitHub Actions\", \"name\": \"tj-actions/changed-files\"}, \"ranges\": [{\"type\": \"ECOSYSTEM\", \"events\": [{\"introduced\": \"0\"}, {\"fixed\": \"46.0.1\"}]}]}]}}",
+  "home/.cache/dotkit/osv/GHSA-tj-2.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"GHSA-tj-2\", \"summary\": \"changed-files old bug\", \"affected\": [{\"package\": {\"ecosystem\": \"GitHub Actions\", \"name\": \"tj-actions/changed-files\"}, \"ranges\": [{\"type\": \"ECOSYSTEM\", \"events\": [{\"introduced\": \"0\"}, {\"fixed\": \"41.0.0\"}]}]}]}}",
+  "home/.cache/dotkit/osv/GHSA-undici-1.json": "{\"batch_modified\": \"2026-10-01T00:00:00Z\", \"record\": {\"modified\": \"2026-10-01T00:00:00Z\", \"id\": \"GHSA-undici-1\", \"summary\": \"undici TLS bypass\", \"database_specific\": {\"severity\": \"HIGH\"}}}"
+ },
+ "calls": [
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--json",
+    "path:@SB/repo/nix#darwinConfigurations.mac",
+    "--apply",
+    "\n    sys:\n    let\n      lib = sys.pkgs.lib;\n      users = lib.attrValues sys.config.home-manager.users;\n      drvs = lib.concatMap (u: u.home.packages) users ++ sys.config.environment.systemPackages;\n      str = x: if builtins.isString x then x else \"\";\n      one =\n        d:\n        let\n          src = d.src or (d.unwrapped.src or { });\n          urls = src.urls or [ ];\n          v = {\n            name = str (d.pname or (d.name or \"\"));\n            version = str (d.version or \"\");\n            url = str (src.url or (if builtins.isList urls && urls != [ ] then builtins.head urls else \"\"));\n            git = str (src.gitRepoUrl or \"\");\n            tag = str (src.tag or \"\");\n            rev = str (src.rev or \"\");\n            homepage = str (d.meta.homepage or \"\");\n            patches = map (p: str (p.name or (baseNameOf (toString p)))) (d.patches or [ ]);\n          };\n          r = builtins.tryEval (builtins.deepSeq v v);\n        in\n        if r.success then v else null;\n    in\n    builtins.filter (x: x != null) (map one drvs)"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "nix",
+   "argv": [
+    "eval",
+    "--raw",
+    "path:@SB/repo/nix#darwinConfigurations.mac.config.homebrew.brewfile"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "brew",
+   "argv": [
+    "vulns",
+    "--json",
+    "--deps",
+    "--brewfile=@SB/tmp/*/Brewfile"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo",
+    "HOMEBREW_NO_AUTO_UPDATE": "1"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "ls",
+    "--global",
+    "--json"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "npm:@dkt-ai/dkt-code"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "mise",
+   "argv": [
+    "latest",
+    "github:modem-dev/dkt-hunk"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsS",
+    "--max-time",
+    "60",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "5",
+    "--retry-all-errors",
+    "-H",
+    "Content-Type: application/json",
+    "--data-binary",
+    "@-",
+    "https://api.osv.dev/v1/querybatch"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   },
+   "stdin": "{\"queries\": [{\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/burntsushi/ripgrep\"}, \"version\": \"15.2.0\"}, {\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/jqlang/jq\"}, \"version\": \"jq-1.8.1\"}, {\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/gpg/gnupg\"}, \"version\": \"gnupg-2.4.9\"}, {\"package\": {\"ecosystem\": \"GIT\", \"name\": \"https://github.com/nodejs/node\"}, \"version\": \"v24.1.0\"}, {\"package\": {\"ecosystem\": \"npm\", \"name\": \"@dkt-ai/dkt-code\"}, \"version\": \"2.0.0\"}, {\"package\": {\"ecosystem\": \"npm\", \"name\": \"cowsay\"}, \"version\": \"1.6.0\"}, {\"package\": {\"ecosystem\": \"Bitnami\", \"name\": \"ruby\"}, \"version\": \"3.4.12\"}, {\"package\": {\"ecosystem\": \"npm\", \"name\": \"npm\"}, \"version\": \"11.0.0\"}, {\"package\": {\"ecosystem\": \"npm\", \"name\": \"undici\"}, \"version\": \"6.28.0\"}, {\"package\": {\"ecosystem\": \"GitHub Actions\", \"name\": \"actions/checkout\"}}, {\"package\": {\"ecosystem\": \"GitHub Actions\", \"name\": \"tj-actions/changed-files\"}}, {\"package\": {\"ecosystem\": \"PyPI\", \"name\": \"tomli\"}, \"version\": \"2.3.2\"}]}"
+  },
+  {
+   "tool": "curl",
+   "argv": [
+    "-fsS",
+    "--max-time",
+    "60",
+    "--retry",
+    "3",
+    "--retry-delay",
+    "5",
+    "--retry-all-errors",
+    "--parallel",
+    "--parallel-max",
+    "8",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/BIT-node-1.download",
+    "https://api.osv.dev/v1/vulns/BIT-node-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/BIT-ruby-1.download",
+    "https://api.osv.dev/v1/vulns/BIT-ruby-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/BIT-ruby-2.download",
+    "https://api.osv.dev/v1/vulns/BIT-ruby-2",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-tj-1.download",
+    "https://api.osv.dev/v1/vulns/GHSA-tj-1",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-tj-2.download",
+    "https://api.osv.dev/v1/vulns/GHSA-tj-2",
+    "-o",
+    "@SB/home/.cache/dotkit/osv/GHSA-undici-1.download",
+    "https://api.osv.dev/v1/vulns/GHSA-undici-1"
+   ],
+   "cwd": "@SB/home",
+   "env": {
+    "DOTFILES": "@SB/repo"
+   }
+  }
+ ],
+ "tmp_left": 0
+}

@@ -38,7 +38,9 @@ jobs:
 
       # mise from the Nixpkgs in flake.lock resolves the versions of the mise
       # tools, with the minimum release age of config/mise.toml. The runner
-      # has Homebrew, which checks the formulae with brew vulns.
+      # has Homebrew, which checks the formulae with brew vulns. --config-only:
+      # the configuration, not the tools of the runner; the Mac checks the
+      # packages in the installed tools.
       - name: dotkit audit
         env:
           DOTFILES: templates/default
@@ -46,4 +48,4 @@ jobs:
           # gh opens the issues; mise reads the GitHub releases.
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: nix shell --inputs-from . nixpkgs#mise -c ./dotkit audit --issues
+        run: nix shell --inputs-from . nixpkgs#mise -c ./dotkit audit --config-only --issues

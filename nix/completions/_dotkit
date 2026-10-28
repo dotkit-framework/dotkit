@@ -65,7 +65,8 @@ _dotkit() {
           _arguments $help \
             '--json[print the report as JSON]' \
             '--issues[sync one GitHub issue per finding]' \
-            '--notify[show a macOS notification for new findings]' && ret=0 ;;
+            '--notify[show a macOS notification for new findings]' \
+            '--config-only[check the configuration, not the installed tools]' && ret=0 ;;
         history|rollback|doctor)
           _arguments $help && ret=0 ;;
       esac

@@ -246,7 +246,9 @@ def _audit(p: Parser):
                    help="Open a GitHub issue for each finding, and close the ones that are gone (gh, for CI).")
     p.add_argument("--notify", action="store_true",
                    help="Show a macOS notification for the new findings (the launchd agent).")
-    return lambda env, a: _mod("audit.cli").audit(env, a.json, a.issues, a.notify)
+    p.add_argument("--config-only", action="store_true",
+                   help="Check what the configuration declares, not the tools installed here (for CI).")
+    return lambda env, a: _mod("audit.cli").audit(env, a.json, a.issues, a.notify, a.config_only)
 
 
 def _mod(name: str):
@@ -304,7 +306,8 @@ COMMANDS: Dict[str, Command] = {
                      "reported them. audit.toml in the repository ignores an advisory: see the README.",
                      epilog="Examples:\n  dotkit audit                 the findings, and what was not checked\n"
                             "  dotkit audit --json          the report for a script\n"
-                            "  dotkit audit --json --issues the daily workflow of the template"),
+                            "  dotkit audit --config-only --issues\n"
+                            "                               the daily workflow of the template"),
     "history": Command("Recovery", "The package changes of the last apply.", _history),
     "migrate": Command("Mac", "Add the tools that were installed by hand to the lists.", _migrate,
                        "Finds Homebrew packages and taps, App Store apps, and global npm and pipx tools that\n"
