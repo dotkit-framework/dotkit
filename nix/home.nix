@@ -108,11 +108,11 @@ in
         # Expands to `dotkit` as you type, for example `dk apply`.
         abbreviations.dk = lib.mkDefault "dotkit";
         integrations = {
-          fzf.enable = true;
-          zoxide.enable = true;
-          starship.enable = true;
-          mise.enable = true;
-          direnv.enable = true;
+          fzf.enable = lib.mkDefault true;
+          zoxide.enable = lib.mkDefault true;
+          starship.enable = lib.mkDefault true;
+          mise.enable = lib.mkDefault true;
+          direnv.enable = lib.mkDefault true;
         };
       };
 
