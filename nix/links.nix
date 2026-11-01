@@ -30,6 +30,26 @@ let
     outer:
     map (inner: { inherit outer inner; }) (lib.filter (inner: lib.hasPrefix "${outer}/" inner) targets)
   ) targets;
+
+  # Home Manager links a target in both sets, then the copy replaces the link.
+  linkedAndCopied = lib.filter (target: copies ? ${target}) (lib.attrNames links);
+
+  # The dotkit command finds targets by exact name, and the nested check
+  # compares names. So each target has one spelling only.
+  canonical =
+    target:
+    let
+      parts = lib.splitString "/" target;
+    in
+    lib.head parts != "~" && lib.all (part: part != "" && part != "." && part != "..") parts;
+  named =
+    option:
+    map (target: {
+      inherit option target;
+    });
+  badTargets = lib.filter (b: !canonical b.target) (
+    named "dotkit.links" (lib.attrNames cfg.links) ++ named "dotkit.copies" (lib.attrNames cfg.copies)
+  );
 in
 {
   options.dotkit = {
@@ -116,12 +136,26 @@ in
       inherit copies;
     };
 
-    assertions = map (n: {
-      assertion = false;
-      message =
-        "dotkit.links: ~/${n.inner} is inside ~/${n.outer}, which is a link too. Home Manager would write "
-        + "the file into the source of ~/${n.outer}. Link one of them only, or set one to null.";
-    }) nested;
+    assertions =
+      map (n: {
+        assertion = false;
+        message =
+          "dotkit.links: ~/${n.inner} is inside ~/${n.outer}, which is a link too. Home Manager would write "
+          + "the file into the source of ~/${n.outer}. Link one of them only, or set one to null.";
+      }) nested
+      ++ map (target: {
+        assertion = false;
+        message =
+          "dotkit.links and dotkit.copies both have ~/${target}. Home Manager would link it, and then the "
+          + "copy would replace the link. Set dotkit.links.\"${target}\" = null; (the base may link it), "
+          + "or remove the copy.";
+      }) linkedAndCopied
+      ++ map (b: {
+        assertion = false;
+        message =
+          "${b.option}: \"${b.target}\" is not a canonical target. Write it relative to the home directory, "
+          + "with no ~/, ./, .., or // and no / at the start or end, for example \".config/foo\".";
+      }) badTargets;
 
     home.file = lib.mapAttrs (_target: source: { source = live source; }) links;
 
