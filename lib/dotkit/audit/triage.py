@@ -14,7 +14,7 @@ import dataclasses
 from typing import Callable, Dict, FrozenSet, List, Optional, Sequence
 
 from . import match, sources
-from .model import FIX_AVAILABLE, FIX_NONE, Finding, Item
+from .model import FIX_AVAILABLE, FIX_NONE, FIX_UNKNOWN, Finding, Item
 
 RANK = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "": 4}
 # --min-severity: the highest RANK that is listed. An unknown severity counts as low.
@@ -66,16 +66,28 @@ def check_fixes(ctx, findings: Sequence[Finding], ask: Callable[[List[Item]], ma
 
 def one_per_key(findings: List[Finding]) -> List[Finding]:
     """One finding per key: a tool with an advisory at two versions (node = ["22", "20"], a crate twice in
-    a binary) is one finding with both versions, so it has one issue."""
-    out: Dict[str, Finding] = {}
+    a binary) is one finding with both versions, so it has one issue. The order of the findings does not
+    change the result: the fix is available when one version has it, else not known when one version does
+    not know it; the other fields come from the first version with that fix, the aliases are the ones of all
+    versions, and it is known exploited when one version is."""
+    groups: Dict[str, List[Finding]] = {}
     for f in findings:
-        same = out.get(f.key)
-        if same is None:
-            out[f.key] = f
-        elif f.item.version not in same.item.version.split(", "):
-            versions = sorted([*same.item.version.split(", "), f.item.version])
-            out[f.key] = dataclasses.replace(same, item=dataclasses.replace(same.item, version=", ".join(versions)))
-    return list(out.values())
+        groups.setdefault(f.key, []).append(f)
+    out = []
+    for group in groups.values():
+        fixes = {f.fix for f in group}
+        fix = next(x for x in (FIX_AVAILABLE, FIX_UNKNOWN, FIX_NONE) if x in fixes)
+        base = min((f for f in group if f.fix == fix), key=lambda f: (f.item.version, f.upgrade))
+        versions = ", ".join(sorted({f.item.version for f in group}))
+        # The same item when there is one version: the report groups the findings by item.
+        item = base.item if versions == base.item.version else dataclasses.replace(base.item, version=versions)
+        # The aliases of all versions, so that each key of the finding (Finding.keys) stays.
+        ids = frozenset().union(*(f.advisory.ids for f in group))
+        advisory = base.advisory if ids == base.advisory.ids else dataclasses.replace(
+            base.advisory, aliases=sorted(ids - {base.advisory.id}))
+        out.append(dataclasses.replace(base, item=item, advisory=advisory,
+                                       exploited=any(f.exploited for f in group)))
+    return out
 
 
 @dataclasses.dataclass

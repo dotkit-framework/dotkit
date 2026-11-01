@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 from dotkit.audit import kev, match, sources, triage
-from dotkit.audit.model import FIX_AVAILABLE, FIX_NONE, Advisory, Finding, Item, package_query
+from dotkit.audit.model import FIX_AVAILABLE, FIX_NONE, FIX_UNKNOWN, Advisory, Finding, Item, package_query
 from dotkit.audit.sources import actions, brew, mise
 from dotkit.core import proc
 from tests import fake
@@ -20,6 +20,12 @@ from tests import fake
 def finding(name="jq", source="nix", severity="HIGH", rid="CVE-1", **kw) -> Finding:
     return Finding(Item(source, name, "1.0", [package_query("npm", name, "1.0")]),
                    Advisory(rid, [], "", severity, []), **kw)
+
+
+def node(version, fix, upgrade="", exploited=False) -> Finding:
+    f = finding("node", "mise", fix=fix, upgrade=upgrade, exploited=exploited)
+    f.item.version = version
+    return f
 
 
 class SelectTests(unittest.TestCase):
@@ -52,9 +58,47 @@ class SelectTests(unittest.TestCase):
         a = finding("node", "mise", fix=FIX_AVAILABLE, upgrade="22.2.0")
         b = finding("node", "mise")
         b.item.version = "20.9.0"
-        out = triage.one_per_key([a, b, finding("jq")])
+        jq = finding("jq")
+        out = triage.one_per_key([a, b, jq])
         self.assertEqual([(f.item.name, f.item.version, f.fix, f.upgrade) for f in out],
                          [("node", "1.0, 20.9.0", FIX_AVAILABLE, "22.2.0"), ("jq", "1.0", "", "")])
+        # The report groups the findings of one tool by item.
+        self.assertIs(out[1].item, jq.item)
+
+    def test_one_per_key_does_not_depend_on_the_order(self):
+        """node 20 has no fix, node 22 has one: in each order, one finding with the fix. Unknown wins over
+        none; known exploited at one version is known exploited."""
+        rows = [(("20.9.0", FIX_NONE, "20.9.0"), ("22.1.0", FIX_AVAILABLE, "22.2.0"), (FIX_AVAILABLE, "22.2.0")),
+                (("20.9.0", FIX_NONE, "20.9.0"), ("22.1.0", FIX_UNKNOWN), (FIX_UNKNOWN, "")),
+                (("20.9.0", FIX_NONE, "20.9.0"), ("22.1.0", FIX_NONE, "22.1.0"), (FIX_NONE, "20.9.0"))]
+        for a, b, want in rows:
+            for order in ((a, b), (b, a)):
+                with self.subTest(order=order):
+                    out = triage.one_per_key([node(*x, exploited=x is a) for x in order])
+                    self.assertEqual([(f.item.version, f.fix, f.upgrade, f.exploited) for f in out],
+                                     [("20.9.0, 22.1.0", *want, True)])
+
+    def test_one_per_key_then_select(self):
+        """Nothing is known exploited: the fix status alone decides what the report lists, in each order."""
+        rows = [(("20.9.0", FIX_NONE, "20.9.0"), ("22.1.0", FIX_AVAILABLE, "22.2.0"), (["node"], [])),
+                (("20.9.0", FIX_NONE, "20.9.0"), ("22.1.0", FIX_NONE, "22.1.0"), ([], ["node"]))]
+        for a, b, want in rows:
+            for order in ((a, b), (b, a)):
+                with self.subTest(order=order):
+                    v = triage.select(triage.one_per_key([node(*x) for x in order]))
+                    self.assertEqual(([f.item.name for f in v.findings], [f.item.name for f in v.no_fix]), want)
+
+    def test_one_per_key_keeps_the_aliases_of_each_version(self):
+        old, new = node("20.9.0", FIX_NONE), node("22.1.0", FIX_AVAILABLE, "22.2.0")
+        old.advisory = Advisory("CVE-1", ["PYSEC-9", "GHSA-1"], "", "HIGH", [])
+        new.advisory = Advisory("CVE-1", ["GHSA-1"], "", "HIGH", [])
+        for order in ((old, new), (new, old)):
+            with self.subTest(first=order[0].item.version):
+                [f] = triage.one_per_key(list(order))
+                self.assertEqual((f.advisory.id, f.advisory.aliases), ("CVE-1", ["GHSA-1", "PYSEC-9"]))
+                self.assertEqual(f.keys, ["mise/node/CVE-1", "mise/node/GHSA-1", "mise/node/PYSEC-9"])
+        # The advisories of the versions do not change.
+        self.assertEqual((old.advisory.aliases, new.advisory.aliases), (["PYSEC-9", "GHSA-1"], ["GHSA-1"]))
 
 
 class CheckFixesTests(unittest.TestCase):
