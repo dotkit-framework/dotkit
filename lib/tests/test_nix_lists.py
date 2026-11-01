@@ -52,8 +52,8 @@ def eval_brewfile(**lists: list[Path]) -> subprocess.CompletedProcess:
     return eval_mac(f"{{ dotkit.lists = {{ {settings} }}; }}", "brewfile")
 
 
-def eval_mac(module: str, attr: str, *args: str) -> subprocess.CompletedProcess:
-    """config.homebrew.<attr> of a Mac from the dotkit module and this module."""
+def eval_mac(module: str, attr: str, *args: str, under: str = "config.homebrew") -> subprocess.CompletedProcess:
+    """<under>.<attr> of a Mac from the dotkit module and this module."""
     expr = f"""
       let
         f = builtins.getFlake {nix_string("git+file://" + str(fake.ROOT))};
@@ -62,7 +62,7 @@ def eval_mac(module: str, attr: str, *args: str) -> subprocess.CompletedProcess:
           specialArgs = {{ inherit user; }};
           modules = [ f.darwinModules.default ({module}) ];
         }};
-      in mac.config.homebrew.{attr}
+      in mac.{under}.{attr}
     """
     return nix_eval(*(args or ("--raw",)), "--option", "warn-dirty", "false", "--expr", expr)
 

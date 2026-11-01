@@ -4,10 +4,10 @@ import argparse
 import contextlib
 import io
 import os
-import subprocess
 import unittest
 from unittest import mock
 
+from dotkit.core import proc
 from dotkit.migrate.context import tilde
 from dotkit.migrate.tidy import actions, cli, pkgs, plan
 from dotkit.migrate.tidy.cli import declared_of
@@ -259,23 +259,24 @@ class ApplyTests(unittest.TestCase):
 
 
 class ActionsTests(unittest.TestCase):
-    """Actions.pkg_uninstall with the real mkdir, mv, and chown, without sudo, on temp files; pkgutil is a fake."""
+    """Actions.pkg_uninstall with the real mkdir, mv, and chown, without sudo, on temp files; pkgutil is a fake.
+    The commands go through proc.run, so Ctrl-C lets them end."""
 
     def setUp(self):
         self.root = fake.tempdir()
         self.addCleanup(fake.remove, self.root)
         self.calls = []
-        real_run = subprocess.run
+        real_run = proc.run
 
-        def run(argv, check=False, **kw):
-            assert argv[0] == "/usr/bin/sudo", argv
+        def run(argv, **kw):
+            assert argv[0] == "/usr/bin/sudo" and not kw, (argv, kw)
             argv = argv[1:]
             self.calls.append(" ".join(os.path.basename(a) if i == 0 else a for i, a in enumerate(argv)))
             if argv[0] == "/usr/sbin/pkgutil":
-                return mock.Mock(returncode=0 if argv[-1] != "com.fails" else 1)
-            return real_run(argv, check=check, **kw)
+                return proc.Result(0 if argv[-1] != "com.fails" else 1)
+            return real_run(argv)
 
-        patch = mock.patch("subprocess.run", run)
+        patch = mock.patch.object(actions.proc, "run", run)
         patch.start()
         self.addCleanup(patch.stop)
 

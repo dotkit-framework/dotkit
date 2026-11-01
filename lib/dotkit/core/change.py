@@ -2,7 +2,7 @@
 
 apply_nix() backs up the files that the edit changes, runs the edit, and
 builds. When the edit or the build fails, or on a signal, it restores the
-files and deletes the ones that the edit added. Then it activates the system
+files and deletes the ones that the edit added (they did not exist before). Then it activates the system
 that it built and runs `mise install`, as `dotkit apply` does
 (activate_and_install); the files keep the change when that fails. add and
 remove change the lists, own the link lines of nix/.
@@ -28,28 +28,22 @@ def activate_and_install(env: Env) -> int:
     return proc.mise(env.home, ["install"]).code
 
 
-def apply_nix(env: Env, edit: Callable[[], None], paths: Sequence[Path], created: Sequence[Path] = ()) -> None:
-    """paths: the files that edit changes; created: the files that it adds, which a restore deletes."""
+def apply_nix(env: Env, edit: Callable[[], None], paths: Sequence[Path]) -> None:
+    """paths: the files that edit changes or adds; a restore deletes the ones that did not exist."""
     n = nix.Nix(env)
     copies = backup.Backup(paths)
-
-    def restore() -> None:
-        copies.restore()
-        for path in created:
-            path.unlink(missing_ok=True)
-
     try:
         with backup.on_signals():
             try:
                 edit()
             except OSError:
-                restore()
+                copies.restore()
                 raise ui.die("could not change the Nix files. They are restored.")
             if n.build_system() != 0:
-                restore()
+                copies.restore()
                 raise ui.die("the build failed. The Nix files are restored.")
     except (KeyboardInterrupt, backup.Stopped):
-        restore()
+        copies.restore()
         raise ui.Exit(130, "\ndotkit: stopped. The Nix files are restored.")
     copies.discard()
     if activate_and_install(env) != 0:

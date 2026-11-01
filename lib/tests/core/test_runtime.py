@@ -246,16 +246,20 @@ class BackupTests(unittest.TestCase):
 
     def test_restore_through_a_link(self):
         real, link, missing = self.dir / "real", self.dir / "link", self.dir / "missing"
+        dangling, never = self.dir / "dangling", self.dir / "never"
         real.write_text("old")
         link.symlink_to(real)
-        b = backup.Backup([link, missing])
+        dangling.symlink_to(self.dir / "nowhere")
+        b = backup.Backup([link, missing, dangling, never])
         real.write_text("new")
         missing.write_text("made")
         copies = b.dir
         b.restore()
         self.assertTrue(link.is_symlink())
         self.assertEqual(real.read_text(), "old")
-        self.assertEqual(missing.read_text(), "made", "a file that did not exist is not restored")
+        self.assertFalse(missing.exists(), "a file that did not exist is deleted")
+        self.assertTrue(dangling.is_symlink(), "a link stays, also when its file does not exist")
+        self.assertFalse(never.exists())
         self.assertFalse(copies.exists())
         b.restore()  # a second time does nothing
 
