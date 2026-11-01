@@ -2,7 +2,9 @@
 (TIDY.md, sections 6, 8.1, and 8.2).
 
 This is the only module of the package that changes the Mac. cli.py creates
-the one Actions object; the tests give a fake with the same methods.
+the one Actions object; the tests give a fake with the same methods. The
+commands that write to the terminal run through core/proc.py, so that Ctrl-C
+lets them end.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import subprocess
 import time
 from typing import List, Tuple
 
+from ...core import proc
 from ..catalog import BREW_ENV
 
 
@@ -23,36 +26,24 @@ class Actions:
         """`brew install --cask --adopt` or `--force`. brew writes to the terminal, so a pkg installer can ask for
         the password. True when brew exits with 0."""
         assert how in ("adopt", "force")
-        try:
-            r = subprocess.run([self.brew, "install", "--cask", f"--{how}", token],
-                               env={**os.environ, **BREW_ENV}, check=False)
-        except OSError:
-            return False
-        return r.returncode == 0
+        return proc.run([self.brew, "install", "--cask", f"--{how}", token], env=BREW_ENV).ok
 
     def uninstall(self, argv: List[str], path_first: str = "") -> bool:
         """Run the uninstall command of a tool's package manager, with its output on the terminal. path_first goes
         first in PATH, so that the npm of an nvm node runs with that node. True when it exits with 0."""
-        env = dict(os.environ)
+        env = {}
         if path_first:
-            env["PATH"] = path_first + os.pathsep + env.get("PATH", "")
+            env["PATH"] = path_first + os.pathsep + os.environ.get("PATH", "")
         if argv and os.path.basename(argv[0]) == "brew":
             env.update(BREW_ENV)
-        try:
-            r = subprocess.run(argv, env=env, check=False)
-        except OSError:
-            return False
-        return r.returncode == 0
+        return proc.run(argv, env=env).ok
 
     def pkg_uninstall(self, pkg_id: str, units: List[str], trash_dir: str) -> Tuple[bool, str]:
         """Move the units of a package into trash_dir, with their paths under it, then make macOS forget the
         package. Both need sudo; sudo asks for the password on the terminal. (True, "") or (False, the error)."""
 
         def sudo(*argv: str) -> bool:
-            try:
-                return subprocess.run(["/usr/bin/sudo", *argv], check=False).returncode == 0
-            except OSError:
-                return False
+            return proc.run(["/usr/bin/sudo", *argv]).ok
 
         for unit in units:
             dest = trash_dir + unit

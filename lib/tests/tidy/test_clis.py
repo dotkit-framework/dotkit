@@ -7,8 +7,10 @@ import os
 import unittest
 from unittest import mock
 
+from dotkit.core import proc
+from dotkit.migrate.catalog import BREW_ENV
 from dotkit.migrate.context import tilde
-from dotkit.migrate.tidy import apps, cli, plan
+from dotkit.migrate.tidy import actions, apps, cli, plan
 from dotkit.migrate.tidy.cli import declared_of
 from tests import fake
 from tests.tidy.mac import TidyMac
@@ -232,6 +234,31 @@ class ToolActions(FakeActions):
         name = argv[-1]
         self._call(f"uninstall {os.path.basename(argv[0])} {name}" + (" (PATH)" if path_first else ""))
         return name not in self.fail_uninstall
+
+
+class ActionsTests(unittest.TestCase):
+    """The installs and uninstalls go through proc.run, so Ctrl-C lets them end; env adds to the environment."""
+
+    def test_the_environment_of_the_commands(self):
+        calls = []
+
+        def run(argv, **kw):
+            calls.append((argv, kw))
+            return proc.Result(0 if argv[-1] != "bad" else 1)
+        with mock.patch.object(actions.proc, "run", run), mock.patch.dict(os.environ, {"PATH": "/usr/bin"}):
+            a = actions.Actions("/opt/homebrew/bin/brew")
+            self.assertTrue(a.brew_install("firefox", "adopt"))
+            self.assertTrue(a.uninstall(["/x/bin/npm", "uninstall", "-g", "ts"], "/x/bin"))
+            self.assertFalse(a.uninstall(["/opt/homebrew/bin/brew", "uninstall", "bad"]))
+        self.assertEqual(calls, [
+            (["/opt/homebrew/bin/brew", "install", "--cask", "--adopt", "firefox"], {"env": BREW_ENV}),
+            (["/x/bin/npm", "uninstall", "-g", "ts"], {"env": {"PATH": "/x/bin" + os.pathsep + "/usr/bin"}}),
+            (["/opt/homebrew/bin/brew", "uninstall", "bad"], {"env": BREW_ENV})])
+
+    def test_path_first_wins_in_the_real_child(self):
+        script = 'case "$PATH" in /first' + os.pathsep + '*) exit 0;; esac; exit 1'
+        self.assertTrue(actions.Actions("brew").uninstall(["/bin/sh", "-c", script], "/first"))
+        self.assertFalse(actions.Actions("brew").uninstall(["/bin/sh", "-c", script]))
 
 
 class ApplyTests(unittest.TestCase):
