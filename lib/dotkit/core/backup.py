@@ -1,7 +1,8 @@
 """Copies of files while a command changes them, so that a failure or a signal can put them back.
 
-restore() writes each copy back into the file (a link stays a link), and
-both restore() and discard() remove the copies. Stopped is the exception for
+restore() writes each copy back into the file (a link stays a link) and
+deletes the files that did not exist, and both restore() and discard()
+remove the copies. Stopped is the exception for
 SIGTERM and SIGHUP; on_signals() turns them into it, so that a `finally` or
 an `except` can restore the files.
 """
@@ -13,7 +14,7 @@ import shutil
 import signal
 import tempfile
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, Optional
+from typing import Dict, Iterable, Iterator, List, Optional
 
 
 class Stopped(BaseException):
@@ -56,19 +57,24 @@ def shielded() -> Iterator[None]:
 
 class Backup:
     def __init__(self, paths: Iterable[Path]):
-        """Copies the files that exist. A file that does not exist is not restored."""
+        """Copies the files that exist. A file that does not exist (and is not a link) is deleted on restore."""
         self.dir: Optional[Path] = Path(tempfile.mkdtemp(prefix="dotkit-"))
         self.copies: Dict[Path, Path] = {}
+        self.absent: List[Path] = []
         for i, path in enumerate(paths):
             if path.exists():
                 copy = self.dir / f"{i}-{path.name}"
                 shutil.copyfile(path, copy)
                 self.copies[path] = copy
+            elif not path.is_symlink():
+                self.absent.append(path)
 
     def restore(self) -> None:
         with shielded():
             for path, copy in self.copies.items():
                 shutil.copyfile(copy, path)
+            for path in self.absent:
+                path.unlink(missing_ok=True)
             self.discard()
 
     def discard(self) -> None:
@@ -76,3 +82,4 @@ class Backup:
             shutil.rmtree(self.dir, ignore_errors=True)
             self.dir = None
             self.copies = {}
+            self.absent = []

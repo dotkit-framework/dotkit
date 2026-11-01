@@ -104,9 +104,10 @@ class Own:
         n = len(changes)
         question = ("Release" if release else "Own") + (" the file?" if n == 1 else f" the {n} files?")
         ui.confirm_or_stop(question, self.yes)
-        nix_files = sorted({c.edit.path for c in changes})
-        created = [self.env.repo / c.repo_file for c in changes if c.copy_from is not None]
-        change.apply_nix(self.env, lambda: self._write(changes), nix_files, created)
+        # A copy is a new file of the repository: a restore deletes it.
+        paths = sorted({c.edit.path for c in changes}) + [self.env.repo / c.repo_file for c in changes
+                                                          if c.copy_from is not None]
+        change.apply_nix(self.env, lambda: self._write(changes), paths)
         if not release:
             # The new link replaces a base file on purpose: the next report does not show it as new.
             overlap.acknowledge(self.env, self.env.result, [f"link:{c.target}" for c in changes])
